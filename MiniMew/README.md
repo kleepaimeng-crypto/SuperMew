@@ -2,11 +2,522 @@
 
 MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目标是理解并逐步实现知识库 Agent 的执行、检索、恢复和评测机制。
 
-目前只创建学习文档，尚无应用代码、运行环境或独立依赖，也尚未建立独立 Git 仓库。
+本目录包含独立的 FastAPI 后端、Vue 账户前端与学习文档，使用自己的依赖锁文件和虚拟环境，不接入上级 SuperMew 的执行链。学习进度统一见交接文档。
+
+## 运行最小后端
+
+需要 Python 3.12、uv 和正在运行的 Docker Desktop（Linux containers）。在 PowerShell 中进入本目录后运行：
+
+```powershell
+cd D:\Project\SuperMew\MiniMew
+uv sync --dev --locked
+# 首次使用才复制；已有 .env 时不要覆盖。
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# 编辑 .env，填写独立的 DB_PASSWORD、REDIS_PASSWORD、JWT_SECRET（至少 32 字符），均带 MINIMEW_ 前缀。
+docker compose up -d --wait
+uv run --env-file .env --no-sync alembic upgrade head
+uv run --env-file .env --no-sync uvicorn minimew.app:create_app --factory --host 127.0.0.1 --port 8001
+```
+
+换设备时将路径改成实际克隆位置。uv 会创建本目录的 `.venv` 并安装 `src/minimew` 包，无需手动设置 PYTHONPATH。不要在上级目录执行这些命令，否则会选择上级项目。端口冲突时改启动参数；不要关闭未知进程。
+
+访问 `http://127.0.0.1:8001/health/live`，默认响应：
+
+```json
+{"status":"ok","app_name":"MiniMew"}
+```
+
+接口只表示 HTTP 服务存活，不证明数据库、模型或聊天业务就绪。交互式 API 文档位于 `/docs`，按 Ctrl+C 停止服务。
+
+`/health/ready` 执行有超时限制的 `SELECT 1`，成功返回 200 和 `{"status":"ok","database":"ok"}`；数据库不可用返回 503 和 `{"status":"unavailable","database":"unavailable"}`。它不检查业务表迁移、Redis 或模型服务。配置正确但数据库停机时，应用仍能启动并响应 live；缺失密码等非法配置则直接拒绝启动。
+
+### 独立数据库与迁移
+
+Compose 项目为 `minimew`，数据库/账号默认 `minimew`，宿主机端口 `127.0.0.1:55432`，数据卷 `minimew_postgres_data`。使用官方 PostgreSQL 18 镜像并锁定 digest；PostgreSQL 18 数据卷挂载到 `/var/lib/postgresql`。不复用 SuperMew 的数据库、网络或数据卷。
+
+本机开发配置使用容器初始化账号，拥有管理权限；生产部署时需另行区分迁移账号与最小权限运行账号，本步骤不是生产部署方案。密码保存在 Git 忽略的 `.env`，配置对象用 SecretStr 隐藏表示，响应不包含 DSN 或异常详情。
+
+```powershell
+uv run --env-file .env --no-sync alembic current
+docker compose stop postgres
+docker compose up -d --wait
+```
+
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）。`alembic current` 应显示 `0010 (head)`。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+
+0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
+
+### 个人用户与对话模型
+
+| 表 | 字段与约束 |
+| --- | --- |
+| `users` | UUID 主键 id、带时区的 created_at、唯一且非空 username、非空 password_hash |
+| `threads` | UUID 主键 id、必填 user_id 外键、必填 title（最多 200 字符）、带时区的 created_at |
+| `refresh_tokens` | token_hash 主键、user_id 外键及索引、created_at、expires_at、可空 revoked_at；无原始令牌 |
+
+UUID 和创建时间由 PostgreSQL 默认值生成，直接 SQL 写入也适用。ORM 在 INSERT/flush 后取得这些值；flush 执行 SQL 但不等于 commit。title 列允许空字符串，正式接口创建时写入“新对话”，首次保存用户消息时更新标题。`ix_threads_user_id` 支持按用户查询；外键 RESTRICT 拒绝删除仍有对话的用户，不自动级联删除。
+
+本版按个人用户设计，已包含登录认证和 Thread 业务接口，不含 Tenant。外键只验证用户存在，不阻止越权查询；正式 Thread/Run 接口同时限制资源 ID 与服务端验证的 current_user_id。
+
+### 用户名密码认证
+
+| 接口 | 输入/凭据 | 成功响应 |
+| --- | --- | --- |
+| `POST /auth/register` | JSON username、password | 201：id、username、created_at，不返回密码或哈希 |
+| `POST /auth/login` | JSON username、password | 200：access_token、token_type=bearer、expires_in（秒） |
+| `GET /auth/me` | `Authorization: Bearer <access_token>` | 200：当前用户公开信息 |
+| `POST /auth/refresh` | 浏览器自动携带刷新 Cookie，允许空 body | 200：新 Access Token，并通过 Set-Cookie 轮换 Refresh Token |
+| `POST /auth/logout` | 浏览器自动携带当前刷新 Cookie，允许空 body | 204：撤销当前凭据并清除 Cookie |
+
+用户名先去除首尾空白并转小写，然后要求 3–32 个 ASCII 字母、数字或下划线；因此 Alice 和 alice 是同一个用户名。注册密码 12–128 字符，不裁剪、不改大小写；登录只验证输入，不强制套用注册的最小长度。请求不能额外指定 id、password_hash 等字段。
+
+新增 [argon2-cffi](https://argon2-cffi.readthedocs.io/en/stable/howto.html) 生成带随机盐的 Argon2id 哈希，并在显式线程池中计算和验证。不存在的用户名也验证一次虚拟哈希，错误用户名和错误密码统一返回 401。重复注册由数据库唯一约束保证（包括并发），返回 409。非法请求返回 422 通用错误，不回显 password、原始 JSON 或校验 input。
+
+[PyJWT](https://pyjwt.readthedocs.io/en/stable/api.html) 固定使用 HS256；令牌包含 sub、iat、exp、iss、aud、jti 和 token_type。后端固定校验算法、签名、有效期、签发方、受众和 access 用途，再查询用户是否存在。不能通过仅解码 payload 获取可信身份。令牌响应设置 no-store，不持久化原始 Token。损坏的数据库哈希、数据库故障不会伪装成密码错误。
+
+`MINIMEW_JWT_SECRET` 必填，至少 32 字符，应使用独立随机密钥，不能复用数据库密码。`MINIMEW_ACCESS_TOKEN_MINUTES` 默认 15，允许 1–60。修改密钥后需重启，新密钥无法验证旧令牌。本机生成的密钥仅保存在忽略的 `.env`，不要将其贴进聊天或提交到 Git。
+
+### 登录续期与退出
+
+登录成功后，Access Token 在 JSON 中返回；Refresh Token 仅通过 `minimew_refresh` Cookie 传输，不出现在 JSON。注册仍只创建用户，需要随后登录。Refresh Token 使用 32 字节随机数生成，数据库保存 SHA-256 摘要，不保存原始值；它不是 JWT。高熵随机凭据可用摘要查找，与用户密码的 Argon2id 哈希用途不同。
+
+Cookie 固定为 `HttpOnly; Path=/auth; SameSite=Lax`，不设置 Domain。`MINIMEW_REFRESH_TOKEN_DAYS` 默认 7 天、范围 1–30；每次成功刷新都签发有效期从本次刷新起计算的新凭据。`MINIMEW_REFRESH_COOKIE_SECURE` 本机 HTTP 默认为 false，production 配置必须为 true，缺失则拒绝启动；HTTPS 部署也需正确配置代理。Cookie 设置和清除使用相同 Path 与安全属性，参见 [Set-Cookie 说明](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)。
+
+刷新在一个事务内撤销旧凭据、保存后继摘要并签发新的 Access Token，成功提交后才发送 Cookie。统一按 User → RefreshToken 行锁顺序处理登录签发、轮换、退出和重放撤销，并在取得锁后读取数据库时间判断过期。
+
+- 有效凭据：轮换，返回 200。
+- 自然过期：仅拒绝本次请求，不撤销其他凭据；过期判断优先于已撤销判断。
+- 尚未过期但已撤销：视为重放，撤销该用户所有仍有效的 Refresh Token；先提交撤销事务，再返回 401。
+- 缺失、畸形、未知、已过期或重放：统一返回 401 并清除请求端刷新 Cookie，错误不包含凭据。
+- 退出：只撤销 Cookie 指向的凭据，重复退出或没有 Cookie 也返回 204 并清 Cookie，不额外撤销其他设备。
+
+撤销刷新凭据不会即时撤销已签发的 Access Token。前端退出时清空内存 Access Token，并先等待正在进行的刷新完成，再向服务器退出最新 Cookie。若刷新先完成而退出仍携带旧 Cookie，服务端不会凭空把退出目标改成新凭据；若随后复用旧凭据刷新，则会触发重放处理。两个同时使用同一 Refresh Token 的请求只有一个成功，另一个触发重放并撤销后继，因此前端协调并发刷新。当前没有退出所有设备接口。
+
+认证 POST 加入同源检查：Origin 优先，其次 Referer；外源、null Origin 或无可信来源的 same-site/cross-site Fetch Metadata 返回 403，不修改凭据。无浏览器来源元数据的本机 CLI 可以使用。本步不提供跨源 Cookie allowlist。认证的正常响应和可处理错误均 no-store。登录限流、完整入口流量治理、生产部署与刷新记录定期清理尚未实现；已撤销记录保留用于重放判断，不在请求中删除。
+
+后续浏览器只能在内存保存 Access Token，不存 localStorage/sessionStorage 或 URL。Refresh Cookie 有效时，页面重新加载可调用 refresh 恢复内存 Token；刷新失败需重新登录。
+
+手动验证：按启动命令运行新服务，打开 `http://127.0.0.1:8001/docs`，先调用 register，再调用 login；将返回的 access_token 填入 Authorize 的 Bearer 输入，调用 me。然后调用 refresh，浏览器自动携带并替换 Cookie；返回的新 Access Token 可更新到 Authorize。调用 logout 后再次 refresh 应为 401；Swagger 中旧 Access Token 不会自动清除且未过期时仍可能访问 me。不要持久化令牌。旧进程需要 Ctrl+C 后重启，不会因代码落盘自动切换。
+
+停止容器保留数据。不要用 `docker compose down -v` 做日常停止，它会删除数据卷。PostgreSQL 初始化变量只对空数据卷生效，修改 `.env` 中的密码不会自动修改已有数据库密码。
+
+### 配置与代码入口
+
+| 文件 | 职责 |
+| --- | --- |
+| `pyproject.toml` / `uv.lock` | 独立依赖声明与解析结果；锁文件由 uv 生成 |
+| `src/minimew/app.py` | 应用工厂：校验配置、保存到应用实例、注册路由 |
+| `src/minimew/settings.py` | 配置模型及 Depends 所用的配置读取函数 |
+| `src/minimew/database.py` | Engine、连接 URL、请求独立 AsyncSession |
+| `src/minimew/models.py` | Base metadata、用户、对话、Run/Message 与模型配置 ORM 映射 |
+| `src/minimew/model_control.py` | 配置校验、当前选择、版本更新、冻结和读取 Run 快照 |
+| `src/minimew/model_cli.py` | 本地 set/show/show-run 管理命令 |
+| `src/minimew/execution/` | 执行编排、领取/结果事务、上下文整理和 Journal 追加，职责见下文 |
+| `contracts/run_event_v1.json` | MiniMew 事件、状态与错误码真源；独立于上级同名契约 |
+| `scripts/generate_event_contract.py` | 从事件真源生成并核对 Python/TypeScript 消费者 |
+| `src/minimew/security.py` | 密码哈希、签发和校验 Access Token |
+| `src/minimew/api/auth.py` | 注册、登录、CurrentUser 依赖、me 与公开响应模型 |
+| `src/minimew/refresh.py` | 刷新凭据签发、行锁、轮换、重放撤销和退出事务 |
+| `src/minimew/auth_http.py` | Cookie 属性、同源入口检查与 no-store 响应头 |
+| `src/minimew/api/health.py` | 存活与数据库就绪接口 |
+| `compose.yaml` / `docker/redis-entrypoint.sh` | 独立 PostgreSQL/Redis 与数据卷，Redis 使用哈希 ACL 启动 |
+| `alembic.ini` / `migrations/` | 独立迁移环境与版本链 |
+| `tests/test_app.py` | 接口、配置隔离与非法配置测试 |
+
+应用环境变量：`MINIMEW_APP_NAME`（默认 MiniMew，不能为空）和 `MINIMEW_ENVIRONMENT`（development/test/production，默认 development）。数据库配置见 `.env.example`：HOST、PORT、NAME、USER、PASSWORD、TIMEOUT_SECONDS，均以 `MINIMEW_DB_` 为前缀；密码必填，超时默认 3 秒。环境名称目前仅用于配置校验，并不自动开启认证或生产安全设置。配置只在创建应用时读取，修改后需要重启。 Redis 配置同样见 `.env.example`：独立密码必填；默认地址为 `127.0.0.1:56379`，key 前缀为 `minimew:run_events:v1`。
+
+```powershell
+$env:MINIMEW_APP_NAME = "MiniMew Local"
+$env:MINIMEW_ENVIRONMENT = "development"
+uv run --env-file .env --no-sync uvicorn minimew.app:create_app --factory --host 127.0.0.1 --port 8001
+```
+
+非法配置会抛出 ValidationError，使应用启动失败。应用本身不会自动加载 `.env`；以上命令通过 uv 的 `--env-file .env` 显式注入本目录配置。Compose 默认读取本目录 `.env`。同名终端环境变量优先，遇到配置不一致时先检查当前终端，不输出密码。设置环境变量使用 [pydantic-settings 的配置机制](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)。
+
+应用 lifespan 创建 Engine、Session 工厂及 Redis 资源，并管理通知扫描任务；退出先停通知任务、关闭 Redis，再 dispose 数据库连接池。模块 import 不创建连接或启动循环。`get_session` 使用 `yield` 提供请求自己的 Session，结束时关闭并回滚未提交事务，不自动 commit。后续写业务时用 `async with session.begin():` 明确事务范围。并发任务需要各自的 Session，参见 [SQLAlchemy 异步会话说明](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)。
+
+### 本地验证
+
+先按 [AI 编程测试策略](AGENTS.md#ai-编程测试策略) 分析影响范围，再选择相关测试文件或用例。以下是整套离线检查入口，不要求每次改动全部执行；纯文档更新通常只需差异、链接和格式检查。
+
+```powershell
+uv run --no-sync pytest -q
+uv run --no-sync ruff check src tests migrations scripts
+uv run --no-sync ruff format --check src tests migrations scripts
+```
+
+pytest 测试不访问模型、数据库或外网。真实数据库检查需先启动容器并完成迁移，再显式运行：
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_database.py
+# 可选故障检查：短暂停止本项目数据库，finally 中恢复；不要与业务操作同时运行。
+uv run --env-file .env --no-sync python scripts/check_database.py --stop-database
+```
+
+该脚本仅接受默认 MiniMew 本机地址与数据库，检查 0010 revision、预期表集合、临时表事务提交/回滚、Session 清理、真实 ready 响应。故障检查恢复后，同一个应用应重新返回 ready 200。
+
+模型与迁移的真实 PostgreSQL 验证单独执行：
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_models.py
+```
+
+它需要本地开发账号的建库权限，创建随机 `minimew_test_<uuid>` 临时库，验证空库迁移、旧无凭据用户时原子拒绝升级、已有注册用户/Thread/无快照 Run 及消息升级保留、重复升级、metadata 一致性、ORM/外键/删除保护与索引。还显式运行 auth、refresh、threads、runs 的 PostgreSQL 测试，验证认证、并发轮换、Thread 隔离、Run 幂等与回滚、模型配置更新、快照不可改写、配置更新与预留的并发以及本地管理命令；完成或失败后清理本次临时库。它不会在开发库降级或清空开发数据。pytest 默认跳过这些真实数据库测试，不要给它随意设置 MINIMEW_INTEGRATION_DB。
+
+依赖下载需要联网。若受限环境无法写入默认缓存/临时目录，可在本目录先执行以下配置，再执行 uv 命令：
+
+```powershell
+New-Item -ItemType Directory -Force .artifacts/tmp | Out-Null
+$env:UV_CACHE_DIR = "$PWD\.artifacts\uv-cache"
+$env:TEMP = "$PWD\.artifacts\tmp"
+$env:TMP = $env:TEMP
+```
+
+这些环境变量只影响当前终端及其子进程；`.artifacts` 和 `.venv` 不纳入 Git。
+
+## 运行账户前端
+
+先按上文启动数据库和后端（8001），另开 PowerShell：
+
+```powershell
+cd D:\Project\SuperMew\MiniMew\frontend
+npm ci
+npm run dev
+```
+
+访问 `http://127.0.0.1:5174`。前端固定监听本机 5174，端口被占用时拒绝启动，不自动换端口。Node 要求 `^22.12.0 || >=24.0.0`；本次复用 Node 24.18.0、npm 11.16.0，安装独立 node_modules。新设备不要复制 node_modules。
+
+页面支持注册、登录、账户信息、退出与刷新页面恢复。注册成功后仍需登录。登录后点击顶部“对话”或账户页“进入我的对话”，访问 `/threads`：左侧显示当前用户的列表，可新建、刷新列表、加载更多；选中后地址变为 `/threads/{id}`，刷新浏览器会恢复身份并重新查询该对话。右侧目前显示空状态，没有消息发送或模型调用。前端使用 Vue 3、TypeScript、Pinia、Vue Router、Vite，HTTP 使用原生 fetch，不额外安装 Axios。
+
+- `src/api.ts`：统一 JSON 请求、超时、公开错误文案和响应字段检查；不自动重试写请求。
+- `src/stores/auth.ts`：唯一认证状态，Access Token 仅在内存；同标签恢复共享 Promise，支持 Web Locks 的同源标签页串行操作 Cookie。登录/退出用 generation 阻止旧响应重新写入账户。
+- `src/router.ts` 和 `App.vue`：等待恢复后再显示受保护页面。401 表示未登录；网络错误、超时、500 或畸形响应显示重试，不自动跳登录。
+- `src/stores/threads.ts` 和 `views/ThreadsView.vue`：管理列表、分页和选中对话。退出或身份变化立即清空；快速切换只接受最后一次详情请求。创建提交得到成功响应后才加入列表，不生成本地假 ID；重复点击只提交一次，不自动重试 POST。响应丢失时创建可能已成功，应先刷新列表确认。分页按 ID 去重，但继承后端 offset 翻页期间可能发生位移的边界，可刷新列表重新对齐。
+- 对话接口返回 401 时清空账号数据并提示恢复登录；点击重试会尝试 Refresh，成功后仍打开原对话地址。Refresh 明确返回 401 才进入登录页；500/网络异常继续显示重试。404、403 或非法对话地址统一显示“对话不存在或不可访问”，不泄露其他用户归属。
+- HttpOnly Refresh Cookie 由浏览器管理。localStorage 不保存凭据；sessionStorage 只保存 `minimew.logout-pending=1` 这一非凭据标记，退出成功即清除。退出失败后刷新页面优先重试退出，不悄悄恢复登录。
+- Vite 将 `/auth` 和 `/v1` 代理到 `http://127.0.0.1:8001`，保留 Host（changeOrigin=false），保持后端 Origin 校验。修改后端端口可在启动 Vite 前设置 `$env:MINIMEW_API_TARGET = 'http://127.0.0.1:新端口'`。不要通过绕过同源检查或随意放开 CORS 解决代理问题。
+
+边界：没有 Web Locks 的浏览器仅保证单标签页并发协调；跨标签退出不会立即清空其他标签已有的内存 Access Token，它仍受后端有效期约束。未提供后台定时续期、通用业务接口 401 自动重试或跨账号业务缓存；接入后续页面时再扩展并验证。Vite 代理用于本地开发，生产同源部署尚未实现。
+
+认证和 Thread 类型来自已有后端路由，修改接口后在 MiniMew 目录运行：
+
+```powershell
+uv run --no-sync python scripts/export_frontend_contract.py
+cd frontend
+npm run contracts
+```
+
+`openapi.json` 和 `src/generated/api.d.ts` 是生成物，不手改。导出不读取 Secret、不访问数据库；生成的 TS 类型不替代 `api.ts` 的运行时检查。
+
+前端检查（在 frontend 目录）：
+
+```powershell
+npm test
+npm run build
+npm run format:check
+npm audit --omit=dev --audit-level=high
+# 首次使用需要显式安装测试浏览器，会联网下载。
+npx playwright install chromium
+npm run test:e2e
+```
+
+默认浏览器测试使用路由模拟，不依赖模型或数据库；真实流程默认跳过。测试前端固定使用 5175，不占用开发用的 5174。在 MiniMew 目录显式执行以下命令，会创建随机临时数据库、在 8002 启动临时后端并运行真实浏览器验证，最后清理自己创建的数据库与后端，不重启已有 8001/5174 服务。脚本不会停止占用测试端口的其他进程；临时后端启动日志保存在忽略的 `.artifacts/frontend-test-backend.log`。
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_frontend.py
+```
+
+## 对话接口
+
+接口统一位于 `/v1/threads`，均要求 `Authorization: Bearer <access_token>`。可重启后端后在 `/docs` 登录、复制 Access Token 并通过 Authorize 输入，随后试用：
+
+| 请求 | 输入 | 成功结果 |
+| --- | --- | --- |
+| `POST /v1/threads` | JSON `{}` | 201；返回 `id`、`title`、`created_at` |
+| `GET /v1/threads?limit=20&offset=0` | limit 为 1–100，offset 非负 | 200；返回 `items`、`next_offset`，没有下一页时为 null |
+| `GET /v1/threads/{thread_id}` | 创建接口返回的 UUID | 200；返回该对话 |
+
+创建时服务端生成 ID，从已验证的身份获取归属，并将默认标题“新对话”写入数据库；不接受请求体指定 user_id、id 或 title，额外字段返回 422。提交成功才返回 201。每次创建请求都会创建独立 Thread；本步没有创建幂等键，后续 Run 提交幂等属于另一项功能。
+
+列表只查询当前用户，按 created_at、id 均倒序，next_offset 可用于下一页。当前使用简单 offset 分页；翻页期间若有新对话插入，可能出现重复或位移，不提供跨请求快照保证。单个查询同时限制 ID 和用户归属，不存在或属于他人都返回相同 404；非法 UUID 返回 422，缺失/无效身份返回 401。成功响应带 `Cache-Control: no-store`。
+
+标题规则已实现：首次预留 Run、保存用户消息时，在同一事务内更新标题；后续消息不覆盖。标题去除首尾空白、连续空白合并为空格，超过 30 个字符截断并加省略号；消息原文不变。模型失败也应保留已提交标题，但当前尚未执行模型。没有改名或删除接口。
+
+Thread 的归属隔离、分页、跨应用读取和失败回滚纳入 `scripts/check_models.py` 的临时 PostgreSQL 验证；默认 pytest 的离线测试验证未认证访问在数据库操作前被拒绝。
+
+## 提交提问与查询（2.1）
+
+以下接口需要 Bearer Access Token，创建 Run 前必须已有属于当前用户的 Thread。可重启后端后在 `/docs` 试用；本步未加入前端输入框。
+
+| 请求 | 输入与结果 |
+| --- | --- |
+| `POST /v1/threads/{thread_id}/runs` | `idempotency_key` 与 `content`；首次 201，完全相同的重发 200，键相同而正文不同 409 |
+| `GET /v1/threads/{thread_id}/runs/{run_id}` | 返回 Run/Thread ID、状态、消息 ID、时间、取消请求时间与受控错误码 |
+| `POST /v1/threads/{thread_id}/runs/{run_id}/cancel` | 对原 Run 请求取消；pending/已有终态返回 200，running 保存请求返回 202 |
+| `GET /v1/threads/{thread_id}/messages?limit=50` | 最新一页，items 内按 sequence 升序；previous_cursor 非 null 时可用 `before=该值` 获取更早页 |
+
+提交示例：
+
+```json
+{"idempotency_key":"question-001","content":"解释一下 RAG"}
+```
+
+键长度 1–128，仅接受字母、数字、下划线、点、冒号和短横线；按所属 Thread 隔离。正文长度 1–20000，拒绝空白和 NUL，保留原文；幂等按原文精确比较，因此不同空白也属于不同内容。同一意图因响应丢失重发时复用原键；新的提问用新键。不同键即使正文相同也创建新 Run。本步没有重新生成或恢复失败任务接口。
+
+事务顺序：校验归属并锁定 Thread → 查幂等记录 → 读取当前模型并冻结快照（2.2 新增）→ 创建带快照的 pending Run → 创建 completed 用户 Message 与空正文的 pending assistant Message → 更新 last_sequence 和首条消息标题 → 提交。completed 在这里表示用户消息已保存，不表示模型执行完成。run_id 与 role 的唯一约束限制每个 Run 最多一条用户/assistant 消息；应用事务保证正式创建一定写齐一对。复合外键防止 Run 的用户与 Thread 不符、Message 与 Run 的 Thread 不符；唯一序号保证顺序不重复。数据库不直接阻止管理员绕过接口只写孤立 Run，正常业务必须通过原子预留入口。
+
+查询始终校验当前用户归属，越权、不存在或错误的 Thread/Run 组合返回统一 404。历史每页 1–100 条，before 是正整数 sequence；分页可能在一对消息之间分界。服务故障返回错误，不伪装为空历史。没有自动创建 Thread 或进程内记录替代数据库。
+
+API 先预留带快照的 pending Run；2.7 的后台调度器自动领取并使用真实 DeepSeek 生成答案，分页/SSE 读取同一份持久 Journal。fake 只在隔离验收中注入；2.8 已接入按 Run 取消。2.1 历史无快照 Run 的保留与禁止执行策略见下文。
+
+新增 `conversations.py` 持有事务规则，`api/runs.py` 负责 HTTP 映射；历史仍由 Thread 的唯一 HTTP 入口提供。OpenAPI/TS 已从正式路由同步生成。真实 PostgreSQL 的并发、幂等、回滚、权限和迁移检查纳入 `scripts/check_models.py`；迁移 0005 禁止降级丢弃消息历史。
+
+## 模型配置与快照（2.2）
+
+`model_profiles` 保存无 Secret 的模型配置和正整数版本；`model_assignments` 保存当前 answer 角色的选择。本阶段只有一个模型角色。迁移只建立空选择，不替用户选择模型；当前配置以 PostgreSQL 为准。配置管理使用本地命令，后续再接管理网页。
+
+用户选择 DeepSeek V4 Flash、关闭深度思考。仓库中的 `model-profile.deepseek-v4-flash.json` 为无密钥配置：
+
+```json
+{
+  "provider": "openai_compatible",
+  "model_name": "deepseek-v4-flash",
+  "base_url": "https://api.deepseek.com",
+  "temperature": 0.2,
+  "max_output_tokens": 4096,
+  "timeout_seconds": 60.0,
+  "thinking": {"type": "disabled"}
+}
+```
+
+2026-10-30 核对 [DeepSeek 官方入口说明](https://api-docs.deepseek.com/en/)：旧 ID `deepseek-v4-flash` 仍接受，但官方实际由 DeepSeek-V4.1-Flash-1017 提供服务；本项目保留用户指定 ID，不宣称锁定旧模型权重。关闭思考使用 `thinking.type=disabled`，参照 [官方思考模式说明](https://api-docs.deepseek.com/guides/thinking_mode/)。配置校验要求显式填写该值，拒绝 enabled、未知字段、API Key/Header，以及含用户名、密码、query 或 fragment 的服务地址。2.7 Adapter 在每次实际请求中传入此参数。
+
+在 MiniMew 目录完成迁移后，运行：
+
+```powershell
+uv run --env-file .env --no-sync alembic upgrade head
+uv run --env-file .env --no-sync python -m minimew.model_cli set --name deepseek-v4-flash --file model-profile.deepseek-v4-flash.json
+uv run --env-file .env --no-sync python -m minimew.model_cli show
+# 替换为已有 Run 的 UUID，查看这次执行自己的快照。
+uv run --env-file .env --no-sync python -m minimew.model_cli show-run <run_id>
+```
+
+这些命令使用本地数据库管理权限，输出无 Secret 配置和摘要。API Key 由真实 Provider 从服务端配置读取；不要写进 JSON、命令参数或数据库。命令不创建测试 Run，不触发模型请求。修改 JSON 后再次 set，同名 Profile 内容有变化时 version 加一，内容相同保持原版本；使用其他 name 会创建或选择该 Profile。选择与更新在同一事务内提交。
+
+创建新 Run 时，在原有预留事务中保存 `model_snapshot_json` 与 `model_catalog_hash`。快照包含 schema_version、answer 的 Profile ID/版本和完整调用配置；摘要是对确定性 JSON 的 SHA-256。配置更新与冻结按相同顺序锁定选择和 Profile，防止读取到混合版本；不同 Thread 可并发读取。Pydantic 的嵌套配置不可修改，数据库触发器进一步拒绝改写 Run 的快照与摘要，参照 [PostgreSQL 触发器说明](https://www.postgresql.org/docs/current/plpgsql-trigger.html)。摘要用于验证已保存配置的一致性，不能保证第三方同名模型永不更新或生成答案逐字相同。
+
+同键同正文重发先返回原 Run，不读取当前配置；因此更新配置或当前配置不可用，不改变原请求结果。新键创建时若当前配置缺失或非法，返回 `503 {"detail":{"code":"MODEL_CONFIGURATION_UNAVAILABLE"}}`，不留下 Run、消息、序号或标题的部分变更。这个错误不表示检索无知识，也不代表数据库 readiness 一定失败。公开 Run 响应不包含私有模型地址或完整快照。
+
+迁移 0006 原样保留 2.1 历史 Run、消息和状态，历史无快照字段保持 NULL，不补填当前配置。`snapshot_for_run` 明确返回 `MODEL_SNAPSHOT_MISSING`，执行器通过此入口读取；`show-run` 对这些旧 Run 也以该错误退出。2.3 若显式驱动旧任务执行，会记录该失败码并保持原消息归属，绝不调用模型或补猜配置。新插入 Run 缺快照、改写旧快照或给历史 Run 补猜快照，都会被数据库拒绝。旧记录仍可按原 HTTP 查询和幂等规则读取；要发起新的提问意图应创建新 Run。0006 禁止 downgrade。
+
+## 持久执行与事件（2.3–2.6）
+
+正式预留链使用可信内部执行接口 `RunExecutor.execute(user_id, thread_id, run_id)`；2.7 后默认由应用的调度器调用同一接口，不另建聊天 route。账户前端暂时只支持身份和 Thread 管理，可在 `/docs` 提交问题，再通过 Run/消息历史/事件接口查看答案。
+
+职责按业务分为：
+
+| 文件 | 做什么 |
+| --- | --- |
+| [execution/provider.py](src/minimew/execution/provider.py) | 定义唯一流式 Provider 接口、正文分片/明确完成结果、不可变请求和稳定调用错误；不读写数据库 |
+| [execution/context.py](src/minimew/execution/context.py) | 将完整历史问答和本次问题整理为有界 messages |
+| [execution/repository.py](src/minimew/execution/repository.py) | 用独立 Session 管理领取、输入读取、分片追加、结果提交与保留失败前缀的过期终结 |
+| [execution/journal.py](src/minimew/execution/journal.py) | 校验契约、分配单 Run 事件序号并追加持久事件 |
+| [execution/service.py](src/minimew/execution/service.py) | 串联领取、输入、Provider 调用和结果提交；独占模型有界重试与绝对预算 |
+| [execution/deepseek.py](src/minimew/execution/deepseek.py) | LangChain/DeepSeek SDK 适配、关闭思考、流/错误转换和每次调用的客户端清理 |
+| [execution/dispatcher.py](src/minimew/execution/dispatcher.py) | 随应用扫描可执行 pending、限制本实例并发、定期终结过期 running 与停机清理 |
+| [execution/queries.py](src/minimew/execution/queries.py) | 校验用户/Thread/Run 归属，按游标分页读取已提交事件 |
+| [execution/streaming.py](src/minimew/execution/streaming.py) | 每次订阅独立读取并传输事件，管理心跳、到期、发送背压和断连清理；不执行模型或改写 Run |
+| [tests/execution_helpers.py](tests/execution_helpers.py) | 只在隔离验收中使用的可控 fake Provider |
+
+一次执行的实际顺序：短事务按 Thread → Run 顺序加锁并条件领取，提交 running/owner token/租约和 run.started → 短事务读取冻结快照与历史 → 在数据库事务之外消费 Provider 流，每批正文通过独立短事务追加 message.delta → 结果事务填入原 assistant Message，并追加 message.completed 和 run.completed/run.failed/run.cancelled，最后条件更新 Run 终态并提交。结果事务任意一步失败，本次最终正文、完成状态和结束事件一起回滚；已提交的领取状态与此前的分片保留，不向调用方报告成功。
+
+同 Thread 的较早 pending/running 会阻止后续 Run 领取，不同 Thread 可并行。历史仅选择本次提问之前的成功完整问答；失败或取消轮次保留在业务历史中，不传给后续模型。最多取最近 20 轮、总正文 60000 字符，超限按完整问答裁剪最旧部分，始终保留本次问题；这些是字符/条数预算，不是精确 token 计数。未来消息和当前空 assistant 占位不会作为输入。
+
+默认租约 330 秒，Provider 的绝对调用截止取快照 timeout 与剩余租约的较小值；普通异步 Provider 用 [asyncio timeout](https://docs.python.org/3.12/library/asyncio-task.html#timeouts) 协作取消。吞掉取消后迟到返回的结果也会被截止时间和数据库所有权检查拒绝。租约不证明外部请求已停止，不提供外部调用严格一次保证。当前没有自动续租或重跑；`recover_expired()` 把过期任务记录为 `EXECUTION_EXPIRED`，2.7 调度器定期驱动该入口。
+
+Provider 超时、异常、无效响应分别记录稳定 code，不保存原始异常、地址或密钥。结果库写入故障直接传播，不伪装成 Provider 错误或无知识。执行器协程中断时会尝试记录 `EXECUTOR_INTERRUPTED` 并重新抛出取消；这不等于面向用户的 Run 取消接口，进程崩溃后的清理由过期终结处理。
+
+数据库除了检查状态与同 Thread 唯一 running，还使用延迟到事务末尾的约束触发器，核对 Run、assistant Message、完成事件与事件序号一致。直接只提交 succeeded 而不保存回答和事件会被拒绝。已完成消息、终态 Run 和 Journal 不可改写；Journal 与消息历史不能被直接删除。历史快照 pending 保留原状、不补造 run.created，首次执行可以从 run.started 的 sequence=1 开始。
+
+新 Run 在预留事务内写入 run.created。没有正文分片的成功 Run，最小日志依次是 run.created、run.started、message.completed、run.completed；流式执行在 started 与结束事件之间追加 message.delta，失败时最后一个为 run.failed。Run 的 last_event_sequence 与 Thread 的 Message sequence 是两个不同序列。公开 Run 查询支持 pending/running/succeeded/failed/cancelled、finished_at、cancel_requested_at 与 error_code，不输出 owner token、租约或私有快照；失败的 assistant Message 状态为 failed。同键重发已完成 Run 只返回当前持久结果，不再次调用 Provider。
+
+事件真源为本目录 [run_event_v1.json](contracts/run_event_v1.json)，生成 Python 的严格 payload/状态/错误类型和 TypeScript 联合类型。需要新增或调整事件时运行：
+
+```powershell
+uv run --no-sync python scripts/generate_event_contract.py
+uv run --no-sync python scripts/generate_event_contract.py --check
+uv run --no-sync python scripts/export_frontend_contract.py
+# 在 frontend 目录运行 npm run contracts，同步 HTTP 消费者。
+```
+
+不要编辑生成文件。生成器使用已有 Ruff 开发依赖，固定 LF 换行；遇到不支持的 schema 结构明确拒绝。分页与 SSE 都投影同一事件查询，SSE 不增加业务事件类型或持久状态。
+
+### 流式输出与失败正文
+
+Provider 现在只有 `stream(request)` 一个异步流入口，逐批产出 `ProviderDelta(content)`，并在确认正常结束时产出一个 `ProviderCompleted(content)` 完整结果。执行器要求随后正常结束迭代；只有分片而没有明确完成、完成后继续输出、空白最终答案或非法分片，都以 `PROVIDER_INVALID_RESPONSE` 终结。`ProviderCompleted` 是内部调用协议，不是直接发送给前端的成功事件，最终结果仍需事务提交。
+
+每批正文最多 4096 字符，累计分片及最终答案各最多 100000 字符。每批追加都检查 Run 为 running、owner token 匹配和租约有效，持有 Thread → Run 锁，提交前再次检查资格。数据库还拒绝 pending/过期执行的分片、错误消息归属、畸形 payload 和超预算正文。每批是可由 Adapter 合并后的文本，不要求每个 token 单独提交；2.7 Adapter 将 SDK 的公开正文切分为受控分片。
+
+流式调用失败时，从同一 Run 的已提交分片按序恢复正文，保存到原 assistant Message，并在同一终结事务写入 failed 消息、message.completed(status=failed) 和 run.failed。过期回收也保留该前缀。分片事务回滚不会推进 sequence，也不会成为可补读正文；数据库故障不会被包装成模型错误。失败正文留在业务历史，但不进入后续模型的成功问答上下文。
+
+历史 API 可以读取失败正文和 failed 状态。“回答未完成”是第 3 章聊天 UI 根据状态显示的提示，后端不把提示混进正文。本步不改变现有前端交互，也不在默认开发环境自动注入 fake。
+
+### 事件分页查询
+
+使用当前登录用户的 Bearer Access Token 请求：
+
+```http
+GET /v1/threads/{thread_id}/runs/{run_id}/events?after=0&limit=100
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `after` | 当前 Run 已按序处理的最后一个 sequence，首次为 0；不同 Run 各自维护 |
+| `limit` | 每页 1–100 条，默认 100 |
+| `items` | 按 sequence 升序返回的已提交事件，条件为 sequence > after |
+| `next_cursor` | 本页最后一条事件的 sequence；空页保持原 after，不推进 |
+| `has_more` | 本次查询是否还有下一页；false 不代表 Run 已结束 |
+
+已读第 2 条，第一页只返回第 3 条时，下次用 after=3 继续读取。空页可发生在模型仍生成时，成功/失败须以对应持久终态为准。超出当前日志末尾的游标返回 422（EVENT_CURSOR_AHEAD）；未登录返回 401，他人的 Thread/Run 或不匹配的资源组合统一返回 404。响应保持 Cache-Control: no-store，不公开执行凭据、租约或模型配置。
+
+启动中的旧后端进程需要重启才能加载新增路由；迁移由上述显式命令执行，不在应用启动时隐式运行。
+
+### SSE 持续订阅与补读（2.5）
+
+在同一 Run 下建立只读订阅：
+
+```http
+GET /v1/threads/{thread_id}/runs/{run_id}/events/stream?after=4
+Authorization: Bearer <Access Token>
+Accept: text/event-stream
+```
+
+握手复用正式验签与用户查询，再校验 Thread/Run 归属。前端后续用 fetch 带 Authorization 头连接，并以最后已按序处理的 sequence 维护 after；本步不新增浏览器订阅逻辑，也不把 Token 放 URL。显式 after 是唯一恢复输入，不另外处理 Last-Event-ID。每个数据帧的 event 字段为原事件 type，data 为完整契约 JSON，空行结束该帧；不发送可选 id 字段，也不改变原事件的 event_id/sequence。
+
+查询在内部同时返回本次 Run 的状态与事件尾序号，并把分页限定到该尾序号；外部 JSON 分页结构保持原样。已成功的 Run 也会先补齐客户端缺少的正文和终态事件，再结束响应。若客户端 after 已到持久终态末尾，直接返回 204；这不是新产生的成功/失败事实。非终态空页继续等待，不把 EOF、HTTP 200 或 has_more=false 当作 Run 完成。
+
+每页最多 100 条，读完关闭 Session/事务后才发送或等待。空闲时通过 Redis 等待进度提醒，默认最多 5 秒补查一次 PostgreSQL；通知到达可提前补查，积压页立即读完。没有业务事件时，每 15 秒发送 `: keep-alive` 注释心跳，不入库、不占业务序号。发送等待最多 10 秒，订阅最多 300 秒，并受已验签 Access 到期时间限制。每条订阅有独立业务游标与等待任务，按发送背压推进，不维护无界事件队列。Windows 单调时钟可能较粗，到期等待唤醒后再复核 UTC 有效期，发送前仍检查过期。
+
+Access 验签现在返回内部不可变的用户 ID/UTC 到期信息；CurrentUser 仍投影同一个正式身份依赖，登录、刷新及 `/auth/me` 的公开数据结构保持不变。到期时停止当前 SSE 的后续发送，执行器继续保存事件；客户端刷新 Access 后再订阅原 Run。连续连接的到期限制是 MiniMew 本步新增策略，参考 SuperMew 当前仅在建连时检查 Token。已开始的 HTTP 响应不在中途改成 401；只有尚未发送响应头时才可返回受控错误，也不会在响应头发送结果未知时尝试第二次发头。
+
+握手未登录/过期返回 401，不存在或越权返回 404，非法或超前游标返回 422，存储读取不可用返回受控 503。200 SSE 和 204 响应带 no-store，流响应带 X-Accel-Buffering: no。流开始后读库失败、发送超时、客户端断开或服务端取消，只清理该订阅；不伪造空页、成功/失败 Event，也不调用 Run 终结接口。日志只记录稳定类别与 Run ID，不记录原始数据库异常或凭据。
+
+2.5 传输实现沿用现有事件契约；2.6 增加 0009 Outbox 与 Redis 依赖，2.7 再接入自动模型执行。完整聊天显示和浏览器自动重连在第 3 章完成。重启后端才能加载新路由，本次验收不停止用户已有进程。
+
+隔离验收（MiniMew 目录）：
+
+按影响范围选择离线用例和集成入口。`check_models.py` 包含认证、执行、事件和 SSE PostgreSQL 用例，相关代码与环境未变时，不再额外重复专项集。专项入口同样复用迁移检查，只缩小用例范围；订阅生命周期的离线检查见 `tests/test_sse.py`。
+
+```powershell
+uv run --no-sync pytest -q tests/test_execution.py
+# 身份上下文与 SSE 定向离线测试：
+uv run --no-sync pytest -q tests/test_auth.py tests/test_sse.py
+# 执行器专项集成入口：
+uv run --env-file .env --no-sync python scripts/check_execution.py
+# SSE 的真实 HTTP 流及读取边界专项：
+uv run --env-file .env --no-sync python scripts/check_sse.py
+# 包含原有认证、刷新、Thread/Run 与执行检查的完整临时库验证：
+uv run --env-file .env --no-sync python scripts/check_models.py
+```
+
+这些集成入口只接受默认本地 MiniMew 服务器，创建自己拥有的随机临时数据库，注入 fake 调用正式执行器，完成或失败后删除临时库。SSE 测试还绑定自己的临时 localhost socket，使用独立 Uvicorn 和真实 HTTP 客户端验证增量发送、重连、终态分页、权限/到期、空闲断连和读库故障，并检查连接池及请求任务释放；结束后关闭自己创建的线程和端口。原有领取、输入、快照、错误、事务回滚、终态/Journal 保护及迁移保留检查继续运行。不会在开发库写入测试对话，不需要模型 Key，也不请求 DeepSeek；fake 通过不证明真实模型在线能力。
+
+### Outbox 与 Redis 通知（2.6）
+
+使用独立 Redis 7.4.12 官方 Alpine 镜像并锁定 digest，客户端为 redis-py 8.1.0；既有 Python 依赖版本未升级。Compose 映射 `127.0.0.1:56379`，数据卷为 `minimew_redis_data`。`MINIMEW_REDIS_PASSWORD` 使用与数据库/JWT 不同的随机密码，保存于忽略的 `.env`。入口脚本将密码转换为 SHA-256 ACL，原始密码不进入 Redis 启动参数或事件；修改该配置后应重建 Redis 容器并重启应用。
+
+`execution/journal.py` 是唯一追加入口，在调用方同一事务中保存 Event 和 `event_outbox`。0009 的延迟约束拒绝缺少待办的新事件，待办关联已有 Event；历史 Journal 保留原样。未发布待办不可删除，已发布记录不可回退，最终 Message/Run/结束事件仍由执行器原事务决定。
+
+`execution/outbox.py` 的发布任务随 FastAPI lifespan 运行：短事务读待办 → 释放数据库资源 → 发 Redis → 短事务确认。空闲扫描默认 0.5 秒，失败退避从 1 秒增加到最多 30 秒；关闭 SDK 隐式重试，重试由发布代码负责。单批最多 20 条、周期预算 10 秒，应用关闭时停止并等待任务。重启后扫描 PostgreSQL 的未完成待办，不依赖内存队列，不重新调用模型。
+
+`execution/notifications.py` 使用每 Run 一条 Stream，保存完整公开 Event JSON；原序号映射为 `<sequence>-0`。发送和设置 TTL 以同一次 Redis Lua 操作完成，重复/迟到序号由已存在的同 Run 新进度提醒覆盖。Outbox 确认表示通知责任已完成，不承诺每条副本一直保留，也不表示浏览器已处理。Stream 近似保留最近 1000 条、空闲 24 小时过期；PostgreSQL 事实不受裁剪/过期影响。发布池最多 4 个连接，等待池最多 32 个，等待不会占满发布资源。
+
+SSE 仅用 Redis 提醒唤醒后端，再走同一 Journal 查询；Redis 副本正文不直接转发。每条 SSE 的业务发送游标独立，内部另记已见提醒位置以避免重复唤醒造成空查循环，该位置不推进业务游标。Redis 启动时或运行中不可用，记录稳定错误类别，发布待办保留、SSE 有间隔补查；Run 的模型执行和 PostgreSQL 提交继续。`/health/ready` 仍只报告数据库探测结果，不代表 Redis 或模型健康。
+
+现有后端进程需要重启以读取新增配置和运行逻辑。2.7 已接入自动模型执行，聊天页面在第 3 章接入。
+
+```powershell
+# 通知的定向离线检查：
+uv run --no-sync pytest -q tests/test_notifications.py
+# Outbox 事务与迁移，使用临时 PostgreSQL：
+uv run --env-file .env --no-sync python scripts/check_outbox.py
+# 真实 Redis + PostgreSQL + HTTP，使用脚本自己拥有的临时 Redis 容器：
+uv run --env-file .env --no-sync python scripts/check_notifications.py
+# 也可在上述命令后指定一个或多个 pytest 文件/用例，缩小复验范围。
+```
+
+默认离线/普通 PostgreSQL 用例显式注入无外部通知资源，不隐式访问 Redis；真实通知验收仅在上述入口开启。脚本只停止/重启/删除自己创建的 `minimew_test_redis_<uuid>` 容器和匿名测试卷，不停止开发 Redis、不执行 FLUSHALL。测试 Redis 在本次生命周期固定临时宿主端口，避免 Docker 自动 HostPort 在重启后变化。正式 Run Event Schema、OpenAPI 和前端生成类型无需变化。
+
+## 真实模型与自动执行（2.7）
+
+在本机 `.env` 增加 `MINIMEW_DEEPSEEK_API_KEY=你的密钥`，再按前文管理命令设置模型 Profile，最后重启后端。不要覆盖已有 `.env`。缺少或空白 Key 时账户/Thread 仍能使用，新的提问返回 `503 MODEL_CONFIGURATION_UNAVAILABLE`；同键同内容的旧 Run 仍优先返回。已填但错误的 Key 会使实际 Run 失败，不通过 readiness 冒充模型可用。
+
+入口依赖为 `langchain-deepseek==1.1.1`；锁定 LangChain Core 1.7.4、OpenAI 集成 1.7.3、OpenAI SDK 3.44.0、LangSmith 0.14.17、httpx2 2.16.0。uv 解析时 SDK 从讨论候选 3.42.1 更新至兼容的 3.44.0；既有依赖版本保持。httpx2 供新 SDK 使用，既有 HTTP/测试继续使用 httpx 0.28.1。依据为 [LangChain DeepSeek 集成](https://docs.langchain.com/oss/python/integrations/chat/deepseek) 与 [DeepSeek 流式协议](https://api-docs.deepseek.com/api/create-chat-completion/)。
+
+`DeepSeekProvider` 只接受 `https://api.deepseek.com` 的根路径或 `/v1`（默认 HTTPS 端口），关闭重定向，不继承宿主代理/默认 SDK 身份或外部追踪。快照中 provider 标识仍为 `openai_compatible`，内部采用专用 `ChatDeepSeek`。客户端属于每次调用；只转换公开正文，忽略 reasoning 元信息。非空答案与正常 `finish_reason=stop` 都具备后才返回完成；截断、缺失完成、工具调用和畸形流均为失败。SDK 自动重试为 0。
+
+RunExecutor 最多尝试 2 次；仅暂时性网络/上游错误、尚无已提交正文、原 owner/lease 有效且原预算足够时重试。初始等待 0.5 秒，较长 Retry-After 同样受剩余预算约束；快照、输入、Run 和 owner 不更换。已保存正文后发生故障则失败并保留该前缀；存储故障不触发模型重试。
+
+调度器默认每 0.5 秒检查候选、每实例最多 2 个活跃执行，同 Thread FIFO、不同 Thread 并发。查询已排除被前序工作阻塞的后继项，实际资格仍由 claim 事务决定。每 5 秒有界扫描最多 100 个过期 running，保留前缀并失败；有效 running 不抢占、不重跑。关闭时先停止扫描，给活跃任务 5 秒完成，再取消并有界等待最多 7 秒清理；进程硬退出仍可能留下 running，后续按 lease 过期终结。上述上限按实例计算，不是全局并发配额。
+
+可以在 `/docs` 登录后创建 Thread、POST Run，轮询 GET Run，或用带 Bearer 的客户端订阅 SSE。已有模型配置且 Key 就绪时，后台会自动执行；刷新浏览器不取消它。当前可通过取消 API 停止指定 Run；聊天输入框和停止按钮在第 3 章接入。
+
+定向验证（在 MiniMew 目录）：
+
+```powershell
+# 受控真实 SDK 协议、重试与生命周期，不访问模型网络：
+uv run --no-sync pytest -q tests/test_deepseek.py tests/test_execution_retry.py tests/test_dispatcher.py
+# 临时库 + 独占 Redis + HTTP，含自动执行、顺序、并发、过期、幂等：
+uv run --env-file .env --no-sync python scripts/check_runtime.py
+# 允许一次小规模真实模型验收；仍使用临时库/Redis/端口，可能发生模型费用：
+uv run --env-file .env --no-sync python scripts/check_deepseek.py --online
+```
+
+`check_runtime.py` 支持在命令后指定测试文件/用例，只做空临时库升级及相关用例，不重复历史迁移验收；历史迁移回归仍使用 `check_models.py`。在线脚本临时 Profile 使用 128 输出 token 和 60 秒预算，只发短提示；不改开发 Profile 或写开发对话。默认 pytest 显式关闭正式后台资源，自动驱动/联网只由对应验收入口恢复。2026-11-04 在线链路实际返回 `OK`，完成 5 条连续 Journal 事件与游标补读；这不代表生产环境或所有故障均已在线验证。
+
+## 按 Run 取消（2.8）
+
+迁移到 `0010` 并重启后端后，在 `/docs` 登录/Authorize，调用 `POST /v1/threads/{thread_id}/runs/{run_id}/cancel`，使用原 Thread 和 Run ID，无需新消息正文或新的幂等键。已有账户前端仍只支持账户和 Thread 管理；聊天页面及停止按钮在第 3 章接入。
+
+| 持久状态 | 取消接口结果 |
+| --- | --- |
+| pending | 200，直接保存 cancelled；保留原消息对，不领取执行、不调用模型、不伪造 owner/租约/run.started |
+| running | 202，保存 `cancel_requested_at` 和请求事件；Run 仍为 running，客户端可显示“取消中” |
+| 已有取消请求 | 返回当前处理进度，请求时间和请求事件不重复写入 |
+| cancelled / succeeded / failed | 200，返回原终态，保持历史不变 |
+| 存储不可用 | 503 `RUN_CANCELLATION_UNAVAILABLE`，恢复后查询原 Run 或重试同一取消请求 |
+
+503 可能来自提交确认丢失，不能据此判定请求必未入库，也不能把原 Run 改成 failed。接口沿用身份与归属校验：未认证 401，越权/不存在 404，受控响应 no-store；取消不依赖当前模型配置或 API Key。GET Run 增加可空的 `cancel_requested_at`；状态集合增加 `cancelled`，没有单独持久化的 cancelling 状态。
+
+请求与结果均沿用原 Journal/Outbox。新事件为 `run.cancel_requested`、`run.cancelled`，取消的 assistant Message 和 `message.completed` 状态均为 cancelled，Run.error_code 为 null。最终正文从已提交的 message.delta 恢复；pending 的取消正文为空。用户消息、消息 ID、Thread 标题和冻结快照保持，取消轮次可查历史，但不进入下一轮模型的成功问答上下文。用同一幂等键和正文再次 POST 提问仍返回原取消 Run；新的提问意图用新键。
+
+执行器在模型调用前完成初始控制检查，然后独立监视本 Run 的取消和资格状态；默认 `MINIMEW_CANCELLATION_POLL_SECONDS=0.5`，查询后即释放 Session，不等待下一批模型正文。取消请求可由其他后端进程接收，owner 通过共享 PostgreSQL 发现；Redis 仍只用于 SSE 提醒，停机时不妨碍取消监视。SSE 读完取消终态后正常关闭，原游标补读和已消费尾部的 204 保持。
+
+请求、正文和终态写入统一按 Thread → Run 加锁。取消先提交，后续正文被拒绝、结果按取消收尾；成功或失败终态先提交，后来的取消保持原结果。普通 owner 终结仍检查 token/有效 lease；过期终结用独立事务及数据库过期条件裁决：有取消标记则 cancelled，否则 EXECUTION_EXPIRED，均保留前缀、不重跑模型。
+
+取消监视读库失败会停止本次模型读取，并有界尝试保存 `EXECUTION_STORAGE_UNAVAILABLE`（已接受取消时优先取消）；存储持续不可用可能保留 running，恢复后由过期路径终结。模型读取与监视任务按本 Run 清理，有界等待后再请求停止并收集异常；生成和重试不获得新 deadline。此处保证业务状态与写入资格，不承诺撤回远端已发生的生成或计费。
+
+本步沿用现有依赖；新增 0010 的状态/不可变/前缀约束、取消请求与终态唯一性，历史迁移不改写。Event Schema 真源、Python/TS 与 HTTP OpenAPI/类型同步生成。
+
+```powershell
+# 离线取消控制与原执行器重试回归：
+uv run --no-sync pytest -q tests/test_cancellation.py tests/test_execution_retry.py
+# 临时 PostgreSQL：取消原子性、竞争、过期与受控真实 SDK 清理：
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_cancellation_pg.py
+# 独占 Redis + 真实 HTTP + 两个独立 OS 进程；受控 Provider，不请求真实模型：
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_cancellation_http.py
+# 从真实 0009 旧事实升级，校验四种原状态/快照/正文/事件/Outbox 原样保留：
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_cancellation_migration.py
+```
+
+`check_models.py` 的默认 PG 验收已包含取消；定向复验使用上述入口，避免每次重复历史迁移。双进程验收通过本机临时端口和 stdin 停止自己创建的进程，不增加测试 HTTP 路由；只在随机临时库的显式入口注入受控 Provider。本步未再次执行真实 DeepSeek 在线取消或浏览器 UI 验收；实际首次/复验结果见交接记录。
 
 ## 导航
 
 - [分阶段技术、实施步骤与理解题](LEARNING_PLAN.md)
+- [第 2 章：持久化普通对话计划、总结与代码框架](chapters/02-持久化普通对话.md)
+- [第 3 章：最小聊天前端子项安排](chapters/03-最小聊天前端.md)
+- [章节计划、文字总结与代码框架模板](CHAPTER_TEMPLATE.md)
 - [学习互动与编码前确认规则](AGENTS.md)
 - [Agent 跨设备交接与当前进度](AGENT_HANDOFF.md)
 - [SuperMew 正式领域语言](../CONTEXT.md)
@@ -59,4 +570,4 @@ MiniMew 后续使用独立入口和配置，不接入 SuperMew 的生产执行�
 - 外部服务故障与健康空结果必须区分。
 - Tool 执行前完成权限与 Guardrail 检查，Secret 不进入公开状态。
 
-当前修改只涉及本目录学习文档，不变更上级 Contract、迁移、评测资产或应用行为。
+本目录实现不变更上级 Contract、迁移、评测资产或应用行为。

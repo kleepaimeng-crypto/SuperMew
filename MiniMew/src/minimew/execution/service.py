@@ -1,0 +1,248 @@
+"""领取 → 共用绝对截止时间的有界尝试 → 原子结果提交。"""
+
+import asyncio
+import logging
+import sys
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from typing import Literal
+from uuid import UUID
+
+from sqlalchemy.exc import SQLAlchemyError
+
+from minimew.execution.context import ContextInvalid
+from minimew.execution.provider import (
+    MAX_DELTA_CHARS,
+    MAX_OUTPUT_CHARS,
+    Provider,
+    ProviderCompleted,
+    ProviderDelta,
+    ProviderEvent,
+    ProviderFailure,
+    ProviderRequest,
+    valid_text,
+)
+from minimew.execution.repository import (
+    CancellationRequested,
+    Claim,
+    ExecutionRepository,
+    OwnershipLost,
+)
+from minimew.generated.run_event_v1 import ErrorCode
+from minimew.model_control import ModelSnapshotUnavailable
+
+ExecutionOutcome = Literal["succeeded", "failed", "cancelled", "not_claimed", "ownership_lost"]
+logger = logging.getLogger(__name__)
+
+
+class ExecutionStorageUnavailable(Exception):
+    pass
+
+
+@dataclass
+class AttemptProgress:
+    body_committed: bool = False
+
+
+class RunExecutor:
+    def __init__(
+        self, repository: ExecutionRepository, provider: Provider, *, cancellation_poll=0.5
+    ):
+        self.repository = repository
+        self.provider = provider
+        self.cancellation_poll = cancellation_poll
+
+    async def execute(self, user_id: UUID, thread_id: UUID, run_id: UUID) -> ExecutionOutcome:
+        claim = await self.repository.claim(user_id, thread_id, run_id)
+        if claim is None:
+            return "not_claimed"
+        error: ErrorCode | None = None
+        content = ""
+        try:
+            request = await self.repository.request(claim)
+            await self.repository.check_control(claim)
+            remaining = await self.repository.remaining(claim)
+            if remaining <= 0:
+                await self.repository.expire(claim)
+                return "ownership_lost"
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + min(
+                remaining, request.snapshot.answer.configuration.timeout_seconds
+            )
+            content = await self._watched_generate(claim, request, deadline)
+        except ModelSnapshotUnavailable as failure:
+            error = failure.code
+        except ContextInvalid:
+            error = "CONTEXT_INVALID"
+        except ProviderFailure as failure:
+            error = failure.code
+        except CancellationRequested:
+            # 统一终结事务会重新检查持久取消标记，并清除非失败终态的 error_code。
+            error = "EXECUTOR_INTERRUPTED"
+        except ExecutionStorageUnavailable:
+            logger.warning("execution_monitor_failed code=EXECUTION_STORAGE_UNAVAILABLE")
+            async with asyncio.timeout(3):
+                return await self._finish(claim, "", "EXECUTION_STORAGE_UNAVAILABLE")
+        except OwnershipLost:
+            await self.repository.expire(claim)
+            return "ownership_lost"
+        except asyncio.CancelledError:
+            try:
+                async with asyncio.timeout(3):
+                    await self.repository.finish(claim, error_code="EXECUTOR_INTERRUPTED")
+            except (SQLAlchemyError, OSError, TimeoutError):
+                logger.warning("execution_interrupt_save_failed code=EXECUTION_STORAGE_UNAVAILABLE")
+            raise
+        return await self._finish(claim, content, error)
+
+    async def _finish(self, claim, content, error):
+        saved = await self.repository.finish(claim, content=content, error_code=error)
+        if not saved:
+            await self.repository.expire(claim)
+            return "ownership_lost"
+        return saved
+
+    async def _watch_control(self, claim):
+        while True:
+            # 调用前已检查过资格，之后按间隔查询，避免重复首轮查询占用模型启动预算。
+            await asyncio.sleep(self.cancellation_poll)
+            try:
+                await self.repository.check_control(claim)
+            except (SQLAlchemyError, TimeoutError, OSError):
+                raise ExecutionStorageUnavailable from None
+
+    async def _watched_generate(self, claim, request, deadline):
+        model = asyncio.create_task(
+            self._generate(claim, request, deadline),
+            name=f"minimew-model-{request.run_id}",
+        )
+        monitor = asyncio.create_task(
+            self._watch_control(claim),
+            name=f"minimew-cancel-monitor-{request.run_id}",
+        )
+        tasks = {model, monitor}
+        try:
+            done, _ = await asyncio.wait(
+                tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=max(0, deadline - asyncio.get_running_loop().time()),
+            )
+            if not done:
+                raise ProviderFailure("PROVIDER_TIMEOUT")
+            if monitor in done:
+                await monitor  # 监视异常保留其取消/存储/资格语义，不转换为 Provider 错误。
+            return await model
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            done, pending = await asyncio.wait(tasks, timeout=3)
+            for task in done:
+                if not task.cancelled():
+                    task.exception()
+            if pending:
+                logger.warning("execution_cleanup_timeout count=%s", len(pending))
+                for task in pending:
+                    # 首次取消可能已被 Provider 吞掉；清理预算结束后再次请求停止。
+                    task.cancel()
+                    task.add_done_callback(self._collect_task)
+                await asyncio.sleep(0)
+
+    @staticmethod
+    def _collect_task(task):
+        if not task.cancelled():
+            task.exception()
+
+    async def _generate(self, claim: Claim, request: ProviderRequest, deadline: float) -> str:
+        progress = AttemptProgress()
+        for attempt in range(2):
+            if attempt:
+                await self.repository.check_control(claim)
+            try:
+                return await self._consume(claim, request, deadline, progress)
+            except ProviderFailure as failure:
+                if attempt == 1 or not failure.retryable or progress.body_committed:
+                    raise
+                if await self.repository.remaining(claim) <= 0:
+                    raise OwnershipLost from None
+                delay = max(0.5, failure.retry_after)
+                if asyncio.get_running_loop().time() + delay >= deadline:
+                    raise ProviderFailure("PROVIDER_TIMEOUT") from None
+                try:
+                    async with asyncio.timeout_at(deadline):
+                        await asyncio.sleep(delay)
+                except TimeoutError:
+                    raise ProviderFailure("PROVIDER_TIMEOUT") from None
+                if await self.repository.remaining(claim) <= 0:
+                    raise OwnershipLost from None
+        raise AssertionError("Unreachable retry state")
+
+    async def _consume(
+        self, claim: Claim, request: ProviderRequest, deadline: float, progress: AttemptProgress
+    ) -> str:
+        try:
+            stream = self.provider.stream(request)
+        except ProviderFailure:
+            raise
+        except Exception:
+            raise ProviderFailure() from None
+        completed: ProviderCompleted | None = None
+        total = 0
+        try:
+            while (event := await self._next(stream, deadline)) is not None:
+                if completed is not None:
+                    raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                if isinstance(event, ProviderCompleted):
+                    if not valid_text(event.content, MAX_OUTPUT_CHARS, nonblank=True):
+                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                    completed = event
+                else:
+                    if not valid_text(event.content, MAX_DELTA_CHARS):
+                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                    total += len(event.content)
+                    if total > MAX_OUTPUT_CHARS:
+                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                    # 数据库异常不进入 Provider 的异常归一化边界。
+                    if not await self.repository.append_delta(claim, event.content):
+                        raise OwnershipLost
+                    progress.body_committed = True
+        finally:
+            primary_error = sys.exception()
+            try:
+                async with asyncio.timeout(3):
+                    await stream.aclose()
+            except Exception:
+                if primary_error is None:
+                    raise ProviderFailure() from None
+                # 清理错误不能覆盖数据库故障或原有失败；不附加原始 Provider 异常。
+                primary_error.add_note("Provider stream cleanup also failed")
+        if completed is None:
+            raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+        return completed.content
+
+    @staticmethod
+    async def _next(
+        stream: AsyncGenerator[ProviderEvent, None], deadline: float
+    ) -> ProviderEvent | None:
+        loop = asyncio.get_running_loop()
+        if loop.time() >= deadline:
+            raise ProviderFailure("PROVIDER_TIMEOUT")
+        try:
+            async with asyncio.timeout_at(deadline) as timeout:
+                event = await anext(stream)
+        except StopAsyncIteration:
+            if loop.time() >= deadline:
+                raise ProviderFailure("PROVIDER_TIMEOUT") from None
+            return None
+        except TimeoutError:
+            raise ProviderFailure("PROVIDER_TIMEOUT") from None
+        except ProviderFailure:
+            raise
+        except Exception:
+            raise ProviderFailure() from None
+        # 不信任吞掉 CancelledError 后迟到输出的 Provider。
+        if timeout.expired() or loop.time() >= deadline:
+            raise ProviderFailure("PROVIDER_TIMEOUT")
+        if not isinstance(event, (ProviderDelta, ProviderCompleted)):
+            raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+        return event

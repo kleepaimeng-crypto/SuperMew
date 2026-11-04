@@ -1,0 +1,39 @@
+name: minimew
+
+services:
+  postgres:
+    # 锁定本机已验证的 PostgreSQL 18 官方镜像，避免 tag 随时间漂移。
+    image: postgres:18@sha256:4aabea78cf39b90e834caf3af7d602a18565f6fe2508705c8d01aa63245c2e20
+    environment:
+      POSTGRES_DB: ${MINIMEW_DB_NAME:-minimew}
+      POSTGRES_USER: ${MINIMEW_DB_USER:-minimew}
+      POSTGRES_PASSWORD: ${MINIMEW_DB_PASSWORD:?Set MINIMEW_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${MINIMEW_DB_PORT:-55432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  redis:
+    image: redis:7.4.12-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+    environment:
+      MINIMEW_REDIS_PASSWORD: ${MINIMEW_REDIS_PASSWORD:?Set MINIMEW_REDIS_PASSWORD in .env}
+    entrypoint: ["/bin/sh", "/usr/local/bin/minimew-redis-entrypoint.sh"]
+    ports:
+      - "127.0.0.1:${MINIMEW_REDIS_PORT:-56379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./docker/redis-entrypoint.sh:/usr/local/bin/minimew-redis-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$MINIMEW_REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres_data:
+  redis_data:
