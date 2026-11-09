@@ -3,11 +3,17 @@ import { computed, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useThreadsStore } from "../stores/threads";
 import { useAuthStore } from "../stores/auth";
+import ChatPanel from "../components/ChatPanel.vue";
 
 const route = useRoute();
 const router = useRouter();
 const threads = useThreadsStore();
 const auth = useAuthStore();
+const title = computed(
+  () =>
+    threads.items.find((thread) => thread.id === threads.selected?.id)?.title ??
+    threads.selected?.title,
+);
 const id = computed(() =>
   typeof route.params.threadId === "string" ? route.params.threadId : "",
 );
@@ -113,7 +119,7 @@ async function logout() {
         </button>
       </div>
     </aside>
-    <section class="thread-content" aria-live="polite" aria-label="当前对话">
+    <section class="thread-content" aria-label="当前对话">
       <div v-if="threads.detailLoading" class="thread-empty">
         <span class="spinner" aria-hidden="true"></span>
         <h2>正在打开对话</h2>
@@ -133,15 +139,12 @@ async function logout() {
       </div>
       <template v-else-if="threads.selected">
         <header class="thread-heading">
-          <span class="eyebrow">当前对话</span>
-          <h2>{{ threads.selected.title || "未命名对话" }}</h2>
+          <h2>{{ title || "未命名对话" }}</h2>
         </header>
-        <div class="thread-empty">
-          <span class="empty-symbol" aria-hidden="true">◇</span>
-          <h3>对话已准备好</h3>
-          <p>这里还没有消息。</p>
-          <small>消息发送功能尚未开放。</small>
-        </div>
+        <ChatPanel
+          :key="threads.selected.id"
+          :thread-id="threads.selected.id"
+        />
       </template>
       <div v-else class="thread-empty">
         <span class="empty-symbol" aria-hidden="true">◇</span>

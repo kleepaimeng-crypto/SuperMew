@@ -226,10 +226,161 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/documents": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Documents */
+    get: operations["documents_v1_documents_get"];
+    put?: never;
+    /** Upload Document */
+    post: operations["upload_document_v1_documents_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/documents/{document_id}/versions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Upload Version */
+    post: operations["upload_version_v1_documents__document_id__versions_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/documents/{document_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Document */
+    get: operations["document_v1_documents__document_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/documents/{document_id}/versions/{version_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Version */
+    get: operations["version_v1_documents__document_id__versions__version_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/index-jobs/{job_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Job */
+    get: operations["job_v1_index_jobs__job_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/embedding-profiles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Embedding Profiles */
+    get: operations["embedding_profiles_v1_embedding_profiles_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** Body_upload_document_v1_documents_post */
+    Body_upload_document_v1_documents_post: {
+      /** File */
+      file: string;
+      /** Idempotency Key */
+      idempotency_key: string;
+    };
+    /** Body_upload_version_v1_documents__document_id__versions_post */
+    Body_upload_version_v1_documents__document_id__versions_post: {
+      /** File */
+      file: string;
+      /** Idempotency Key */
+      idempotency_key: string;
+    };
+    /** BuildConfiguration */
+    BuildConfiguration: {
+      /**
+       * Schema Version
+       * @default 1
+       * @constant
+       */
+      schema_version: 1;
+      /** Source Format */
+      source_format?: ("markdown" | "text") | null;
+      /**
+       * Parser
+       * @default markdown-txt-v1
+       * @constant
+       */
+      parser: "markdown-txt-v1";
+      /**
+       * Chunker
+       * @default structure-v1
+       * @constant
+       */
+      chunker: "structure-v1";
+      /** Chunk Tokens */
+      chunk_tokens: number;
+      /** Overlap Tokens */
+      overlap_tokens: number;
+      embedding: components["schemas"]["EmbeddingProfile"];
+      /**
+       * Index Layout
+       * @default dense-cosine-v1
+       * @constant
+       */
+      index_layout: "dense-cosine-v1";
+    };
     /** CreateRunRequest */
     CreateRunRequest: {
       /** Idempotency Key */
@@ -239,10 +390,138 @@ export interface components {
     };
     /** CreateThreadRequest */
     CreateThreadRequest: Record<string, never>;
+    /** DocumentPage */
+    DocumentPage: {
+      /** Items */
+      items: components["schemas"]["DocumentResponse"][];
+      /** Next Offset */
+      next_offset: number | null;
+    };
+    /** DocumentResponse */
+    DocumentResponse: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Knowledge Base Id
+       * Format: uuid
+       */
+      knowledge_base_id: string;
+      /** Title */
+      title: string;
+      /** Current Version Id */
+      current_version_id: string | null;
+      /** Pending Version Id */
+      pending_version_id: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+    };
+    /** EmbeddingProfile */
+    EmbeddingProfile: {
+      /**
+       * Id
+       * @enum {string}
+       */
+      id: "bge-small-zh-v1.5" | "bge-m3";
+      /**
+       * Model Id
+       * @enum {string}
+       */
+      model_id: "BAAI/bge-small-zh-v1.5" | "BAAI/bge-m3";
+      /** Revision */
+      revision: string;
+      /** Dimension */
+      dimension: number;
+      /**
+       * Normalize
+       * @default true
+       * @constant
+       */
+      normalize: true;
+      /**
+       * Pooling
+       * @default cls
+       * @constant
+       */
+      pooling: "cls";
+      /** Query Prefix */
+      query_prefix: string;
+      /**
+       * Document Prefix
+       * @default
+       * @constant
+       */
+      document_prefix: "";
+      /** Max Input Tokens */
+      max_input_tokens: number;
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
       detail?: components["schemas"]["ValidationError"][];
+    };
+    /** IndexJobResponse */
+    IndexJobResponse: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Document Id
+       * Format: uuid
+       */
+      document_id: string;
+      /**
+       * Version Id
+       * Format: uuid
+       */
+      version_id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status:
+        | "pending"
+        | "running"
+        | "staged"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "dead_letter";
+      /**
+       * Stage
+       * @enum {string}
+       */
+      stage:
+        | "reserved"
+        | "parsing"
+        | "chunking"
+        | "embedding"
+        | "indexing"
+        | "verifying"
+        | "publishing";
+      /** Progress Done */
+      progress_done: number;
+      /** Progress Total */
+      progress_total: number | null;
+      /** Attempt */
+      attempt: number;
+      /** Error Code */
+      error_code:
+        ("INVALID_SOURCE" | "SOURCE_UNAVAILABLE" | "BUILD_FAILED") | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Finished At */
+      finished_at: string | null;
     };
     /** LoginRequest */
     LoginRequest: {
@@ -792,6 +1071,12 @@ export interface components {
       /** Expires In */
       expires_in: number;
     };
+    /** UploadReceipt */
+    UploadReceipt: {
+      document: components["schemas"]["DocumentResponse"];
+      version: components["schemas"]["VersionResponse"];
+      job: components["schemas"]["IndexJobResponse"];
+    };
     /** UserResponse */
     UserResponse: {
       /**
@@ -819,6 +1104,45 @@ export interface components {
       input?: unknown;
       /** Context */
       ctx?: Record<string, never>;
+    };
+    /** VersionResponse */
+    VersionResponse: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Document Id
+       * Format: uuid
+       */
+      document_id: string;
+      /** Version Number */
+      version_number: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "candidate" | "published" | "failed" | "superseded";
+      /** Source Filename */
+      source_filename: string;
+      /**
+       * Source Format
+       * @enum {string}
+       */
+      source_format: "markdown" | "text";
+      /** Source Size */
+      source_size: number;
+      /** Content Sha256 */
+      content_sha256: string;
+      /** Build Fingerprint */
+      build_fingerprint: string;
+      build_configuration: components["schemas"]["BuildConfiguration"];
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
   };
   responses: never;
@@ -1307,6 +1631,238 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  documents_v1_documents_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DocumentPage"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  upload_document_v1_documents_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_upload_document_v1_documents_post"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UploadReceipt"];
+        };
+      };
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UploadReceipt"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  upload_version_v1_documents__document_id__versions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_upload_version_v1_documents__document_id__versions_post"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UploadReceipt"];
+        };
+      };
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UploadReceipt"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  document_v1_documents__document_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DocumentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  version_v1_documents__document_id__versions__version_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        document_id: string;
+        version_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["VersionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  job_v1_index_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IndexJobResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  embedding_profiles_v1_embedding_profiles_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BuildConfiguration"][];
         };
       };
     };

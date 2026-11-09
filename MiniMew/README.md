@@ -2,7 +2,7 @@
 
 MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目标是理解并逐步实现知识库 Agent 的执行、检索、恢复和评测机制。
 
-本目录包含独立的 FastAPI 后端、Vue 账户前端与学习文档，使用自己的依赖锁文件和虚拟环境，不接入上级 SuperMew 的执行链。学习进度统一见交接文档。
+本目录包含独立的 FastAPI 后端、Vue 聊天前端、文档入库基础与学习文档，使用自己的依赖锁文件和虚拟环境，不接入上级 SuperMew 的执行链。学习进度统一见交接文档。
 
 ## 运行最小后端
 
@@ -43,7 +43,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）。`alembic current` 应显示 `0010 (head)`。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0011 (head)`。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 
@@ -175,7 +175,7 @@ $env:TMP = $env:TEMP
 
 这些环境变量只影响当前终端及其子进程；`.artifacts` 和 `.venv` 不纳入 Git。
 
-## 运行账户前端
+## 运行聊天前端
 
 先按上文启动数据库和后端（8001），另开 PowerShell：
 
@@ -187,17 +187,20 @@ npm run dev
 
 访问 `http://127.0.0.1:5174`。前端固定监听本机 5174，端口被占用时拒绝启动，不自动换端口。Node 要求 `^22.12.0 || >=24.0.0`；本次复用 Node 24.18.0、npm 11.16.0，安装独立 node_modules。新设备不要复制 node_modules。
 
-页面支持注册、登录、账户信息、退出与刷新页面恢复。注册成功后仍需登录。登录后点击顶部“对话”或账户页“进入我的对话”，访问 `/threads`：左侧显示当前用户的列表，可新建、刷新列表、加载更多；选中后地址变为 `/threads/{id}`，刷新浏览器会恢复身份并重新查询该对话。右侧目前显示空状态，没有消息发送或模型调用。前端使用 Vue 3、TypeScript、Pinia、Vue Router、Vite，HTTP 使用原生 fetch，不额外安装 Axios。
+页面支持注册、登录、账户信息、退出与刷新页面恢复。注册成功后仍需登录。登录后点击顶部“对话”或账户页“进入我的对话”，访问 `/threads`：左侧显示当前用户的列表，可新建、刷新列表、加载更多；选中后地址变为 `/threads/{id}`，刷新浏览器会恢复身份并重新查询该对话。右侧支持消息历史、加载更早消息、发送问题、流式回答、Run 状态、重连和按 Run 停止；刷新后重新查询历史和恢复未结束的执行。首次提问提交后，列表标题跟随后端更新。前端使用 Vue 3、TypeScript、Pinia、Vue Router、Vite，HTTP 使用原生 fetch，不额外安装 Axios。
 
 - `src/api.ts`：统一 JSON 请求、超时、公开错误文案和响应字段检查；不自动重试写请求。
 - `src/stores/auth.ts`：唯一认证状态，Access Token 仅在内存；同标签恢复共享 Promise，支持 Web Locks 的同源标签页串行操作 Cookie。登录/退出用 generation 阻止旧响应重新写入账户。
 - `src/router.ts` 和 `App.vue`：等待恢复后再显示受保护页面。401 表示未登录；网络错误、超时、500 或畸形响应显示重试，不自动跳登录。
 - `src/stores/threads.ts` 和 `views/ThreadsView.vue`：管理列表、分页和选中对话。退出或身份变化立即清空；快速切换只接受最后一次详情请求。创建提交得到成功响应后才加入列表，不生成本地假 ID；重复点击只提交一次，不自动重试 POST。响应丢失时创建可能已成功，应先刷新列表确认。分页按 ID 去重，但继承后端 offset 翻页期间可能发生位移的边界，可刷新列表重新对齐。
-- 对话接口返回 401 时清空账号数据并提示恢复登录；点击重试会尝试 Refresh，成功后仍打开原对话地址。Refresh 明确返回 401 才进入登录页；500/网络异常继续显示重试。404、403 或非法对话地址统一显示“对话不存在或不可访问”，不泄露其他用户归属。
-- HttpOnly Refresh Cookie 由浏览器管理。localStorage 不保存凭据；sessionStorage 只保存 `minimew.logout-pending=1` 这一非凭据标记，退出成功即清除。退出失败后刷新页面优先重试退出，不悄悄恢复登录。
+- `src/chat.ts`、`stores/chat.ts`：校验正式 Message/Run 响应，加载历史与分页，保留提交意图、管理每个 Run 的投影及取消交互；切换 Thread/账号时中止旧连接并拒绝迟到响应。创建 Run 已成功但加载历史失败，只重试历史。
+- `events/runEventStream.ts`、`runEventContract.ts`、`runEventReducer.ts`：分别负责 fetch SSE 读取与帧解析、按 JSON Schema 真源校验、连续事件投影。每次重连从最后连续处理成功的序号补读；历史完整正文不重复追加重放分片。SSE 单独采用 45 秒闲置预算，同一页面最多同时订阅两个 Run，其余等待空位后重放。
+- `components/ChatPanel.vue`：展示持久消息、流式正文、状态、输入与恢复入口。停止请求的 202 不代表已经取消，界面等待持久终态。关闭页面只断开本地连接。
+- 聊天接口/SSE 遇到 401 时共享一次 Refresh，保留原 Run、正文和游标；Refresh 明确返回 401 才清空身份并进入登录页，服务异常保留恢复入口。Thread 管理原有 401 提示/手动恢复路径保留；与聊天刷新重叠的同用户旧 Token 请求可用新 Token 重试一次。404、403 或非法对话地址统一显示不可访问，不泄露其他用户归属。
+- HttpOnly Refresh Cookie 由浏览器管理。localStorage/sessionStorage 均不保存凭据。sessionStorage 保存非凭据退出标记，以及按用户/Thread 隔离的未知提交意图（原问题正文和幂等键）；刷新后可用原键重试，明确成功或退出/换账号后清除。存储不可用时仍支持当前页面内重试。退出失败后刷新页面优先重试退出，不悄悄恢复登录。
 - Vite 将 `/auth` 和 `/v1` 代理到 `http://127.0.0.1:8001`，保留 Host（changeOrigin=false），保持后端 Origin 校验。修改后端端口可在启动 Vite 前设置 `$env:MINIMEW_API_TARGET = 'http://127.0.0.1:新端口'`。不要通过绕过同源检查或随意放开 CORS 解决代理问题。
 
-边界：没有 Web Locks 的浏览器仅保证单标签页并发协调；跨标签退出不会立即清空其他标签已有的内存 Access Token，它仍受后端有效期约束。未提供后台定时续期、通用业务接口 401 自动重试或跨账号业务缓存；接入后续页面时再扩展并验证。Vite 代理用于本地开发，生产同源部署尚未实现。
+边界：没有 Web Locks 的浏览器仅保证单标签页并发协调；跨标签退出不会立即清空其他标签已有的内存 Access Token，它仍受后端有效期约束。未提供后台定时续期、任意业务接口的全局自动重试或跨账号业务缓存；聊天链路采用上述显式身份恢复。消息目前按纯文本显示。Vite 代理用于本地开发，生产同源部署尚未实现。
 
 认证和 Thread 类型来自已有后端路由，修改接口后在 MiniMew 目录运行：
 
@@ -227,6 +230,68 @@ npm run test:e2e
 uv run --env-file .env --no-sync python scripts/check_frontend.py
 ```
 
+第三章聊天集成检查使用以下独立入口（同样在 MiniMew 目录执行）：
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_chat_frontend.py
+# 只运行新增聊天场景：
+uv run --env-file .env --no-sync python scripts/check_chat_frontend.py tests/chat-live.spec.ts
+```
+
+该入口要求本机独立 PostgreSQL 可用，创建并迁移自己的随机临时库，在随机本机端口启动自有 API，通过测试 Vite 的 5175 端口验证真实认证、Run/Message、Journal/SSE、取消、失败和刷新恢复。模型输出由受控 Provider 提供，不使用真实密钥或调用 DeepSeek；Redis 通知在该测试夹具中关闭，验证正式 Journal 定时补读。默认还执行已有真实认证/Thread 用例。测试结束清理自己的库和进程，日志保存在忽略的 `.artifacts/chat-browser-*/backend.log`；已有服务和开发库不作为测试写入目标。不要手工设置测试开关连接开发库。真实模型及 Redis 故障检查仍按第二章独立入口执行，本次不将历史结果计为新验收。
+
+第三章职责地图和本轮验证范围见 [结章总结](chapters/03-最小聊天前端.md#结章文字总结2026-11-09)。
+
+
+## 文档入库基础（工程包 A）
+
+当前已实现 Markdown/TXT 的上传、更新版本、个人文档目录和持久 Index Job。**上传成功返回 pending/candidate，不表示已经分块、向量化或发布**；真实构建 Worker、Milvus 和模型选择/重建页面在后续工作包接入。当前通过 API/Swagger 操作。
+
+先按开头安装依赖、执行 `alembic upgrade head` 并启动新版 API，在 `/docs` 登录/Authorize 后使用：
+
+| 方法与入口 | 当前作用 |
+| --- | --- |
+| POST `/v1/documents` | 新建独立文档；multipart 包含 `file` 和 `idempotency_key` |
+| POST `/v1/documents/{document_id}/versions` | 为已有且属于本用户的文档上传新版 |
+| GET `/v1/documents` | 本用户文档列表，`limit`/`offset` 分页 |
+| GET `/v1/documents/{document_id}` | 查询稳定身份及 current/pending 指针 |
+| GET `/v1/documents/{document_id}/versions/{version_id}` | 查询不可变内容来源、版本状态和冻结构建配置 |
+| GET `/v1/index-jobs/{job_id}` | 查询原任务状态、阶段、进度与公开错误 |
+| GET `/v1/embedding-profiles` | 查看轻量模型与 M3 的固定 revision/维度/预算元数据，不加载模型 |
+
+上传只接受非空 UTF-8 `.md`/`.txt`，默认上限 5 MiB；服务器生成文件身份，文件名不参与磁盘寻址。新增版本操作以 Document ID 指明更新对象，不根据同名文件自动替换。新的预留返回 202；同一提交键/相同意图重发或复用同文档活跃内容构建返回 200；同键不同意图返回 409；越权/不存在统一 404；格式不合法 422，超限 413；存储/数据库故障返回受控 503。响应均 no-store。
+
+首次上传自动建立一个个人 Knowledge Base。新意图冻结该库的目标构建配置及源格式，保存到不可变版本，Job 绑定该版本；同一提交重试优先返回原版本/Job，不受之后配置变化影响。源格式、解析/分块版本、模型 revision、维度和编码策略参与 fingerprint，不能把 TXT/Markdown 或不同向量空间的构建混用。旧 candidate 被新意图替换时明确 superseded/cancelled；旧 current 保留。失败/被替代版本不重新激活，同内容再次提交产生新版本。
+
+配置默认值（已有 `.env` 可以不添加而直接使用默认值）：
+
+```ini
+MINIMEW_DOCUMENT_UPLOAD_DIR=data/documents
+MINIMEW_DOCUMENT_MAX_UPLOAD_BYTES=5242880
+MINIMEW_EMBEDDING_PROFILE=bge-small-zh-v1.5
+```
+
+相对上传目录锚定 MiniMew 项目根目录，API/未来 Worker 必须共享同一目录和数据库，不与上级项目或另一套库共用源目录。默认 `data/` 已被 Git 忽略。`MINIMEW_EMBEDDING_PROFILE` 只决定首次建立个人知识库的目标快照，修改环境变量不会改写现有库/Job 或切换已有索引。当前不提供在线更改该目标的写接口；后续通过“重建并切换”完成。两个预设当前仅有元数据，没有下载 PyTorch/Sentence Transformers 或模型权重。首版快照中的分块预算是后续实现/案例验证的起点，不是已测出的最优参数。
+
+源文件在数据库提交前原子落盘；提交失败或结果不明时，可能保留不被目录引用的完整源文件，避免删掉实际上已提交的内容。管理命令默认只列出超过一小时、且数据库确认无对应版本的 `.source` 文件：
+
+```powershell
+uv run --env-file .env --no-sync python -m minimew.documents.cleanup
+# 核对列表与上传目录所属数据库后，才显式执行删除：
+uv run --env-file .env --no-sync python -m minimew.documents.cleanup --apply
+```
+
+清理与上传使用同一版本级数据库锁，清理不能越过尚未提交的上传；任何已登记版本的文件都保留，包括失败和被替代版本。数据库不可用时停止清理。它是本包完整孤立源文件的管理入口，不代替后续已登记版本/向量索引的生命周期清理。
+
+定向检查：
+
+```powershell
+uv run --no-sync pytest -q tests/test_documents.py tests/test_migrations.py
+uv run --env-file .env --no-sync python scripts/check_documents.py
+```
+
+后者使用自有随机临时 PG 库和测试文件，覆盖真实 API、并发、提交失败、旧数据升级以及既有 Thread/Run 回归，结束时清理临时库，不向开发库写测试文档，不调用真实模型/Redis/Milvus。可在命令后传具体 pytest 文件/筛选参数。实际本轮分组结果与限制见 [第四章工程包 A 记录](chapters/04-文档入库与发布.md#工程包-a-实施记录2026-11-09)。
+
 ## 对话接口
 
 接口统一位于 `/v1/threads`，均要求 `Authorization: Bearer <access_token>`。可重启后端后在 `/docs` 登录、复制 Access Token 并通过 Authorize 输入，随后试用：
@@ -241,13 +306,13 @@ uv run --env-file .env --no-sync python scripts/check_frontend.py
 
 列表只查询当前用户，按 created_at、id 均倒序，next_offset 可用于下一页。当前使用简单 offset 分页；翻页期间若有新对话插入，可能出现重复或位移，不提供跨请求快照保证。单个查询同时限制 ID 和用户归属，不存在或属于他人都返回相同 404；非法 UUID 返回 422，缺失/无效身份返回 401。成功响应带 `Cache-Control: no-store`。
 
-标题规则已实现：首次预留 Run、保存用户消息时，在同一事务内更新标题；后续消息不覆盖。标题去除首尾空白、连续空白合并为空格，超过 30 个字符截断并加省略号；消息原文不变。模型失败也应保留已提交标题，但当前尚未执行模型。没有改名或删除接口。
+标题规则已实现：首次预留 Run、保存用户消息时，在同一事务内更新标题；后续消息不覆盖。标题去除首尾空白、连续空白合并为空格，超过 30 个字符截断并加省略号；消息原文不变。模型失败仍保留已提交标题。没有改名或删除接口。
 
 Thread 的归属隔离、分页、跨应用读取和失败回滚纳入 `scripts/check_models.py` 的临时 PostgreSQL 验证；默认 pytest 的离线测试验证未认证访问在数据库操作前被拒绝。
 
 ## 提交提问与查询（2.1）
 
-以下接口需要 Bearer Access Token，创建 Run 前必须已有属于当前用户的 Thread。可重启后端后在 `/docs` 试用；本步未加入前端输入框。
+以下接口需要 Bearer Access Token，创建 Run 前必须已有属于当前用户的 Thread。可在 `/docs` 或聊天页面试用；前端输入框已接入该正式入口。
 
 | 请求 | 输入与结果 |
 | --- | --- |
@@ -477,7 +542,7 @@ uv run --env-file .env --no-sync python scripts/check_deepseek.py --online
 
 ## 按 Run 取消（2.8）
 
-迁移到 `0010` 并重启后端后，在 `/docs` 登录/Authorize，调用 `POST /v1/threads/{thread_id}/runs/{run_id}/cancel`，使用原 Thread 和 Run ID，无需新消息正文或新的幂等键。已有账户前端仍只支持账户和 Thread 管理；聊天页面及停止按钮在第 3 章接入。
+迁移到当前 `head` 并重启后端后，在 `/docs` 登录/Authorize，调用 `POST /v1/threads/{thread_id}/runs/{run_id}/cancel`，使用原 Thread 和 Run ID，无需新消息正文或新的幂等键。聊天页面及按 Run 停止按钮已在第 3 章接入。
 
 | 持久状态 | 取消接口结果 |
 | --- | --- |
@@ -539,7 +604,9 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 
 ## 学习方式
 
-每个小节按以下顺序进行：
+按 [最新分层节奏](AGENTS.md#分层教学与推进节奏2026-11-09) 推进：工程底座合并工作包、简要讲解，一次确认范围后连续实现并集中验收；Agent/RAG、分块与 Embedding、LangGraph、HITL 和评测作为学习重点，围绕关键决策保留场景讨论。
+
+智能化部分按以下顺序进行：
 
 ```text
 解释问题与技术职责
@@ -552,6 +619,8 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 ```
 
 不会一次生成九阶段代码。文档中的技术与步骤是待逐阶段讨论的方案，不表示依赖已安装或实现已完成。
+
+章节计划、结章文字总结与源码职责梳理仍保留；工程提速不减少必要功能或验证，也不要求逐个补答旧基础题。
 
 ## 当前进度
 

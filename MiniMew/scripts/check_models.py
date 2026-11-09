@@ -37,7 +37,7 @@ async def check_models(settings: Settings):
     try:
         async with engine.connect() as connection:
             assert (
-                await connection.scalar(text("SELECT version_num FROM alembic_version")) == "0010"
+                await connection.scalar(text("SELECT version_num FROM alembic_version")) == "0011"
             )
             indexes = await connection.run_sync(lambda c: inspect(c).get_indexes("threads"))
             assert any(i["column_names"] == ["user_id"] for i in indexes)

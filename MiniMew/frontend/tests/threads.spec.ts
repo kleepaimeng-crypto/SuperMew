@@ -39,6 +39,8 @@ test("列表分页、新建选中、地址恢复与退出", async ({ page }) => 
   await page.route("**/v1/threads**", (route) => {
     expect(route.request().headers().authorization).toBe("Bearer test-token");
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/messages"))
+      return route.fulfill({ json: { items: [], previous_cursor: null } });
     if (route.request().method() === "POST") {
       added = true;
       return route.fulfill({ status: 201, json: created });
@@ -99,6 +101,8 @@ test("创建失败不追加对话；列表故障、不可访问与详情故障�
   let detailStatus = 404;
   let postCount = 0;
   await page.route("**/v1/threads**", (route) => {
+    if (new URL(route.request().url()).pathname.endsWith("/messages"))
+      return route.fulfill({ json: { items: [], previous_cursor: null } });
     if (route.request().method() === "POST") {
       postCount++;
       return route.fulfill({ status: 500, json: {} });
@@ -141,6 +145,11 @@ test("业务 401 恢复后仍打开原对话地址", async ({ page }) => {
   await identity(page);
   let unauthorized = true;
   await page.route("**/v1/threads**", (route) => {
+    if (
+      !unauthorized &&
+      new URL(route.request().url()).pathname.endsWith("/messages")
+    )
+      return route.fulfill({ json: { items: [], previous_cursor: null } });
     const detail = new URL(route.request().url()).pathname.endsWith(a.id);
     return route.fulfill({
       status: unauthorized ? 401 : 200,

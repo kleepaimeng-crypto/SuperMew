@@ -37,6 +37,7 @@ export const useAuthStore = defineStore("auth", () => {
   const logoutPending = ref(pendingLogout());
   let restorePromise: Promise<void> | null = null;
   let mutationPromise: Promise<void> | null = null;
+  let refreshPromise: Promise<boolean> | null = null;
   let generation = 0;
 
   function clear() {
@@ -57,6 +58,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   function restore(): Promise<void> {
     if (logoutPending.value) return mutationPromise ?? Promise.resolve();
+    if (refreshPromise) return refreshPromise.then(() => undefined);
     if (restorePromise) return restorePromise;
     if (mutationPromise) return mutationPromise;
     const epoch = generation;
@@ -97,7 +99,7 @@ export const useAuthStore = defineStore("auth", () => {
     busy.value = true;
     error.value = "";
     clear();
-    const pending = restorePromise;
+    const pending = restorePromise ?? refreshPromise;
     const job = (async () => {
       await pending;
       await cookieLock(async () => {
@@ -142,7 +144,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   function logout(): Promise<void> {
     if (logoutPending.value && mutationPromise) return mutationPromise;
-    const pending = mutationPromise ?? restorePromise;
+    const pending = mutationPromise ?? restorePromise ?? refreshPromise;
     ++generation;
     logoutPending.value = true;
     pendingLogout(true);
@@ -179,6 +181,45 @@ export const useAuthStore = defineStore("auth", () => {
     error.value = "登录凭据需要更新，请重试恢复登录。";
   }
 
+  // 同用户的业务续期保持页面状态；多个 SSE/HTTP 的 401 合并为一次 Cookie 轮换。
+  function refreshAccess(expectedToken: string): Promise<boolean> {
+    if (accessToken.value !== expectedToken)
+      return Promise.resolve(
+        status.value === "authenticated" && !!accessToken.value,
+      );
+    if (refreshPromise) return refreshPromise;
+    const epoch = generation;
+    const userId = user.value?.id;
+    refreshPromise = cookieLock(async () => {
+      if (epoch !== generation || logoutPending.value) return false;
+      try {
+        const token = parseToken(await request("/auth/refresh", "POST"));
+        const profile = parseUser(
+          await request("/auth/me", "GET", undefined, token.access_token),
+        );
+        if (epoch !== generation || logoutPending.value) return false;
+        if (!userId || profile.id !== userId) throw new ApiError(401);
+        accessToken.value = token.access_token;
+        user.value = profile;
+        return true;
+      } catch (cause) {
+        if (
+          epoch === generation &&
+          cause instanceof ApiError &&
+          cause.status === 401
+        ) {
+          ++generation;
+          clear();
+          status.value = "anonymous";
+        }
+        throw cause;
+      }
+    }).finally(() => {
+      refreshPromise = null;
+    });
+    return refreshPromise;
+  }
+
   return {
     status,
     user,
@@ -192,5 +233,6 @@ export const useAuthStore = defineStore("auth", () => {
     register,
     logout,
     requireRecovery,
+    refreshAccess,
   };
 });

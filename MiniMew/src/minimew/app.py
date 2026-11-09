@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from minimew.api.auth import router as auth_router
+from minimew.api.documents import UploadLimitMiddleware
+from minimew.api.documents import router as documents_router
 from minimew.api.health import router as health_router
 from minimew.api.runs import router as runs_router
 from minimew.api.threads import router as threads_router
@@ -44,6 +46,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.add_middleware(AuthHttpMiddleware)
+    app.add_middleware(UploadLimitMiddleware, max_bytes=settings.document_max_upload_bytes)
     app.state.settings = settings
     app.state.event_stream_options = StreamOptions(poll_interval=settings.event_poll_seconds)
     app.state.event_notifier = None
@@ -51,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(threads_router)
     app.include_router(runs_router)
+    app.include_router(documents_router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, error):

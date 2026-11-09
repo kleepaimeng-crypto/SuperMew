@@ -60,11 +60,36 @@ export const useThreadsStore = defineStore("threads", () => {
     return { epoch, token: auth.accessToken, userId: auth.user.id };
   }
   function current(ctx: NonNullable<ReturnType<typeof context>>) {
-    return (
-      ctx.epoch === epoch &&
-      auth.user?.id === ctx.userId &&
-      auth.accessToken === ctx.token
-    );
+    return ctx.epoch === epoch && auth.user?.id === ctx.userId;
+  }
+  async function threadRequest(
+    ctx: NonNullable<ReturnType<typeof context>>,
+    path: string,
+    method: string,
+    body: unknown,
+    signal: AbortSignal,
+  ) {
+    try {
+      return await request(path, method, body, ctx.token, signal);
+    } catch (cause) {
+      // 聊天连接可能已为同一用户完成续期，旧 GET/POST 的明确 401 用新凭据再试一次。
+      if (
+        !(cause instanceof ApiError) ||
+        cause.status !== 401 ||
+        !current(ctx) ||
+        !auth.accessToken ||
+        auth.accessToken === ctx.token
+      )
+        throw cause;
+      const token = auth.accessToken;
+      try {
+        return await request(path, method, body, token, signal);
+      } catch (retryFailure) {
+        if (retryFailure instanceof ApiError && retryFailure.status === 401)
+          auth.requireRecovery(token);
+        throw retryFailure;
+      }
+    }
   }
   function recover(cause: unknown, token: string) {
     if (cause instanceof ApiError && cause.status === 401) {
@@ -90,11 +115,11 @@ export const useThreadsStore = defineStore("threads", () => {
     listError.value = "";
     try {
       const page = parseThreadPage(
-        await request(
+        await threadRequest(
+          ctx,
           `/v1/threads?limit=20&offset=${offset}`,
           "GET",
           undefined,
-          ctx.token,
           controller.signal,
         ),
         offset,
@@ -130,11 +155,11 @@ export const useThreadsStore = defineStore("threads", () => {
     detailLoading.value = true;
     try {
       const thread = parseThread(
-        await request(
+        await threadRequest(
+          ctx,
           `/v1/threads/${encodeURIComponent(id)}`,
           "GET",
           undefined,
-          ctx.token,
           controller.signal,
         ),
       );
@@ -167,7 +192,7 @@ export const useThreadsStore = defineStore("threads", () => {
     createError.value = "";
     try {
       const thread = parseThread(
-        await request("/v1/threads", "POST", {}, ctx.token, controller.signal),
+        await threadRequest(ctx, "/v1/threads", "POST", {}, controller.signal),
       );
       if (!current(ctx)) return null;
       // 只有服务端确认后才显示；重载第一页使 offset 与最新列表重新对齐。

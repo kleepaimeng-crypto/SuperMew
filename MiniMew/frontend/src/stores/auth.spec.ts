@@ -29,6 +29,72 @@ afterEach(() => {
 });
 
 describe("身份恢复", () => {
+  it("业务续期并发合并，保留当前身份与页面状态", async () => {
+    const pending = deferred<Response>();
+    const fetch = vi
+      .fn()
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(json(profile));
+    vi.stubGlobal("fetch", fetch);
+    const auth = useAuthStore();
+    auth.user = profile;
+    auth.accessToken = "old";
+    auth.status = "authenticated";
+    const first = auth.refreshAccess("old");
+    const second = auth.refreshAccess("old");
+    expect(auth.user).toEqual(profile);
+    expect(auth.status).toBe("authenticated");
+    pending.resolve(json(token));
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(auth.accessToken).toBe(token.access_token);
+  });
+  it("临时续期故障保留身份，失效刷新凭据才清除", async () => {
+    const auth = useAuthStore();
+    auth.user = profile;
+    auth.accessToken = "old";
+    auth.status = "authenticated";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({}, 503))
+        .mockResolvedValueOnce(json({}, 401)),
+    );
+    await expect(auth.refreshAccess("old")).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(auth.user).toEqual(profile);
+    expect(auth.accessToken).toBe("old");
+    await expect(auth.refreshAccess("old")).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(auth.status).toBe("anonymous");
+    expect(auth.accessToken).toBeNull();
+  });
+  it("业务续期期间退出，旧响应不能恢复登录", async () => {
+    const pending = deferred<Response>();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockReturnValueOnce(pending.promise)
+        .mockResolvedValueOnce(json(profile))
+        .mockResolvedValueOnce(new Response(null, { status: 204 })),
+    );
+    const auth = useAuthStore();
+    auth.user = profile;
+    auth.accessToken = "old";
+    auth.status = "authenticated";
+    const refreshing = auth.refreshAccess("old");
+    const leaving = auth.logout();
+    pending.resolve(json(token));
+    await Promise.all([refreshing, leaving]);
+    expect(auth.user).toBeNull();
+    expect(auth.accessToken).toBeNull();
+    expect(auth.status).toBe("anonymous");
+  });
   it("同一页面的并发恢复共用一次刷新，随后才请求用户", async () => {
     const pending = deferred<Response>();
     const fetch = vi

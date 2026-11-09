@@ -1,0 +1,55 @@
+import { test, expect } from "@playwright/test";
+
+test("真实 API/PG：提问、Journal/SSE、取消、失败与刷新恢复", async ({
+  page,
+}) => {
+  test.skip(
+    !process.env.MINIMEW_CHAT_LIVE,
+    "Only the owned temporary database runner enables this test",
+  );
+  const username = `chat_${Date.now()}`;
+  await page.goto("/register");
+  await page.getByLabel("用户名", { exact: true }).fill(username);
+  await page
+    .getByLabel("密码", { exact: true })
+    .fill("browser-chat-password-1234");
+  await page.getByRole("button", { name: "创建账户", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("账户已创建");
+  await page
+    .getByLabel("密码", { exact: true })
+    .fill("browser-chat-password-1234");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await page.getByRole("link", { name: "进入我的对话 →", exact: true }).click();
+  await page.getByRole("button", { name: "新建对话" }).click();
+  await page.getByLabel("你的问题", { exact: true }).fill("普通问题");
+  await page.getByRole("button", { name: "发送问题", exact: true }).click();
+  await expect(page.getByText("今天天气很好", { exact: true })).toBeVisible();
+  await expect(page.getByText("已完成", { exact: true })).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByText("今天天气很好", { exact: true })).toBeVisible();
+  await page.getByLabel("你的问题", { exact: true }).fill("请取消本次回复");
+  await page.getByRole("button", { name: "发送问题", exact: true }).click();
+  await expect(page.getByText("今天", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "停止回复", exact: true }).click();
+  await expect(page.getByText("已取消", { exact: true })).toBeVisible();
+  await page.getByLabel("你的问题", { exact: true }).fill("模拟失败");
+  await page.getByRole("button", { name: "发送问题", exact: true }).click();
+  await expect(page.getByText("回答未完成", { exact: true })).toBeVisible();
+  await expect(page.getByRole("article", { name: "MiniMew 回复" })).toHaveCount(
+    3,
+  );
+  await page.reload();
+  await expect(page.getByText("已取消", { exact: true })).toBeVisible();
+  await expect(page.getByText("回答未完成", { exact: true })).toBeVisible();
+  await page.screenshot({
+    path: "../.artifacts/chat-live.png",
+    fullPage: true,
+  });
+  const storage = await page.evaluate(() =>
+    JSON.stringify({ ...localStorage, ...sessionStorage }),
+  );
+  expect(storage).not.toContain("access_token");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("article")).toHaveCount(0);
+});

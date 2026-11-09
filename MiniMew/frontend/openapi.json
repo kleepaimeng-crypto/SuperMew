@@ -713,10 +713,459 @@
           }
         }
       }
+    },
+    "/v1/documents": {
+      "post": {
+        "tags": ["documents"],
+        "summary": "Upload Document",
+        "operationId": "upload_document_v1_documents_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_v1_documents_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadReceipt"
+                }
+              }
+            }
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["documents"],
+        "summary": "Documents",
+        "operationId": "documents_v1_documents_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{document_id}/versions": {
+      "post": {
+        "tags": ["documents"],
+        "summary": "Upload Version",
+        "operationId": "upload_version_v1_documents__document_id__versions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_version_v1_documents__document_id__versions_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadReceipt"
+                }
+              }
+            }
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadReceipt"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{document_id}": {
+      "get": {
+        "tags": ["documents"],
+        "summary": "Document",
+        "operationId": "document_v1_documents__document_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/documents/{document_id}/versions/{version_id}": {
+      "get": {
+        "tags": ["documents"],
+        "summary": "Version",
+        "operationId": "version_v1_documents__document_id__versions__version_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/index-jobs/{job_id}": {
+      "get": {
+        "tags": ["documents"],
+        "summary": "Job",
+        "operationId": "job_v1_index_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/embedding-profiles": {
+      "get": {
+        "tags": ["documents"],
+        "summary": "Embedding Profiles",
+        "operationId": "embedding_profiles_v1_embedding_profiles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BuildConfiguration"
+                  },
+                  "type": "array",
+                  "title": "Response Embedding Profiles V1 Embedding Profiles Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "Body_upload_document_v1_documents_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key"
+          }
+        },
+        "type": "object",
+        "required": ["file", "idempotency_key"],
+        "title": "Body_upload_document_v1_documents_post"
+      },
+      "Body_upload_version_v1_documents__document_id__versions_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key"
+          }
+        },
+        "type": "object",
+        "required": ["file", "idempotency_key"],
+        "title": "Body_upload_version_v1_documents__document_id__versions_post"
+      },
+      "BuildConfiguration": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "source_format": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["markdown", "text"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Format"
+          },
+          "parser": {
+            "type": "string",
+            "const": "markdown-txt-v1",
+            "title": "Parser",
+            "default": "markdown-txt-v1"
+          },
+          "chunker": {
+            "type": "string",
+            "const": "structure-v1",
+            "title": "Chunker",
+            "default": "structure-v1"
+          },
+          "chunk_tokens": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 32.0,
+            "title": "Chunk Tokens"
+          },
+          "overlap_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Overlap Tokens"
+          },
+          "embedding": {
+            "$ref": "#/components/schemas/EmbeddingProfile"
+          },
+          "index_layout": {
+            "type": "string",
+            "const": "dense-cosine-v1",
+            "title": "Index Layout",
+            "default": "dense-cosine-v1"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["chunk_tokens", "overlap_tokens", "embedding"],
+        "title": "BuildConfiguration"
+      },
       "CreateRunRequest": {
         "properties": {
           "idempotency_key": {
@@ -744,6 +1193,150 @@
         "type": "object",
         "title": "CreateThreadRequest"
       },
+      "DocumentPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "type": "object",
+        "required": ["items", "next_offset"],
+        "title": "DocumentPage"
+      },
+      "DocumentResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "knowledge_base_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Knowledge Base Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "pending_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Version Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "knowledge_base_id",
+          "title",
+          "current_version_id",
+          "pending_version_id",
+          "created_at"
+        ],
+        "title": "DocumentResponse"
+      },
+      "EmbeddingProfile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["bge-small-zh-v1.5", "bge-m3"],
+            "title": "Id"
+          },
+          "model_id": {
+            "type": "string",
+            "enum": ["BAAI/bge-small-zh-v1.5", "BAAI/bge-m3"],
+            "title": "Model Id"
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Revision"
+          },
+          "dimension": {
+            "type": "integer",
+            "title": "Dimension"
+          },
+          "normalize": {
+            "type": "boolean",
+            "const": true,
+            "title": "Normalize",
+            "default": true
+          },
+          "pooling": {
+            "type": "string",
+            "const": "cls",
+            "title": "Pooling",
+            "default": "cls"
+          },
+          "query_prefix": {
+            "type": "string",
+            "title": "Query Prefix"
+          },
+          "document_prefix": {
+            "type": "string",
+            "const": "",
+            "title": "Document Prefix",
+            "default": ""
+          },
+          "max_input_tokens": {
+            "type": "integer",
+            "maximum": 8192.0,
+            "minimum": 32.0,
+            "title": "Max Input Tokens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "model_id",
+          "revision",
+          "dimension",
+          "query_prefix",
+          "max_input_tokens"
+        ],
+        "title": "EmbeddingProfile"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -756,6 +1349,114 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "IndexJobResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "staged",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "dead_letter"
+            ],
+            "title": "Status"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "reserved",
+              "parsing",
+              "chunking",
+              "embedding",
+              "indexing",
+              "verifying",
+              "publishing"
+            ],
+            "title": "Stage"
+          },
+          "progress_done": {
+            "type": "integer",
+            "title": "Progress Done"
+          },
+          "progress_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Total"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["INVALID_SOURCE", "SOURCE_UNAVAILABLE", "BUILD_FAILED"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "document_id",
+          "version_id",
+          "status",
+          "stage",
+          "progress_done",
+          "progress_total",
+          "attempt",
+          "error_code",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "IndexJobResponse"
       },
       "LoginRequest": {
         "properties": {
@@ -1680,6 +2381,22 @@
         "required": ["access_token", "expires_in"],
         "title": "TokenResponse"
       },
+      "UploadReceipt": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/DocumentResponse"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionResponse"
+          },
+          "job": {
+            "$ref": "#/components/schemas/IndexJobResponse"
+          }
+        },
+        "type": "object",
+        "required": ["document", "version", "job"],
+        "title": "UploadReceipt"
+      },
       "UserResponse": {
         "properties": {
           "id": {
@@ -1736,6 +2453,73 @@
         "type": "object",
         "required": ["loc", "msg", "type"],
         "title": "ValidationError"
+      },
+      "VersionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "version_number": {
+            "type": "integer",
+            "title": "Version Number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["candidate", "published", "failed", "superseded"],
+            "title": "Status"
+          },
+          "source_filename": {
+            "type": "string",
+            "title": "Source Filename"
+          },
+          "source_format": {
+            "type": "string",
+            "enum": ["markdown", "text"],
+            "title": "Source Format"
+          },
+          "source_size": {
+            "type": "integer",
+            "title": "Source Size"
+          },
+          "content_sha256": {
+            "type": "string",
+            "title": "Content Sha256"
+          },
+          "build_fingerprint": {
+            "type": "string",
+            "title": "Build Fingerprint"
+          },
+          "build_configuration": {
+            "$ref": "#/components/schemas/BuildConfiguration"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "document_id",
+          "version_number",
+          "status",
+          "source_filename",
+          "source_format",
+          "source_size",
+          "content_sha256",
+          "build_fingerprint",
+          "build_configuration",
+          "created_at"
+        ],
+        "title": "VersionResponse"
       }
     },
     "securitySchemes": {

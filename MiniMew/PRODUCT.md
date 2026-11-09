@@ -31,20 +31,20 @@ MiniMew 以 SuperMew 的正式实现和领域模型为参照，在独立的运�
 - 后端位于 [src/minimew](src/minimew)，使用 Python 3.12、FastAPI、SQLAlchemy、PostgreSQL、Alembic 和 Redis，由 uv 管理独立依赖与环境。
 - 浏览器应用位于 [frontend](frontend)，使用 Vue 3、TypeScript、Pinia、Vue Router 和 Vite。前端通过开发代理访问独立后端。
 - 当前本地入口为前端 `127.0.0.1:5174`、API `127.0.0.1:8001`；安装和启动步骤以 [README.md](README.md) 为准。
-- 每个学习小步先讨论目标、技术职责、数据流和失败场景，再进行理解检查、明确范围、授权实施与复盘。具体规则见 [AGENTS.md](AGENTS.md)。
+- 按 2026-11-09 约定，工程底座简述目标和边界，合并工作包一次授权后连续实施、集中验收；Agent/RAG 等智能化重点讨论原理、取舍与失败案例。具体规则见 [AGENTS.md](AGENTS.md)。
 - 换设备或换 Agent 时，通过已保存的学习文档恢复上下文；章节计划和总结保存在 [chapters](chapters)。
 
 ## Capabilities and Constraints
 
 ### 已有实现的产品边界
 
-以下依据初始化时核对的仓库源码，具体阶段完成情况与验收记录仍以交接文档为准。
+以下依据 2026-11-09 核对的仓库源码，具体阶段完成情况与验收记录仍以交接文档为准。
 
 - 浏览器页面包含注册、登录、账户信息、续期与退出，以及个人 Thread 列表、创建和选择。
 - 后端具有用户归属校验、Thread/Run/Message 持久化、幂等接收提问、模型配置与冻结快照、执行事件分页和 SSE 订阅入口。
 - 执行模块已有流式正文、Event Journal、事务 Outbox、Redis 通知、DeepSeek Adapter 和后台调度实现。模型调用需要独立配置与凭据；已有模型选择为 DeepSeek，关闭思考。
-- 当前 Thread 页面仍提示“消息发送功能尚未开放”；后端 Run 能力与可交互的聊天页面分开描述。
-- 文档入库与发布、知识问答、完整 RAG、HITL/恢复、评测及扩展交付属于分阶段路线，不能按上级 SuperMew 的能力直接宣称 MiniMew 已完成。
+- Thread 页面已接入消息历史、幂等提交、流式回答、执行状态、原游标重连、按 Run 停止、刷新恢复与身份/对话隔离；沿用既有页面样式，消息按纯文本展示。实际验收区分模拟接口、真实 API/PG 与受控模型，不能据此声称真实模型质量或生产部署通过。
+- 文档入库已提供 Markdown/TXT 上传、新版本、个人归属、持久 Index Job/快照及任务查询基础；当前返回待构建，真实解析/向量化、独立处理 Worker、索引发布和选择/重建 UI 尚待后续包。知识问答、完整 RAG、HITL/恢复、评测及扩展交付仍属于后续路线。
 
 ### 必须保留的约束
 

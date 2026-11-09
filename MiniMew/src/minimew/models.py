@@ -1,4 +1,4 @@
-"""个人用户与对话的持久化模型；这里不执行权限校验。"""
+"""个人用户、对话与文档的持久化模型；这里不执行权限校验。"""
 
 from datetime import datetime
 from uuid import UUID
@@ -283,3 +283,235 @@ class EventOutbox(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     last_error_code: Mapped[str | None] = mapped_column(String(32))
+
+
+class KnowledgeBase(Base):
+    """首版每用户一个个人知识库；目标构建配置不等于已发布检索配置。"""
+
+    __tablename__ = "knowledge_bases"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_knowledge_bases_user"),
+        UniqueConstraint("id", "user_id", name="uq_knowledge_bases_owner"),
+    )
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="RESTRICT"))
+    build_configuration: Mapped[dict] = mapped_column(JSONB)
+    build_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Document(Base):
+    __tablename__ = "documents"
+    __table_args__ = (
+        UniqueConstraint("id", "user_id", "knowledge_base_id", name="uq_documents_scope"),
+        ForeignKeyConstraint(
+            ["knowledge_base_id", "user_id"],
+            ["knowledge_bases.id", "knowledge_bases.user_id"],
+            name="fk_documents_kb_owner",
+        ),
+        ForeignKeyConstraint(
+            ["current_version_id", "id", "user_id", "knowledge_base_id"],
+            [
+                "document_versions.id",
+                "document_versions.document_id",
+                "document_versions.user_id",
+                "document_versions.knowledge_base_id",
+            ],
+            name="fk_documents_current",
+            use_alter=True,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        ForeignKeyConstraint(
+            ["pending_version_id", "id", "user_id", "knowledge_base_id"],
+            [
+                "document_versions.id",
+                "document_versions.document_id",
+                "document_versions.user_id",
+                "document_versions.knowledge_base_id",
+            ],
+            name="fk_documents_pending",
+            use_alter=True,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        CheckConstraint(
+            "last_version_number >= 0 AND publication_fence >= 0", name="ck_documents_counters"
+        ),
+        CheckConstraint(
+            "current_version_id IS NULL OR pending_version_id IS NULL OR "
+            "current_version_id <> pending_version_id",
+            name="ck_documents_pointers",
+        ),
+        Index("ix_documents_owner_created", "user_id", "created_at", "id"),
+    )
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[UUID] = mapped_column(Uuid)
+    knowledge_base_id: Mapped[UUID] = mapped_column(Uuid)
+    title: Mapped[str] = mapped_column(String(255))
+    current_version_id: Mapped[UUID | None] = mapped_column(Uuid)
+    pending_version_id: Mapped[UUID | None] = mapped_column(Uuid)
+    last_version_number: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    publication_fence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DocumentVersion(Base):
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "id", "document_id", "user_id", "knowledge_base_id", name="uq_document_versions_scope"
+        ),
+        UniqueConstraint("document_id", "version_number", name="uq_document_versions_number"),
+        ForeignKeyConstraint(
+            ["document_id", "user_id", "knowledge_base_id"],
+            ["documents.id", "documents.user_id", "documents.knowledge_base_id"],
+            name="fk_document_versions_scope",
+        ),
+        CheckConstraint(
+            "status IN ('candidate','published','failed','superseded')",
+            name="ck_document_versions_status",
+        ),
+        CheckConstraint("source_format IN ('markdown','text')", name="ck_document_versions_format"),
+        CheckConstraint(
+            "source_size > 0 AND version_number > 0 AND publication_fence > 0",
+            name="ck_document_versions_numbers",
+        ),
+        CheckConstraint(
+            "content_sha256 ~ '^[0-9a-f]{64}$' AND build_fingerprint ~ '^[0-9a-f]{64}$'",
+            name="ck_document_versions_hashes",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    document_id: Mapped[UUID] = mapped_column(Uuid)
+    knowledge_base_id: Mapped[UUID] = mapped_column(Uuid)
+    user_id: Mapped[UUID] = mapped_column(Uuid)
+    version_number: Mapped[int] = mapped_column(BigInteger)
+    publication_fence: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'candidate'"))
+    source_filename: Mapped[str] = mapped_column(String(255))
+    source_format: Mapped[str] = mapped_column(String(16))
+    source_size: Mapped[int] = mapped_column(BigInteger)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    build_configuration: Mapped[dict] = mapped_column(JSONB)
+    build_fingerprint: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IndexJob(Base):
+    __tablename__ = "index_jobs"
+    __table_args__ = (
+        UniqueConstraint("version_id", name="uq_index_jobs_version"),
+        UniqueConstraint(
+            "id",
+            "version_id",
+            "document_id",
+            "user_id",
+            "knowledge_base_id",
+            name="uq_index_jobs_scope",
+        ),
+        ForeignKeyConstraint(
+            ["version_id", "document_id", "user_id", "knowledge_base_id"],
+            [
+                "document_versions.id",
+                "document_versions.document_id",
+                "document_versions.user_id",
+                "document_versions.knowledge_base_id",
+            ],
+            name="fk_index_jobs_scope",
+        ),
+        CheckConstraint(
+            "status IN ('pending','running','staged','succeeded','failed','cancelled',"
+            "'dead_letter')",
+            name="ck_index_jobs_status",
+        ),
+        CheckConstraint(
+            "stage IN ('reserved','parsing','chunking','embedding','indexing',"
+            "'verifying','publishing')",
+            name="ck_index_jobs_stage",
+        ),
+        CheckConstraint(
+            "progress_done >= 0 AND (progress_total IS NULL OR "
+            "progress_total >= progress_done) AND execution_fence >= 0 AND attempt >= 0",
+            name="ck_index_jobs_progress",
+        ),
+        CheckConstraint(
+            "(status='pending' AND owner_token IS NULL AND worker_id IS NULL "
+            "AND lease_until IS NULL AND execution_fence=0 AND attempt=0) OR "
+            "(status<>'pending' AND ((owner_token IS NOT NULL AND worker_id IS NOT NULL "
+            "AND lease_until IS NOT NULL AND execution_fence>0 AND attempt>0) OR "
+            "(status='cancelled' AND owner_token IS NULL AND worker_id IS NULL "
+            "AND lease_until IS NULL AND execution_fence=0 AND attempt=0)))",
+            name="ck_index_jobs_owner",
+        ),
+        CheckConstraint(
+            "(status IN ('pending','running','staged') AND finished_at IS NULL "
+            "AND error_code IS NULL) OR (status IN ('succeeded','cancelled') "
+            "AND finished_at IS NOT NULL AND error_code IS NULL) OR "
+            "(status IN ('failed','dead_letter') AND finished_at IS NOT NULL "
+            "AND error_code IS NOT NULL)",
+            name="ck_index_jobs_terminal",
+        ),
+        CheckConstraint(
+            "error_code IS NULL OR error_code IN ('INVALID_SOURCE',"
+            "'SOURCE_UNAVAILABLE','BUILD_FAILED')",
+            name="ck_index_jobs_error",
+        ),
+        Index("ix_index_jobs_claim", "status", "created_at", "id"),
+    )
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    version_id: Mapped[UUID] = mapped_column(Uuid)
+    document_id: Mapped[UUID] = mapped_column(Uuid)
+    knowledge_base_id: Mapped[UUID] = mapped_column(Uuid)
+    user_id: Mapped[UUID] = mapped_column(Uuid)
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
+    stage: Mapped[str] = mapped_column(String(20), server_default=text("'reserved'"))
+    progress_done: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    progress_total: Mapped[int | None] = mapped_column(BigInteger)
+    worker_id: Mapped[str | None] = mapped_column(String(200))
+    owner_token: Mapped[UUID | None] = mapped_column(Uuid)
+    execution_fence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    attempt: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentSubmission(Base):
+    """提交键映射到原 Job；多个键可幂等复用同一个活跃内容构建。"""
+
+    __tablename__ = "document_submissions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["knowledge_base_id", "user_id"],
+            ["knowledge_bases.id", "knowledge_bases.user_id"],
+            name="fk_document_submissions_owner",
+        ),
+        ForeignKeyConstraint(
+            ["job_id", "version_id", "document_id", "user_id", "knowledge_base_id"],
+            [
+                "index_jobs.id",
+                "index_jobs.version_id",
+                "index_jobs.document_id",
+                "index_jobs.user_id",
+                "index_jobs.knowledge_base_id",
+            ],
+            name="fk_document_submissions_job",
+        ),
+    )
+    knowledge_base_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(Uuid)
+    document_id: Mapped[UUID] = mapped_column(Uuid)
+    version_id: Mapped[UUID] = mapped_column(Uuid)
+    job_id: Mapped[UUID] = mapped_column(Uuid)
+    request_sha256: Mapped[str] = mapped_column(String(64))

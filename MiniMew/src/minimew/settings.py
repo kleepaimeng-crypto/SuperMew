@@ -1,5 +1,6 @@
 """只读取 MINIMEW_ 环境变量，不自动加载上级项目的 .env。"""
 
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Depends, Request
@@ -36,6 +37,10 @@ class Settings(BaseSettings):
     access_token_minutes: int = Field(default=15, ge=1, le=60)
     refresh_token_days: int = Field(default=7, ge=1, le=30)
     refresh_cookie_secure: bool = False
+
+    document_upload_dir: Path = Path("data/documents")
+    document_max_upload_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=50 * 1024 * 1024)
+    embedding_profile: Literal["bge-small-zh-v1.5", "bge-m3"] = "bge-small-zh-v1.5"
 
     @property
     def model_credentials_available(self) -> bool:

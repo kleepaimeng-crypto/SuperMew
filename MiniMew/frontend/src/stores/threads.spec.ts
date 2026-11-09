@@ -42,6 +42,38 @@ it("快速切换时较晚返回的 A 不覆盖 B", async () => {
   expect(store.detailLoading).toBe(false);
 });
 
+it("同用户 Access Token 续期后，旧成功请求仍能收尾，不锁死加载状态", async () => {
+  const pending = deferred<Response>();
+  vi.stubGlobal("fetch", vi.fn().mockReturnValue(pending.promise));
+  const store = useThreadsStore();
+  const loading = store.loadList(true);
+  useAuthStore().accessToken = "refreshed-token";
+  pending.resolve(json({ items: [a], next_offset: null }));
+  await loading;
+  expect(store.items).toEqual([a]);
+  expect(store.listLoading).toBe(false);
+});
+
+it("同用户已续期时，旧凭据的 401 使用新凭据再读，不清除新身份", async () => {
+  const pending = deferred<Response>();
+  const fetch = vi
+    .fn()
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce(json(a));
+  vi.stubGlobal("fetch", fetch);
+  const store = useThreadsStore();
+  const loading = store.selectThread(a.id);
+  useAuthStore().accessToken = "refreshed-token";
+  pending.resolve(json({}, 401));
+  await loading;
+  expect(fetch.mock.calls[1]![1].headers.get("Authorization")).toBe(
+    "Bearer refreshed-token",
+  );
+  expect(store.selected).toEqual(a);
+  expect(store.detailLoading).toBe(false);
+  expect(useAuthStore().status).toBe("authenticated");
+});
+
 it("账号切换清空数据并拒绝旧用户响应", async () => {
   const pending = deferred<Response>();
   vi.stubGlobal("fetch", vi.fn().mockReturnValue(pending.promise));

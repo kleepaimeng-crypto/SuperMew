@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "./stores/auth";
+import { watch } from "vue";
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
+watch(
+  () => auth.status,
+  (status) => {
+    if (status === "anonymous" && route.meta.requiresAuth)
+      void router.replace("/login");
+  },
+);
 async function retry() {
   if (auth.logoutPending) {
     try {
