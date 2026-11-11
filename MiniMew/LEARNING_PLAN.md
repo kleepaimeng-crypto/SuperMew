@@ -147,6 +147,8 @@
 
 ## 5. 基础知识问答
 
+本章子项、已有代码连接点与首轮Agent循环讨论见[第五章计划](chapters/05-基础知识问答.md)。实际理解与编码授权统一见交接记录。
+
 ### 首次引入的技术与概念
 
 - Tool calling、Tool descriptor/Registry、Guardrail：在已有模型 Adapter 上增加工具发现、结构化调用与确定性授权。
