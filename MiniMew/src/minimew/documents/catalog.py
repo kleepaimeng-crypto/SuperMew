@@ -1,4 +1,4 @@
-"""目录预留与只读查询；不运行 parser、Embedding 或索引发布。"""
+"""目录预留与只读查询；HTTP 不运行 parser、Embedding 或索引发布。"""
 
 import hashlib
 import json
@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
+from minimew.documents.artifacts import retire_artifacts
 from minimew.documents.profiles import BuildConfiguration, preset, read_build
 from minimew.documents.schemas import (
     DocumentPage,
@@ -59,6 +60,39 @@ async def owned_document(session, user_id, document_id, *, lock=False):
     return document
 
 
+def document_query():
+    # 同一语句快照同时读取指针与最近Job，失败清空pending后仍可恢复任务。
+    return (
+        select(Document, IndexJob)
+        .outerjoin(
+            DocumentVersion,
+            (DocumentVersion.document_id == Document.id)
+            & (DocumentVersion.version_number == Document.last_version_number),
+        )
+        .outerjoin(IndexJob, IndexJob.version_id == DocumentVersion.id)
+        .execution_options(populate_existing=True)
+    )
+
+
+def document_response(document, job):
+    if document.last_version_number > 0 and job is None:
+        raise BuildUnavailable
+    return DocumentResponse.model_validate(
+        {**document.__dict__, "latest_job": IndexJobResponse.model_validate(job) if job else None}
+    )
+
+
+async def read_document(session, user_id, document_id):
+    row = (
+        await session.execute(
+            document_query().where(Document.id == document_id, Document.user_id == user_id)
+        )
+    ).one_or_none()
+    if row is None:
+        raise DocumentNotFound
+    return document_response(*row)
+
+
 async def receipt(session, document, version_id, job_id):
     version = await session.get(DocumentVersion, version_id)
     job = await session.get(IndexJob, job_id)
@@ -70,7 +104,7 @@ async def receipt(session, document, version_id, job_id):
     ):
         raise BuildUnavailable
     return UploadReceipt(
-        document=DocumentResponse.model_validate(document),
+        document=await read_document(session, document.user_id, document.id),
         version=version_response(version),
         job=IndexJobResponse.model_validate(job),
     )
@@ -158,6 +192,7 @@ async def reserve_document(
                 old.status = "superseded"
                 old_job.status = "cancelled"
                 old_job.finished_at = await session.scalar(select(text("clock_timestamp()")))
+                await retire_artifacts(session, old_job.id)
                 await session.flush()
             document.last_version_number += 1
             document.publication_fence += 1
@@ -208,8 +243,8 @@ async def reserve_document(
 async def list_documents(session, user_id, limit, offset) -> DocumentPage:
     async with session.begin():
         rows = (
-            await session.scalars(
-                select(Document)
+            await session.execute(
+                document_query()
                 .where(Document.user_id == user_id)
                 .order_by(Document.created_at.desc(), Document.id.desc())
                 .offset(offset)
@@ -217,14 +252,14 @@ async def list_documents(session, user_id, limit, offset) -> DocumentPage:
             )
         ).all()
         return DocumentPage(
-            items=[DocumentResponse.model_validate(row) for row in rows[:limit]],
+            items=[document_response(*row) for row in rows[:limit]],
             next_offset=offset + limit if len(rows) > limit else None,
         )
 
 
 async def get_document(session, user_id, document_id) -> DocumentResponse:
     async with session.begin():
-        return DocumentResponse.model_validate(await owned_document(session, user_id, document_id))
+        return await read_document(session, user_id, document_id)
 
 
 async def get_version(session, user_id, document_id, version_id) -> VersionResponse:

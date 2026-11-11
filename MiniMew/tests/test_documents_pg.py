@@ -40,7 +40,7 @@ def client(monkeypatch, tmp_path):
         async with sessions() as session, session.begin():
             await session.execute(
                 text(
-                    "TRUNCATE document_submissions,index_jobs,"
+                    "TRUNCATE index_cleanup_jobs,index_artifacts,document_submissions,index_jobs,"
                     "document_versions,documents,knowledge_bases"
                 )
             )

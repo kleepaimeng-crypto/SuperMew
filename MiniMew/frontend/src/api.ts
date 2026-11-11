@@ -19,12 +19,18 @@ export async function request(
   signal?: AbortSignal,
 ): Promise<unknown> {
   const headers = new Headers();
-  if (body !== undefined) headers.set("Content-Type", "application/json");
+  const multipart = body instanceof FormData;
+  if (body !== undefined && !multipart)
+    headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(path, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: multipart
+      ? body
+      : body === undefined
+        ? undefined
+        : JSON.stringify(body),
     credentials: "same-origin",
     cache: "no-store",
     signal: signal

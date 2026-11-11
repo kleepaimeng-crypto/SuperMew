@@ -484,6 +484,65 @@ class IndexJob(Base):
     error_code: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+class IndexArtifact(Base):
+    """写向量前冻结的清单与分块；每次新构建拥有独立 Milvus namespace。"""
+
+    __tablename__ = "index_artifacts"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('prepared','staged','published','retired')",
+            name="ck_index_artifacts_status",
+        ),
+        UniqueConstraint("job_id", "execution_fence", name="uq_index_artifacts_execution"),
+        Index("ix_index_artifacts_job_status", "job_id", "status"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("index_jobs.id", ondelete="RESTRICT"))
+    execution_fence: Mapped[int] = mapped_column(BigInteger)
+    target_collection: Mapped[str] = mapped_column(String(100))
+    manifest: Mapped[dict] = mapped_column(JSONB)
+    chunks: Mapped[dict] = mapped_column(JSONB)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'prepared'"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IndexCleanupJob(Base):
+    """不可复活的 retired attempt 的精确清理账本；源文件不删除。"""
+
+    __tablename__ = "index_cleanup_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','complete','dead_letter')",
+            name="ck_index_cleanup_jobs_status",
+        ),
+        CheckConstraint("attempt >= 0 AND execution_fence >= 0", name="ck_index_cleanup_counters"),
+        Index("ix_index_cleanup_due", "status", "due_at"),
+    )
+    artifact_id: Mapped[UUID] = mapped_column(
+        ForeignKey("index_artifacts.id", ondelete="RESTRICT"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_token: Mapped[UUID | None] = mapped_column(Uuid)
+    execution_fence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    attempt: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IndexWorkerHeartbeat(Base):
+    __tablename__ = "index_worker_heartbeats"
+    worker_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    fingerprints: Mapped[list] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(16))
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class DocumentSubmission(Base):

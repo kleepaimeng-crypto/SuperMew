@@ -1,4 +1,4 @@
-"""在真实 0010 中建立旧对话，再验证 0011 原样保留并与 ORM 无漂移。"""
+"""在真实 0010 中建立旧对话，再升级当前 head 并验证原样保留、ORM 无漂移。"""
 
 import asyncio
 import os
@@ -79,7 +79,7 @@ def test_0010_upgrade_preserves_conversation_and_has_no_schema_drift(model_confi
                         assert after == before[table], table
                     assert (
                         await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                        == "0011"
+                        == "0012"
                     )
                     actual = await connection.run_sync(lambda c: inspect(c).get_table_names())
                     assert {

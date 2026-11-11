@@ -4,6 +4,7 @@ import { useAuthStore } from "./stores/auth";
 import AuthView from "./views/AuthView.vue";
 import AccountView from "./views/AccountView.vue";
 import ThreadsView from "./views/ThreadsView.vue";
+import DocumentsView from "./views/DocumentsView.vue";
 
 export function makeRouter(pinia: Pinia) {
   const router = createRouter({
@@ -15,6 +16,11 @@ export function makeRouter(pinia: Pinia) {
       {
         path: "/threads/:threadId?",
         component: ThreadsView,
+        meta: { requiresAuth: true },
+      },
+      {
+        path: "/documents/:documentId?",
+        component: DocumentsView,
         meta: { requiresAuth: true },
       },
       {

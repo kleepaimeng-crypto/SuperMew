@@ -34,7 +34,9 @@ async function retry() {
     class="shell"
     :class="{
       'workspace-shell':
-        route.path.startsWith('/threads') && auth.status === 'authenticated',
+        (route.path.startsWith('/threads') ||
+          route.path.startsWith('/documents')) &&
+        auth.status === 'authenticated',
     }"
   >
     <header class="masthead">
@@ -47,6 +49,7 @@ async function retry() {
         aria-label="主导航"
       >
         <RouterLink to="/threads">对话</RouterLink>
+        <RouterLink to="/documents">文档</RouterLink>
         <RouterLink to="/account">账户</RouterLink>
       </nav>
       <span v-else class="header-label">我的空间</span>

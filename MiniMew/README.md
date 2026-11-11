@@ -45,7 +45,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0011 (head)`。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0012 (head)`。0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 
@@ -247,7 +247,7 @@ uv run --env-file .env --no-sync python scripts/check_chat_frontend.py tests/cha
 
 ## 文档入库基础（工程包 A）
 
-当前已实现 Markdown/TXT 的上传、更新版本、个人文档目录和持久 Index Job。**上传成功返回 pending/candidate，不表示已经分块、向量化或发布**；真实构建 Worker、Milvus 和模型选择/重建页面在后续工作包接入。当前通过 API/Swagger 操作。
+当前已实现 Markdown/TXT 的上传、更新版本、个人文档目录和持久 Index Job。**上传成功返回 pending/candidate，不表示已经分块、向量化或发布**；独立Worker、Milvus核验与原子发布已接入，需另行启动Worker。文档UI已接入主导航，也可通过API/Swagger操作；完整模型选择/重建页面留后续。
 
 先按开头安装依赖、执行 `alembic upgrade head` 并启动新版 API，在 `/docs` 登录/Authorize 后使用：
 
@@ -273,7 +273,7 @@ MINIMEW_DOCUMENT_MAX_UPLOAD_BYTES=5242880
 MINIMEW_EMBEDDING_PROFILE=bge-small-zh-v1.5
 ```
 
-相对上传目录锚定 MiniMew 项目根目录，API/未来 Worker 必须共享同一目录和数据库，不与上级项目或另一套库共用源目录。默认 `data/` 已被 Git 忽略。`MINIMEW_EMBEDDING_PROFILE` 只决定首次建立个人知识库的目标快照，修改环境变量不会改写现有库/Job 或切换已有索引。当前不提供在线更改该目标的写接口；后续通过“重建并切换”完成。两个预设当前仅有元数据，没有下载 PyTorch/Sentence Transformers 或模型权重。首版快照中的分块预算是后续实现/案例验证的起点，不是已测出的最优参数。
+相对上传目录锚定 MiniMew 项目根目录，API/独立 Worker 必须共享同一目录和数据库，不与上级项目或另一套库共用源目录。默认 `data/` 已被 Git 忽略。`MINIMEW_EMBEDDING_PROFILE` 只决定首次建立个人知识库的目标快照，修改环境变量不会改写现有库/Job 或切换已有索引。当前不提供在线更改该目标的写接口；后续通过“重建并切换”完成。轻量模型已有CPU运行能力和显式准备入口；M3仍只有预设，不会自动下载或切换。首版快照中的分块预算是后续实现/案例验证的起点，不是已测出的最优参数。
 
 源文件在数据库提交前原子落盘；提交失败或结果不明时，可能保留不被目录引用的完整源文件，避免删掉实际上已提交的内容。管理命令默认只列出超过一小时、且数据库确认无对应版本的 `.source` 文件：
 
@@ -283,7 +283,7 @@ uv run --env-file .env --no-sync python -m minimew.documents.cleanup
 uv run --env-file .env --no-sync python -m minimew.documents.cleanup --apply
 ```
 
-清理与上传使用同一版本级数据库锁，清理不能越过尚未提交的上传；任何已登记版本的文件都保留，包括失败和被替代版本。数据库不可用时停止清理。它是本包完整孤立源文件的管理入口，不代替后续已登记版本/向量索引的生命周期清理。
+清理与上传使用同一版本级数据库锁，清理不能越过尚未提交的上传；任何已登记版本的文件都保留，包括失败和被替代版本。数据库不可用时停止清理。它是本包完整孤立源文件的管理入口，不代替下文C的已登记向量生命周期清理。
 
 定向检查：
 
@@ -296,7 +296,7 @@ uv run --env-file .env --no-sync python scripts/check_documents.py
 
 ## 本地轻量 Embedding（B.3）
 
-这是独立的模型准备/编码基础，使用 `BAAI/bge-small-zh-v1.5` 的固定 revision，输出归一化 512 维向量。本步只实现 CPU；M3 仍只有预设，尚未准备。文档上传仍为 pending，解析/分块、Milvus、正式 Worker 和发布尚未接入。
+这是独立的模型准备/编码基础，使用 `BAAI/bge-small-zh-v1.5` 的固定 revision，输出归一化 512 维向量。本步只实现 CPU；M3 仍只有预设，尚未准备。本节CLI仍只做独立模型准备/检查；正式任务链路见下文C.1–C.3。
 
 在 MiniMew 目录执行：
 
@@ -346,7 +346,7 @@ uv run --no-sync pytest -q tests/test_embeddings.py
 
 ## 文档解析与分块预览（B.1/B.2）
 
-已接入真实 Markdown/TXT → 原文定位 → 标题上下文分块 → 现有 CPU 编码 Adapter。该模块尚未接入文档 Job 消费或 Milvus，上传仍为 pending；本地预览不会登记文档/版本、改变 current 或写数据库。
+已接入真实 Markdown/TXT → 原文定位 → 标题上下文分块 → 现有 CPU 编码 Adapter。正式Worker现已复用该模块处理上传任务；本地预览入口本身仍不会登记文档/版本、改变current或写数据库。
 
 使用前按上一节准备轻量模型和 embedding extra。新设备仍需先按锁安装依赖；markdown-it-py 已直接声明，不依赖模型库的传递安装。
 
@@ -385,7 +385,7 @@ uv run --no-sync pytest -q tests/test_document_chunking.py
 
 ## 候选向量索引与检索观察（B.4/B.5）
 
-已有真实 Milvus 候选写入、精确 manifest 核验和受控 top-k 检查。没有接入持久 Index Job 消费或发布；上传仍 pending，检查结果明确 `published=false`。正式问答入口尚未开放候选查询。
+已有真实 Milvus 候选写入、精确 manifest 核验和受控 top-k 检查。本节候选CLI独立于正式Index Job，检查结果仍明确 `published=false`；正式上传消费/发布见下文C.1–C.3。正式问答入口尚未开放候选查询。
 
 在 MiniMew 目录执行：
 
@@ -439,6 +439,98 @@ uv run --no-sync pytest -q tests/test_vector_store.py
 ```
 
 本包不拥有正式发布或租约领取；C 将把每次执行资格、候选产物登记和 current 切换接入持久事务。`VerifiedCandidate` 只是核验回执，不是用户授权凭据或 published 状态。实际结果和下一步范围见第四章与交接。
+
+## 持久索引Worker与发布（C.1–C.3）
+
+已有正式上传→持久Job→独立Worker→解析/分块/CPU编码→Milvus核验→原子发布链路。
+上传返回的202仍表示已接收；只有Job查询为`succeeded`、Document的current指向该版本才算发布。
+Worker不随API启动，不创建Celery/RabbitMQ队列，也不在HTTP里运行模型。
+
+在MiniMew根目录、已准备轻量模型及独立Milvus后，另开终端运行：
+
+```powershell
+uv sync --dev --extra embedding --extra vector --locked
+uv run --env-file .env --no-sync alembic upgrade head
+docker compose --profile vector up -d --no-deps --pull never milvus
+# 先核对目标DB、源目录及待处理任务；本命令会真实消费该库的持久文档任务。
+uv run --env-file .env --no-sync python -m minimew.documents.worker
+# 调试时最多处理一个构建及一个到期清理任务后退出：
+uv run --env-file .env --no-sync python -m minimew.documents.worker --once
+```
+
+没有缓存镜像的新设备先显式pull，缺轻量权重先用Embedding章节的prepare；Worker本身只读本地缓存，缺失会在领取前失败，不隐式下载。API与Worker必须连接相同PG、源目录和Milvus数据。不要把本项目Worker指向SuperMew的数据。Ctrl+C停止领取，已在途阶段返回后完成当前工作；强制杀进程后由租约过期恢复，不宣称同步模型能被硬取消。
+
+默认每进程一个在途构建，另有独立异步心跳。`MINIMEW_INDEX_POLL_SECONDS=1`、`MINIMEW_INDEX_LEASE_SECONDS=30`、`MINIMEW_INDEX_MAX_ATTEMPTS=5`、`MINIMEW_INDEX_JOB_TIMEOUT_SECONDS=600`；已有.env可沿用默认值，不必重写Secret。Embedding与向量写入分别使用`MINIMEW_EMBEDDING_BATCH_SIZE`和`MINIMEW_VECTOR_BATCH_SIZE`。新构建尝试采用独立namespace；不是把旧owner身份重新交给新Worker。
+
+持久状态由PG保存，模型/向量SDK在受控线程执行。每次向量RPC与该attempt清理共用advisory锁，并重新核对资格，防止删除后迟到写入；只在单个有期限的RPC中占用专用锁事务，不持Document/Job业务行锁，不把模型计算包入数据库事务。跨存储步骤不伪装成整体可回滚事务。
+
+- `running`构建尚未确认staged就退出：重新领取后退休旧attempt，新namespace重建；旧范围由持久清理处理。
+- `staged`已经持久保存原清单并核验：重新领取、读回原清单、重验原向量，再发布；不重新分块或编码。缺清单或核验不符明确失败，不倒造预期。
+- 暂时故障按DB时钟设置下一次重试；确定性失败为failed，预算耗尽为dead_letter。失去资格只停止本地交付；不写终态或在finally乱删。
+- 发布事务一起处理current、版本/Job终态与清理登记；提交回包丢失再查原持久资格，成功的Job不会被改回失败。
+- 新版发布后旧向量保留1小时；内部读取scope有效55分钟并检查到期，供已经取得旧scope的请求完成。新scope只选择用户当前已发布版本，不提供候选HTTP入口。
+- 清理只删除已退休的精确attempt向量并强一致读回为空；PG清单/分块账本及已登记source继续保留用于审计/定位。cleanup complete不表示删除整个Document或源文件。
+
+清理dead-letter须由操作员核对对应artifact后显式重排，不恢复文档发布资格：
+
+```powershell
+uv run --env-file .env --no-sync python -m minimew.documents.worker --requeue-cleanup "ARTIFACT_UUID"
+```
+
+`index_worker_heartbeats`记录Worker身份、支持的fingerprint、DB时间和running/stopped。现有`/health/ready`仍仅证明PG连接；模型、Milvus和Worker可用性不能由该接口推定。当前支持轻量CPU；M3未提供运行能力或切换UI。
+
+| 源码 | 职责 |
+| --- | --- |
+| [catalog.py](src/minimew/documents/catalog.py) | 上传预留/幂等/归属；新上传覆盖候选时同事务退休旧产物 |
+| [jobs.py](src/minimew/documents/jobs.py) | claim/lease/fence、进度、清单登记、staged、发布CAS与重试/终态的短事务 |
+| [artifacts.py](src/minimew/documents/artifacts.py) | 冻结清单与分块的序列化/完整性校验，退休与清理入账 |
+| [worker.py](src/minimew/documents/worker.py) | 独立进程、CPU/SDK线程、心跳、恢复与有界调度；复用既有B构建/Vector模块 |
+| [index_cleanup.py](src/minimew/documents/index_cleanup.py) | cleanup独立租约/fence、重放、失败/重排；不删除source |
+| [retrieval.py](src/minimew/documents/retrieval.py) | 同一Catalog快照下按用户取得published scope，复用Vector查询；还不是Agent Tool |
+| [0012迁移](migrations/versions/0012_index_artifacts_publication_worker.py) | 三张新表、重试字段、staged重领和不可变产物guard；保留0011数据 |
+
+定向重现（需要本机PG；真实进程项另外需要已准备模型和Milvus）：
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_indexing_pg.py tests/test_indexing_migration.py
+uv run --no-sync pytest -q tests/test_documents.py tests/test_vector_store.py
+uv run --env-file .env --no-sync python scripts/check_indexing.py
+```
+
+PG故障测试使用隔离临时库和受控编码/向量backend，真实进程检查走正式API和独立Worker入口：7块发布、餐费检索定位原版本、错误新版不替换旧版；结束精确清理自有scope/临时库，不删除整个集合。报告为忽略的`.artifacts/indexing-process-check.json`。C.1–C.3已将开发库升级0012并核对旧行hash；C.4/C.5未写开发数据，未自动常驻消费。文档UI/浏览器已在下节交付，知识库回答留第五章；详见[本包记录](chapters/04-文档入库与发布.md#c1c3-后端闭环实施记录2026-11-11)。
+
+## 文档工作区（C.4/C.5）
+
+启动/重启新版API以加载`latest_job`文档查询投影，按上节另起索引Worker，再启动前端。登录后点击主导航“文档”：
+
+1. “上传新文档”创建独立Document；只接收非空UTF-8 Markdown/TXT，最大5 MiB。
+2. 从目录选择文档，“上传新版”使用同一Document身份；文件名相同不会自动匹配为更新。
+3. “当前可用版本”显示已发布知识，“最近构建”显示最近一次Job；新版失败后两者同时保留，刷新仍能恢复。
+4. 构建中定时读取原Job与文档指针，显示阶段/片段进度；staged是待发布。进度查询失败显示上次结果，可手动重试；上传回包不明确时重试同一意图使用原幂等键。
+
+页面支持分页、账号隔离、离页停止查询和手机布局；Access Token仍只在内存。冻结模型信息来自该版本，当前支持轻量CPU，M3明确尚未支持；静态能力说明不代表Worker在线。知识库回答与完整模型重建切换属于后续阶段。
+
+代码入口是[页面](frontend/src/views/DocumentsView.vue)、[业务store](frontend/src/stores/documents.ts)、[响应解析](frontend/src/documents.ts)、[API查询投影](src/minimew/documents/catalog.py)。版本/Job事实仍在PG，store不是第二套持久目录。
+
+本包定向重现：
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_document_projection_pg.py tests/test_documents_pg.py
+uv run --no-sync pytest -q tests/test_documents.py
+uv run --env-file .env --no-sync python scripts/check_documents_frontend.py
+```
+
+前端目录中：
+
+```powershell
+npm run test -- src/documents.spec.ts src/stores/documents.spec.ts
+npm run typecheck
+npm run build
+```
+
+真实浏览器检查使用独立临时PG、源目录、API与实际CPU/Milvus Worker进程，不连接开发库任务；只有明确启用该脚本才执行真实文档E2E。脚本复用正式入口，测试停止适配在模型预热后接入，避免本机Windows NumPy导入时与阻塞stdin线程冲突。结束停止自有进程、精确删除测试scope并回收临时库。运行报告在`.artifacts/document-browser-*/report.json`，截图在`.impeccable/review/`，不属于业务数据或生产容量证明。
+
+第四章完整[总结](chapters/04-文档入库与发布.md#结章文字总结2026-11-11)与[代码职责框架](chapters/04-文档入库与发布.md#本章结束时的代码框架2026-11-11)已保存；实际106个本包用例与前包历史结果分开记录。第五章再把已发布检索接入Agent/Tool/Evidence和引用回答。
 
 ## 对话接口
 

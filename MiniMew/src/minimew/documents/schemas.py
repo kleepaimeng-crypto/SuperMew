@@ -27,6 +27,7 @@ class DocumentResponse(PublicModel):
     current_version_id: UUID | None
     pending_version_id: UUID | None
     created_at: datetime
+    latest_job: "IndexJobResponse | None" = None
 
 
 class DocumentPage(BaseModel):

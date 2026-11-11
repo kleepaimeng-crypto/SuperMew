@@ -420,6 +420,7 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      latest_job?: components["schemas"]["IndexJobResponse"] | null;
     };
     /** EmbeddingProfile */
     EmbeddingProfile: {
