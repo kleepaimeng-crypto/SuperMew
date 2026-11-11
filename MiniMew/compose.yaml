@@ -34,6 +34,32 @@ services:
       timeout: 3s
       retries: 15
 
+  milvus:
+    profiles: [vector]
+    image: milvusdb/milvus:v3.0.0@sha256:49371c30af46b1013e4d3e0b980e691d81376d69cdbe1b372725baf1d7255862
+    command: [milvus, run, standalone]
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/minimew-etcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+    ports:
+      - "127.0.0.1:${MINIMEW_VECTOR_PORT:-59530}:19530"
+    volumes:
+      - milvus_data:/var/lib/milvus
+      - ./docker/milvus-etcd.yaml:/milvus/configs/minimew-etcd.yaml:ro
+      - ./docker/milvus-user.yaml:/milvus/configs/user.yaml:ro
+    mem_limit: 3g
+    cpus: 2
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9091/healthz]
+      interval: 5s
+      start_period: 90s
+      timeout: 3s
+      retries: 24
+
 volumes:
   postgres_data:
   redis_data:
+  milvus_data:

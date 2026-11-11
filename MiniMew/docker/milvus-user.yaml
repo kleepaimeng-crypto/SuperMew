@@ -1,0 +1,5 @@
+# MiniMew 小样例，独立卷。CPU/内存上限由 Compose 明确控制。
+common:
+  storageType: local
+log:
+  level: warn

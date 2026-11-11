@@ -4,6 +4,8 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 本目录包含独立的 FastAPI 后端、Vue 聊天前端、文档入库基础与学习文档，使用自己的依赖锁文件和虚拟环境，不接入上级 SuperMew 的执行链。学习进度统一见交接文档。
 
+换设备先读 [当前检查点与续接决定](AGENT_HANDOFF.md#当前检查点) 和 [换设备与同步](AGENT_HANDOFF.md#换设备与同步)：其中保存已确认选择、下一步范围、恢复 Agent 的提示及本机配置/数据的迁移边界。具体代码职责见对应章节实施记录，不依赖旧聊天或本机 memory。
+
 ## 运行最小后端
 
 需要 Python 3.12、uv 和正在运行的 Docker Desktop（Linux containers）。在 PowerShell 中进入本目录后运行：
@@ -291,6 +293,152 @@ uv run --env-file .env --no-sync python scripts/check_documents.py
 ```
 
 后者使用自有随机临时 PG 库和测试文件，覆盖真实 API、并发、提交失败、旧数据升级以及既有 Thread/Run 回归，结束时清理临时库，不向开发库写测试文档，不调用真实模型/Redis/Milvus。可在命令后传具体 pytest 文件/筛选参数。实际本轮分组结果与限制见 [第四章工程包 A 记录](chapters/04-文档入库与发布.md#工程包-a-实施记录2026-11-09)。
+
+## 本地轻量 Embedding（B.3）
+
+这是独立的模型准备/编码基础，使用 `BAAI/bge-small-zh-v1.5` 的固定 revision，输出归一化 512 维向量。本步只实现 CPU；M3 仍只有预设，尚未准备。文档上传仍为 pending，解析/分块、Milvus、正式 Worker 和发布尚未接入。
+
+在 MiniMew 目录执行：
+
+```powershell
+# 可选依赖：现有普通后端命令不要求安装模型库。
+uv sync --dev --extra embedding --locked
+# 显式联网，只准备固定版本所需的配置、Tokenizer 和 safetensors。
+uv run --no-sync python -m minimew.embeddings.cli prepare
+# 只核对本地文件，不代表真实编码验证通过。
+uv run --no-sync python -m minimew.embeddings.cli status
+# 只读本地模型；真实 CPU 编码和固定小样例的相似排序检查。
+uv run --no-sync python -m minimew.embeddings.cli check
+```
+
+默认不需要 `.env`、数据库、Redis 或 DeepSeek 密钥。若将自定义缓存参数放入本机 `.env`，在上述 `uv run` 中显式加 `--env-file .env`；程序本身不隐式读取 dotenv。支持的运行参数：
+
+```ini
+MINIMEW_EMBEDDING_CACHE_DIR=data/models
+MINIMEW_EMBEDDING_BATCH_SIZE=4
+```
+
+相对缓存路径锚定 MiniMew 根目录，与当前终端目录无关。模型文件位于该目录的 Hugging Face 固定 revision 快照内，不进入 Git；新设备需要重新 `prepare`，或者另外传输完整缓存。`uv sync --dev --locked` 不启用 embedding extra，会移除其专用依赖；要运行模型需使用带 `--extra embedding` 的同步命令。当前 Windows/Linux torch 来源限定为官方 CPU index，没有 CUDA 运行承诺，也不要求安装系统 CUDA Toolkit。
+
+`prepare` 不加载模型，只确认所需文件齐全；`status` 返回 `files_present` 和 `encoding_verified: false`；`check` 才加载本地权重并编码三段正文和两个问题，返回维度、排序、相似分数及耗时，预期排序不符则退出非零。这只是固定 smoke，不是正式知识库检索、模型质量评测或已经发布的文档索引。Windows 未启用符号链接时 Hub 可用普通文件缓存，不需要为此修改系统权限。
+
+正常加载只用本地固定快照和 safetensors，禁止远程代码，不会在缺文件时改用其他模型或下载补齐。公开错误为稳定 code：`EMBEDDING_NOT_PREPARED`（先准备）、`EMBEDDING_DEPENDENCIES_UNAVAILABLE`（先安装 extra）、`EMBEDDING_UNSUPPORTED_PROFILE`、`EMBEDDING_MODEL_MISMATCH`、`EMBEDDING_INPUT_TOO_LONG`、`EMBEDDING_INVALID_INPUT/OUTPUT`、`EMBEDDING_LOAD_FAILED/ENCODING_FAILED/PREPARATION_FAILED/CACHE_UNAVAILABLE`。缺模型、编码失败不返回空检索结果。
+
+代码职责：
+
+| 文件 | 职责 |
+| --- | --- |
+| [embeddings/config.py](src/minimew/embeddings/config.py) | 独立的缓存/批量运行配置，不要求 API 认证和数据库凭据 |
+| [embeddings/artifacts.py](src/minimew/embeddings/artifacts.py) | 唯一显式下载入口、固定模型/revision 白名单及完整本地文件检查 |
+| [embeddings/adapter.py](src/minimew/embeddings/adapter.py) | 显式加载 CPU 模型；正文/问题编码、特殊 Token/前缀长度、批量和向量校验；同步接口 |
+| [embeddings/cli.py](src/minimew/embeddings/cli.py) | prepare/status/check，复用同一 Adapter，不调用聊天 Provider |
+| [test_embeddings.py](tests/test_embeddings.py) | 固定假 Encoder/Tokenizer 的离线行为验证，不下载/加载真实权重 |
+
+正文的标题拼接由后续 chunk 构造方负责，Adapter 不猜测标题和来源；问题按冻结预设增加查询 instruction，两者不能混用。每批先按真实 Tokenizer 检查完整输入，包含特殊 Token；超限明确失败，不静默截断。每行必须为 512 个有限数值且范数接近 1，失败整次调用不返回部分成功结果。对象加载一次后可重复编码，不在每个 chunk 上重新加载；未来异步调用须放进受控线程，不能直接阻塞 API 事件循环。
+
+离线验证命令：
+
+```powershell
+uv run --no-sync pytest -q tests/test_embeddings.py
+```
+
+当前实现与真实检查记录见 [第四章](chapters/04-文档入库与发布.md)；实际进度和授权仍以交接为准。
+
+## 文档解析与分块预览（B.1/B.2）
+
+已接入真实 Markdown/TXT → 原文定位 → 标题上下文分块 → 现有 CPU 编码 Adapter。该模块尚未接入文档 Job 消费或 Milvus，上传仍为 pending；本地预览不会登记文档/版本、改变 current 或写数据库。
+
+使用前按上一节准备轻量模型和 embedding extra。新设备仍需先按锁安装依赖；markdown-it-py 已直接声明，不依赖模型库的传递安装。
+
+```powershell
+# 显示每块的原文、编码文本、章节/来源位置、稳定 ID、hash 和 Token 数。
+uv run --no-sync python -m minimew.documents.preview examples/rag/expense-policy.md
+# 再用已有 Adapter 对这些片段做真实 CPU 编码，输出向量数量和维度。
+uv run --no-sync python -m minimew.documents.preview examples/rag/expense-policy.md --encode
+# 固定样例 + BOM/CRLF 长段落，检查覆盖、预算、稳定身份和真实编码。
+uv run --no-sync python scripts/check_chunking.py
+```
+
+也可将示例路径换成自己的 UTF-8 `.md`/`.txt` 文件（最多 5MiB）；检查入口只读源文件。运行参数来自上一节的 `MINIMEW_EMBEDDING_CACHE_DIR` 等环境变量，自定义值保存在 `.env` 时需显式加 `--env-file .env`。预览身份是确定性的本地样例 UUID，并标明 `mode=local_preview`、`registered_version=false`，不能当作数据库中的正式版本或权限证明。
+
+原文定位单位是 UTF-8 原始解码字符串的 **Unicode code point**：`start/end` 为 0-based `[start,end)`，行号为 1-based 且包含末行。原文不做 BOM 去除、换行归一化或 Token 解码重建；BOM 不作为正文编码，Markdown 解析器的行范围映射回原始 CRLF/CR/LF。字符位置不是 UTF-8 字节偏移，也不是浏览器 UTF-16 下标；后续跨端引用应按明确单位换算或使用行号。`source_text` 恒等于该原文位置的切片，`embedding_text` 单独添加所属标题路径，不能拿后者的位置回指源文。
+
+Markdown 使用 CommonMark 顶层结构并启用普通管道表格，不渲染 HTML、执行代码或读取链接；TXT 按空白行分段，不猜标题。标题仅作为上下文，段落/列表优先按结构组织，长段落先沿句子/换行，再沿 Token 原文位置拆；最终输入计入标题和特殊 Token，满足 384 预算。同节 overlap 最多 48 个正文 Token，必要时减少以保证前进；不跨章节、代码块或表格机械重叠。代码及普通表格保持完整，嵌套代码/表格所在外层结构也按完整块处理。
+
+代码/表格超预算返回 `DOCUMENT_BLOCK_TOO_LARGE`，标题自身超预算返回 `DOCUMENT_TITLE_TOO_LONG`，仅标题无正文返回 `DOCUMENT_NO_CONTENT`；不会丢弃超长部分、移除标题后继续或假称分块成功。来源缺失/损坏返回 `DOCUMENT_SOURCE_UNAVAILABLE`，原始内容 hash 不匹配返回 `DOCUMENT_SOURCE_HASH_MISMATCH`。配置/Tokenizer 身份不匹配返回 `DOCUMENT_BUILD_CONFIG_MISMATCH`。这些失败不等于“知识库没有知识”。
+
+chunk 身份覆盖用户/知识库/文档/版本、源 hash、构建 fingerprint、序号、位置与正文/编码文本 hash。相同身份/输入/配置重复构建结果稳定；不同版本、归属或配置不混用。章节记录保存父节关系及原文范围；**当前不会自动把父节适用条件或远处例外拼进每个子块**，后续检索仍需按预算补足上下文。
+
+| 源码 | 职责 |
+| --- | --- |
+| [documents/parsing.py](src/minimew/documents/parsing.py) | 保留原文，识别块/章节和父节，映射准确位置 |
+| [documents/chunking.py](src/minimew/documents/chunking.py) | 版本/构建身份、结构优先拆分、同节重叠、稳定产物；`build_version_chunks` 复用 SourceStore 的完整性读取 |
+| [embeddings/tokenizer.py](src/minimew/embeddings/tokenizer.py) | 固定本地 Tokenizer 的完整计数与字符对齐，不加载权重或下载模型 |
+| [documents/preview.py](src/minimew/documents/preview.py) | 只读本地样例预览，复用同一构建模块及编码 Adapter |
+| [check_chunking.py](scripts/check_chunking.py)、[测试](tests/test_document_chunking.py) | 显式真实 CPU 检查，与固定假 Tokenizer 的离线边界测试分别记录 |
+
+```powershell
+uv run --no-sync pytest -q tests/test_document_chunking.py
+```
+
+本轮实际结果见 [第四章实施记录](chapters/04-文档入库与发布.md)，进度与下一工作包授权见交接。
+
+## 候选向量索引与检索观察（B.4/B.5）
+
+已有真实 Milvus 候选写入、精确 manifest 核验和受控 top-k 检查。没有接入持久 Index Job 消费或发布；上传仍 pending，检查结果明确 `published=false`。正式问答入口尚未开放候选查询。
+
+在 MiniMew 目录执行：
+
+```powershell
+uv sync --dev --extra embedding --extra vector --locked
+# 当前设备镜像已缓存，明确不拉新镜像，只启动本项目这个服务。
+docker compose --profile vector up -d --no-deps --pull never milvus
+docker compose --profile vector ps milvus
+# 如前面的轻量模型尚未准备，先执行 Embedding 章节的 prepare。
+uv run --env-file .env --no-sync python -m minimew.vector_store.cli check
+```
+
+新设备没有缓存时，可以先显式执行 `docker compose --profile vector pull milvus` 获取锁定镜像，再启动。本机采用 Milvus 3.0.0 的固定镜像摘要和 PyMilvus 3.0.0，未安装 SDK 的模型/Lite extra。后续同步环境时必须同时保留 `--extra embedding --extra vector`；省略其中一个会移除其专用依赖。普通 API 不依赖 SDK 连接，模块导入不启动服务或加载模型。
+
+Milvus 为本项目独立容器 `minimew-milvus-1`、独立卷 `minimew_milvus_data`，仅暴露 `127.0.0.1:59530`。使用内嵌 etcd 和本地存储，不启动旧 Milvus/MinIO/etcd，也不挂载旧项目数据；etcd 和健康端口不映射宿主机。Compose 将本服务限制为 2 CPU/3GiB，供当前小样例验收；这不是生产容量配置。当前开发容器无认证且仅本机访问；有需要时单独停止本服务：
+
+```powershell
+docker compose --profile vector stop milvus
+```
+
+运行配置：
+
+```ini
+MINIMEW_VECTOR_PORT=59530
+MINIMEW_VECTOR_TIMEOUT_SECONDS=15
+MINIMEW_VECTOR_BATCH_SIZE=4
+MINIMEW_VECTOR_TOKEN=
+```
+
+CLI 本身不依赖 DB/Redis/回答模型密钥；`--env-file .env` 用于显式读取本机运行参数，使用默认值时可省略。令牌是 Secret，只用于客户端连接，不进入 manifest/正文/输出。不要将已停止旧容器的存在当作新服务连接成功，查看本项目健康状态后再执行 check。
+
+检查入口会用已有报销制度构建7块，先写2块，再以原定7块清单补齐/核验，重复同意图操作，并检查不同尝试/用户的隔离。它查询餐费、住宿及一个不相关问题，输出 manifest、原文位置和 top-k 分数。最后只清理本次自有候选记录，保留集合/schema和其他范围，`cleanup=complete` 后示例记录不再保留；这不影响正常 Adapter 的持久写入能力。检查不会登记虚假 Document Version、改 Job/current 或访问旧业务集合。报告可保存到本机忽略的 `.artifacts/`，不能当作已发布目录。
+
+每行保存512维向量、原文/编码文本和来源元数据。Collection 名称由固定编码空间派生，字段/维度/长度、动态字段、描述和 FLAT/COSINE 必须符合正式定义；不符明确失败，不自动删除重建。稳定 chunk ID 与物理主键分开：物理主键额外包含候选尝试，旧尝试的迟到写入/清理不能碰新尝试。manifest 在写入前冻结每行预期身份与正文/向量内容 hash，精确读回用 Strong 一致性分页检查，不能用 top-k 或仅条数代替；重试会先核对已有记录，只补缺失，不覆盖冲突内容。
+
+RPC 使用明确的 gRPC deadline并禁用 transport retry；PyMilvus 每调用显式 `retry_times=0`、`retry_on_rate_limit=false`、`timeout=None`，deadline由channel service config提供。原因是固定SDK的numeric timeout会优先用时间作为重试预算，单独传 retry_times=0 不足以关闭它；单次失败只抛稳定错误，不叠加Adapter重试。加载状态的正常轮询有界。查询必须使用核验回执及兼容编码配置，过滤范围由结构化身份生成，不接受任意集合/filter输入。
+
+主要错误：`VECTOR_COLLECTION_MISMATCH`、`VECTOR_BUILD_MISMATCH`、`VECTOR_MANIFEST_MISMATCH`、`VECTOR_INVALID_VECTOR/QUERY/RESULT`、`VECTOR_PAYLOAD_TOO_LARGE`、`VECTOR_PARTIAL_WRITE`、`VECTOR_UNAVAILABLE`、`VECTOR_LOAD_TIMEOUT`、`VECTOR_DELETE_INCOMPLETE`。网络/存储失败明确报错；只有正常搜索为空才返回空列表。top-k通常仍会返回不相关片段，返回结果不等于足够回答，之后章节再接证据判断/拒答，不把相似分数当概率。
+
+| 源码 | 职责 |
+| --- | --- |
+| [manifest.py](src/minimew/vector_store/manifest.py) | 写前预期清单、版本/尝试范围、物理主键与 float32/正文内容校验 |
+| [adapter.py](src/minimew/vector_store/adapter.py) | stage/verify/search/delete_candidate 唯一业务接口；缺失补齐、冲突拒绝、回执和范围校验 |
+| [milvus.py](src/minimew/vector_store/milvus.py) | PyMilvus连接、严格集合初始化/校验、Strong读回、FLAT/COSINE和RPC策略 |
+| [config.py](src/minimew/vector_store/config.py) | 独立本机连接、Secret、RPC预算和批量运行参数 |
+| [cli.py](src/minimew/vector_store/cli.py) | 复用 preview 的结构化构建、轻量编码及同一候选Adapter，检查后精确清理 |
+| [test_vector_store.py](tests/test_vector_store.py) | 离线假backend与SDK假RPC，验证部分提交/丢响应/冲突/隔离/故障和零重试 |
+
+```powershell
+uv run --no-sync pytest -q tests/test_vector_store.py
+```
+
+本包不拥有正式发布或租约领取；C 将把每次执行资格、候选产物登记和 current 切换接入持久事务。`VerifiedCandidate` 只是核验回执，不是用户授权凭据或 published 状态。实际结果和下一步范围见第四章与交接。
 
 ## 对话接口
 
