@@ -13,11 +13,10 @@ from sqlalchemy.orm import aliased
 from minimew.conversations import ConversationNotFound, owned_thread, run_messages, run_response
 from minimew.execution.context import build_messages
 from minimew.execution.journal import append_event
+from minimew.execution.messages import MAX_OUTPUT_CHARS, valid_text
 from minimew.execution.provider import (
     MAX_DELTA_CHARS,
-    MAX_OUTPUT_CHARS,
     ProviderRequest,
-    valid_text,
 )
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.model_control import snapshot_for_run

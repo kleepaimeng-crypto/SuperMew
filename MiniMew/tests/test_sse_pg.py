@@ -17,6 +17,7 @@ from test_runs_pg import account
 from test_runs_pg import client as client
 
 from minimew.app import create_app
+from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta
 from minimew.execution.service import RunExecutor
 from minimew.security import AUDIENCE, ISSUER
@@ -75,7 +76,7 @@ def test_http_incremental_before_terminal_disconnect_and_explicit_cursor_replay(
                 published.set()  # 执行器已提交该 delta，才会索取 Provider 下一项。
                 await release.wait()
                 yield ProviderDelta("晴朗")
-                yield ProviderCompleted("今天晴朗。")
+                yield ProviderCompleted(ModelTurn("text", "今天晴朗。"))
 
             provider = FakeProvider(answer)
             task = None

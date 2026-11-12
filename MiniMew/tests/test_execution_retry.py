@@ -9,6 +9,7 @@ import pytest
 from execution_helpers import FakeProvider
 from test_deepseek import request
 
+from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta, ProviderFailure
 from minimew.execution.service import RunExecutor
 
@@ -44,7 +45,7 @@ def test_retry_reuses_claim_request_and_snapshot(model_configuration):
             if calls == 1:
                 raise ProviderFailure(retryable=True)
             yield ProviderDelta("answer")
-            yield ProviderCompleted("answer")
+            yield ProviderCompleted(ModelTurn("text", "answer"))
 
         provider = FakeProvider(answer)
         assert await execute(repo, provider) == "succeeded"
@@ -96,7 +97,7 @@ def test_storage_failure_is_not_model_retry(model_configuration):
 
         async def answer(data):
             yield ProviderDelta("body")
-            yield ProviderCompleted("body")
+            yield ProviderCompleted(ModelTurn("text", "body"))
 
         provider = FakeProvider(answer)
         with pytest.raises(RuntimeError, match="database failed"):
@@ -150,7 +151,7 @@ def test_retry_wait_and_second_attempt_share_original_deadline(model_configurati
             if calls == 1:
                 raise ProviderFailure(retryable=True)
             await asyncio.sleep(0.6)
-            yield ProviderCompleted("late")
+            yield ProviderCompleted(ModelTurn("text", "late"))
 
         provider = FakeProvider(answer)
         assert await execute(repo, provider) == "failed"

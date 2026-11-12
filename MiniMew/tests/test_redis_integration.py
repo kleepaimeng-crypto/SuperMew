@@ -20,6 +20,7 @@ from test_runs_pg import client as client
 from test_sse import event
 
 from minimew.app import create_app
+from minimew.execution.messages import ModelTurn
 from minimew.execution.notifications import RedisNotifications
 from minimew.execution.outbox import OutboxPublisher, notification_lifespan
 from minimew.execution.provider import ProviderCompleted, ProviderDelta
@@ -168,7 +169,7 @@ def test_http_two_subscriptions_wake_before_poll_and_disconnect_is_independent(
                     yield ProviderDelta("今天")
                     partial.set()
                     await release.wait()
-                    yield ProviderCompleted("今天晴朗。")
+                    yield ProviderCompleted(ModelTurn("text", "今天晴朗。"))
 
                 task = None
                 first = browser.stream("GET", path(thread, run), headers=headers)
@@ -235,7 +236,7 @@ def test_http_redis_lag_and_untrusted_copy_still_replay_whole_journal(
 
                     async def answer(request):
                         yield ProviderDelta("正文来自 PostgreSQL")
-                        yield ProviderCompleted("最终正文来自 PostgreSQL")
+                        yield ProviderCompleted(ModelTurn("text", "最终正文来自 PostgreSQL"))
 
                     assert (
                         await RunExecutor(repo, FakeProvider(answer)).execute(owner, thread, run)

@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from test_deepseek import request
 from test_execution_retry import Repository, execute
 
+from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted
 from minimew.execution.repository import CancellationRequested, OwnershipLost
 from minimew.generated.run_event_v1 import EVENT_ADAPTER
@@ -61,7 +62,7 @@ def test_monitor_failure_stops_model_and_keeps_failure_kind(model_configuration,
         async def answer(data):
             try:
                 await asyncio.Event().wait()
-                yield ProviderCompleted("never")
+                yield ProviderCompleted(ModelTurn("text", "never"))
             finally:
                 closed.set()
 
@@ -102,7 +103,7 @@ def test_monitor_and_save_storage_failure_does_not_invent_terminal(model_configu
 
         async def answer(data):
             await asyncio.Event().wait()
-            yield ProviderCompleted("never")
+            yield ProviderCompleted(ModelTurn("text", "never"))
 
         provider = FakeProvider(answer)
         with pytest.raises(SQLAlchemyError, match="private save failure"):
@@ -135,7 +136,7 @@ def test_model_wait_cannot_extend_absolute_deadline_after_swallowed_cancel(model
                     await asyncio.Event().wait()
                 except asyncio.CancelledError:
                     await asyncio.Event().wait()
-                yield ProviderCompleted("late")
+                yield ProviderCompleted(ModelTurn("text", "late"))
             finally:
                 closed.set()
 

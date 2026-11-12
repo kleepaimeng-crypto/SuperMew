@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -14,11 +14,25 @@ logger = logging.getLogger(__name__)
 
 class RunDispatcher:
     def __init__(
-        self, repository, provider, *, scan_seconds=0.5, max_active=2, cancellation_poll=0.5
+        self,
+        repository,
+        provider,
+        *,
+        scan_seconds=0.5,
+        max_active=2,
+        cancellation_poll=0.5,
+        registry=None,
+        capabilities=frozenset(),
     ):
         self.repository = repository
         self.executor = (
-            RunExecutor(repository, provider, cancellation_poll=cancellation_poll)
+            RunExecutor(
+                repository,
+                provider,
+                cancellation_poll=cancellation_poll,
+                registry=registry,
+                capabilities=capabilities,
+            )
             if provider is not None
             else None
         )
@@ -70,6 +84,10 @@ class RunDispatcher:
 
 @asynccontextmanager
 async def execution_lifespan(sessions, settings):
+    from minimew.execution.tools import ToolRegistry
+    from minimew.knowledge import CAPABILITY
+    from minimew.knowledge_runtime import knowledge_lifespan
+
     provider = None
     if settings.model_credentials_available:
         from minimew.execution.deepseek import DeepSeekProvider
@@ -77,28 +95,32 @@ async def execution_lifespan(sessions, settings):
         provider = DeepSeekProvider(settings.deepseek_api_key)
     else:
         logger.warning("execution_disabled code=MODEL_CONFIGURATION_UNAVAILABLE")
-    dispatcher = RunDispatcher(
-        ExecutionRepository(sessions),
-        provider,
-        scan_seconds=settings.execution_scan_seconds,
-        max_active=settings.execution_max_active,
-        cancellation_poll=settings.cancellation_poll_seconds,
-    )
-    task = asyncio.create_task(dispatcher.run(), name="minimew-run-dispatcher")
+    async with AsyncExitStack() as stack:
+        knowledge = await stack.enter_async_context(knowledge_lifespan(sessions, settings))
+        dispatcher = RunDispatcher(
+            ExecutionRepository(sessions),
+            provider,
+            scan_seconds=settings.execution_scan_seconds,
+            max_active=settings.execution_max_active,
+            cancellation_poll=settings.cancellation_poll_seconds,
+            registry=ToolRegistry((knowledge.spec(),)) if knowledge is not None else None,
+            capabilities=frozenset({CAPABILITY}) if knowledge is not None else frozenset(),
+        )
+        task = asyncio.create_task(dispatcher.run(), name="minimew-run-dispatcher")
 
-    def report_failure(done):
-        if not done.cancelled() and done.exception() is not None:
-            logger.error("execution_dispatcher_stopped code=UNEXPECTED_DISPATCHER_ERROR")
+        def report_failure(done):
+            if not done.cancelled() and done.exception() is not None:
+                logger.error("execution_dispatcher_stopped code=UNEXPECTED_DISPATCHER_ERROR")
 
-    task.add_done_callback(report_failure)
-    try:
-        yield dispatcher
-    finally:
-        task.cancel()  # 先停止扫描和领取，再等待本实例的执行任务。
+        task.add_done_callback(report_failure)
         try:
-            await task
-        except asyncio.CancelledError:
-            if not task.cancelled():
-                raise
+            yield dispatcher
         finally:
-            await dispatcher.drain()
+            task.cancel()  # 先停止扫描/执行，再由ExitStack关闭知识资源。
+            try:
+                await task
+            except asyncio.CancelledError:
+                if not task.cancelled():
+                    raise
+            finally:
+                await dispatcher.drain()

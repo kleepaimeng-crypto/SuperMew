@@ -81,6 +81,10 @@ class MilvusBackend:
     def close(self) -> None:
         self.client.close()
 
+    def probe(self) -> None:
+        """只检查读取连接，不在API查询运行时创建或修复集合。"""
+        self._rpc(self.client.list_collections)
+
     def ensure_collection(self) -> None:
         from pymilvus import DataType
 

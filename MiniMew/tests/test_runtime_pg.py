@@ -19,6 +19,7 @@ from test_runs_pg import client as client
 
 from minimew.app import create_app
 from minimew.execution.dispatcher import RunDispatcher, execution_lifespan
+from minimew.execution.messages import ModelTurn
 from minimew.execution.outbox import notification_lifespan
 from minimew.execution.provider import ProviderCompleted, ProviderDelta, ProviderFailure
 from minimew.models import Run
@@ -74,7 +75,7 @@ def test_post_automatically_executes_and_sse_replays_with_real_redis(client, mon
             yield ProviderDelta("今天")
             await asyncio.sleep(0.1)
             yield ProviderDelta("很好")
-            yield ProviderCompleted("今天很好")
+            yield ProviderCompleted(ModelTurn("text", "今天很好"))
 
         provider = FakeProvider(answer)
         with serve_http(runtime_app(monkeypatch, provider)) as server:
@@ -117,7 +118,7 @@ def test_post_automatically_executes_and_sse_replays_with_real_redis(client, mon
 def test_same_thread_fifo_and_later_run_receives_previous_answer(client, monkeypatch):
     async def answer(data):
         await asyncio.sleep(0.08)
-        yield ProviderCompleted("answer:" + data.messages[-1].content)
+        yield ProviderCompleted(ModelTurn("text", "answer:" + data.messages[-1].content))
 
     provider = FakeProvider(answer)
     with serve_http(runtime_app(monkeypatch, provider)) as server:
@@ -143,7 +144,7 @@ def test_cross_thread_parallelism_is_bounded_per_instance(client, monkeypatch):
         peak = max(peak, active)
         try:
             await asyncio.sleep(0.25)
-            yield ProviderCompleted("answer")
+            yield ProviderCompleted(ModelTurn("text", "answer"))
         finally:
             active -= 1
 
@@ -266,7 +267,7 @@ def test_retry_persists_single_pair_and_terminal_event(client):
                 if count == 1:
                     raise ProviderFailure(retryable=True)
                 yield ProviderDelta("answer")
-                yield ProviderCompleted("answer")
+                yield ProviderCompleted(ModelTurn("text", "answer"))
 
             from minimew.execution.service import RunExecutor
 

@@ -15,6 +15,7 @@ from test_execution_pg import create_run, facts
 from test_runs_pg import account, submit
 from test_runs_pg import client as client
 
+from minimew.execution.messages import ModelTurn
 from minimew.execution.repository import CancellationRequested
 from minimew.execution.service import RunExecutor
 from minimew.models import EventOutbox, Message, Run, RunEventRecord
@@ -112,7 +113,7 @@ def test_no_new_output_cancel_stops_reading_even_if_provider_returns_late(client
                     await asyncio.Event().wait()
                 except asyncio.CancelledError:
                     if late:
-                        yield ProviderCompleted("late answer")
+                        yield ProviderCompleted(ModelTurn("text", "late answer"))
                     else:
                         raise
                 finally:
@@ -400,7 +401,7 @@ def test_cancel_during_backoff_never_starts_second_model_attempt(client):
             async def answer(data):
                 failed.set()
                 raise ProviderFailure(retryable=True)
-                yield ProviderCompleted("never")
+                yield ProviderCompleted(ModelTurn("text", "never"))
 
             provider = FakeProvider(answer)
             task = asyncio.create_task(

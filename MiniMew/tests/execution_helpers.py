@@ -5,6 +5,7 @@ from contextlib import aclosing, asynccontextmanager
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.database import create_engine
+from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted
 from minimew.execution.repository import ExecutionRepository
 from minimew.settings import Settings
@@ -22,7 +23,7 @@ class FakeProvider:
                 async for event in stream:
                     yield event
         else:
-            yield ProviderCompleted("answer:" + request.messages[-1].content)
+            yield ProviderCompleted(ModelTurn("text", "answer:" + request.messages[-1].content))
 
 
 @asynccontextmanager

@@ -6,6 +6,8 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 换设备先读 [当前检查点与续接决定](AGENT_HANDOFF.md#当前检查点) 和 [换设备与同步](AGENT_HANDOFF.md#换设备与同步)：其中保存已确认选择、下一步范围、恢复 Agent 的提示及本机配置/数据的迁移边界。具体代码职责见对应章节实施记录，不依赖旧聊天或本机 memory。
 
+理解整体设计先读[架构导读](ARCHITECTURE_GUIDE.md)：以三个协作系统串起运行进程、模块调用、数据归属、技术选择与后续连接点。教学按最新约定聚焦架构与模块关系，不再默认逐轮提简单场景或异常判断题。
+
 ## 运行最小后端
 
 需要 Python 3.12、uv 和正在运行的 Docker Desktop（Linux containers）。在 PowerShell 中进入本目录后运行：
@@ -659,13 +661,57 @@ uv run --no-sync python scripts/export_frontend_contract.py
 
 ### 流式输出与失败正文
 
-Provider 现在只有 `stream(request)` 一个异步流入口，逐批产出 `ProviderDelta(content)`，并在确认正常结束时产出一个 `ProviderCompleted(content)` 完整结果。执行器要求随后正常结束迭代；只有分片而没有明确完成、完成后继续输出、空白最终答案或非法分片，都以 `PROVIDER_INVALID_RESPONSE` 终结。`ProviderCompleted` 是内部调用协议，不是直接发送给前端的成功事件，最终结果仍需事务提交。
+Provider 只有 `stream(request)` 一个异步流入口。5.1 将内部完成结果升级为 `ProviderCompleted(ModelTurn(...))`：`kind="text"` 表示文本回合，`kind="tool_calls"` 表示结构化工具请求回合，后者不代表工具已执行或 Run 已完成。`ProviderRequest` 可携带不可变工具说明、assistant 调用以及按 `tool_call_id` 关联的工具结果；输入输出与预算由 [messages.py](src/minimew/execution/messages.py) 统一校验。
+
+无工具声明的普通聊天仍逐批产出 `ProviderDelta(content)`。工具模式先收齐整轮正文与参数碎片，校验完整 JSON 和结束原因后只返回一个回合结果，避免将中间文字或参数写入用户答案。5.2 已接入 Registry/Guardrail 和有界循环，5.3 已接入显式启用的knowledge_search；默认关闭知识能力的普通Run收到未声明工具的回合仍以 `PROVIDER_INVALID_RESPONSE` 失败。[5.1 实施记录](chapters/05-基础知识问答.md#51-实施记录2026-11-12) 保存内部协议的交付边界。
+
+执行器要求完成结果之后正常结束迭代；只有分片而没有明确完成、完成后继续输出、空白最终答案或非法分片，都以 `PROVIDER_INVALID_RESPONSE` 终结。`ProviderCompleted` 是内部调用协议，不是直接发送给前端的成功事件，最终结果仍需事务提交。
 
 每批正文最多 4096 字符，累计分片及最终答案各最多 100000 字符。每批追加都检查 Run 为 running、owner token 匹配和租约有效，持有 Thread → Run 锁，提交前再次检查资格。数据库还拒绝 pending/过期执行的分片、错误消息归属、畸形 payload 和超预算正文。每批是可由 Adapter 合并后的文本，不要求每个 token 单独提交；2.7 Adapter 将 SDK 的公开正文切分为受控分片。
 
 流式调用失败时，从同一 Run 的已提交分片按序恢复正文，保存到原 assistant Message，并在同一终结事务写入 failed 消息、message.completed(status=failed) 和 run.failed。过期回收也保留该前缀。分片事务回滚不会推进 sequence，也不会成为可补读正文；数据库故障不会被包装成模型错误。失败正文留在业务历史，但不进入后续模型的成功问答上下文。
 
 历史 API 可以读取失败正文和 failed 状态。“回答未完成”是第 3 章聊天 UI 根据状态显示的提示，后端不把提示混进正文。本步不改变现有前端交互，也不在默认开发环境自动注入 fake。
+
+### 工具注册与有界执行（5.2）
+
+[execution/tools.py](src/minimew/execution/tools.py) 定义不可变 ToolSpec/Registry、严格 ToolModel、Run-owned ToolContext 以及带 `tool-capability-and-resource-v1` policy identity 的 GuardrailDecision。参数/结果禁止额外字段和隐式类型转换，结果JSON最多12000字符；执行前根据服务端能力和资源谓词产生ALLOW/DENY决定。当前没有审批状态或持久工具审计，不冒充完整控制面；模型参数不能提供或扩大用户身份、能力。
+
+[RunExecutor](src/minimew/execution/service.py) 接收服务端显式注入的注册表和能力，默认两者为空。同一Run最多4次实际模型请求（包括重试）、6次串行工具调用，共用原绝对deadline。整轮先校验参数、权限、调用ID、上下文和剩余额度，再逐次检查执行资格、重新授权和调用；当前工具结果只放进本Run内存上下文，以原调用ID回传冻结模型，最终文本仍交原终结事务。模型重试只复用当前请求，不重跑已经成功的工具；工具无隐式重试。取消、过期owner、资格读取故障及吞取消的迟到返回均不能推进下一工具。
+
+工具参数/权限/执行/结果错误、Agent次数或总期限耗尽有明确稳定错误码，沿用 `run.failed`/`message.completed`，未新增工具进度事件。MiniMew Event真源及生成的Python/TS、正式路由导出的OpenAPI及TS消费者已同步，前后端应一起更新，避免旧严格消费者拒绝新增错误码。无需数据库迁移或依赖安装。
+
+5.3已将真实knowledge_search接入同一执行链，Evidence/引用留5.4，工具过程展示留5.5；5.2历史测试只注入受控handler，未新增产品用假检索。进程退出仍按当前中断/过期终结规则处理，不宣称已能从Checkpoint恢复工具循环。完整[5.2源码导航与验证](chapters/05-基础知识问答.md#52-实施记录2026-11-12)保留当时交付边界。
+
+### 已发布知识工具（5.3）
+
+在本机`MiniMew/.env`中添加或修改，然后重启API：
+
+```ini
+MINIMEW_KNOWLEDGE_ENABLED=true
+```
+
+```powershell
+uv run --env-file .env --no-sync uvicorn minimew.app:create_app --factory --host 127.0.0.1 --port 8001
+```
+
+默认false保持普通聊天，不加载本地编码模型或连接Milvus。开启后复用第四章已准备的embedding/vector两个extra和本地轻量缓存；API启动加载bge-small CPU模型、只读检查独立Milvus连接，资源缺失时明确启动失败，不下载权重或静默移除工具。索引仍由独立Worker构建；API不创建集合、不上传或重建向量。API与Worker同时运行各占一份模型内存，模型缓存文件可复用。`/health/ready`仍只查询PG，启动检查不等于持续检测检索资源健康。
+
+[knowledge.py](src/minimew/knowledge.py)提供唯一知识Tool：模型只能提交严格字符串query，服务端从ToolContext取得用户。每个Run由Registry绑定独立KnowledgeSession；首次知识调用取得published scope，后续调用复用，即使中途发布新版也不混用，下一Run重新读取current。沿用正式published_scope/encode_query/search_published及CandidateIndex，当前只支持已验证的轻量编码空间，不用M3向量查询旧索引。
+
+[knowledge_runtime.py](src/minimew/knowledge_runtime.py)由API的execution_lifespan创建/关闭，管理本地模型、连接和单线程准入。同一时刻仅有一个同步知识操作，等待者可取消；已经开始的CPU/RPC操作在原线程完成后才归还槽，连接关闭排在在途操作之后。Run私有用户范围/候选不保存在共享Runtime里。Dispatcher先停止和排空Run，再关闭这些资源。
+
+结果包含`status=ok/no_documents/no_matches`、matches和limited：每项保留原文、Document/Version/chunk/section标识、字符/行位置、内容hash与相似度；不把embedding_text、向量或原始数据库对象交给模型。默认top-k=3，按整体JSON预算保留完整片段，省略额外命中时标limited，不截断原文拼出虚假完整段落。健康空结果和知识编码/检索/范围/结果/输入长度故障有不同语义；5个新错误码已从Event真源同步生成至Python/TS及OpenAPI/API TS。
+
+开启后模型可使用knowledge_search，工具模式仍整轮缓冲，不公开中间文字；普通模式保持流式。模型是否选择调用及真实答案质量本包未进行收费在线验收，候选命中不保证答案正确。正式Evidence/引用绑定和工具过程UI留5.4/5.5，当前结果仍通过原消息与Run终态显示，没有新的聊天入口或Checkpoint恢复。
+
+本包212个不同用例通过（45新+167旧），另有真实CPU/Milvus隔离检查1次通过：真实独立Worker发布、正式API知识资源/Tool/Run查询、首位餐费150元及正确版本；回答Provider受控，收费调用0，精确清理1个自有scope及临时库。可复现命令：
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_knowledge.py
+```
+
+报告位于忽略的`.artifacts/knowledge-check.json`，不包含Key/登录Token。脚本仅使用随机临时PG、临时源目录和自身登记的精确向量scope，不删除集合或操作开发任务；原通知通道不属于此检查。完整[5.3职责框架与运行记录](chapters/05-基础知识问答.md#53-实施记录2026-11-12)保存通过、复跑、失败修正和未执行范围。
 
 ### 事件分页查询
 
@@ -759,7 +805,7 @@ uv run --env-file .env --no-sync python scripts/check_notifications.py
 
 入口依赖为 `langchain-deepseek==1.1.1`；锁定 LangChain Core 1.7.4、OpenAI 集成 1.7.3、OpenAI SDK 3.44.0、LangSmith 0.14.17、httpx2 2.16.0。uv 解析时 SDK 从讨论候选 3.42.1 更新至兼容的 3.44.0；既有依赖版本保持。httpx2 供新 SDK 使用，既有 HTTP/测试继续使用 httpx 0.28.1。依据为 [LangChain DeepSeek 集成](https://docs.langchain.com/oss/python/integrations/chat/deepseek) 与 [DeepSeek 流式协议](https://api-docs.deepseek.com/api/create-chat-completion/)。
 
-`DeepSeekProvider` 只接受 `https://api.deepseek.com` 的根路径或 `/v1`（默认 HTTPS 端口），关闭重定向，不继承宿主代理/默认 SDK 身份或外部追踪。快照中 provider 标识仍为 `openai_compatible`，内部采用专用 `ChatDeepSeek`。客户端属于每次调用；只转换公开正文，忽略 reasoning 元信息。非空答案与正常 `finish_reason=stop` 都具备后才返回完成；截断、缺失完成、工具调用和畸形流均为失败。SDK 自动重试为 0。
+`DeepSeekProvider` 只接受 `https://api.deepseek.com` 的根路径或 `/v1`（默认 HTTPS 端口），关闭重定向，不继承宿主代理/默认 SDK 身份或外部追踪。快照中 provider 标识仍为 `openai_compatible`，内部采用专用 `ChatDeepSeek`。客户端属于每次调用，忽略 reasoning 元信息；无工具模式要求有效文本和stop结束，工具模式校验完整参数及tool_calls/stop与结果一致后返回模型回合。截断、缺失完成、未声明工具和畸形流均失败，模型回合仍须由执行器消费后持久提交。SDK 自动重试为 0。
 
 RunExecutor 最多尝试 2 次；仅暂时性网络/上游错误、尚无已提交正文、原 owner/lease 有效且原预算足够时重试。初始等待 0.5 秒，较长 Retry-After 同样受剩余预算约束；快照、输入、Run 和 owner 不更换。已保存正文后发生故障则失败并保留该前缀；存储故障不触发模型重试。
 

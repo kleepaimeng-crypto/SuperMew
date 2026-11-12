@@ -13,6 +13,7 @@ from test_runs_pg import account, configure_model, submit
 from test_runs_pg import client as client
 
 from minimew.conversations import ConversationNotFound
+from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta, ProviderFailure
 from minimew.execution.service import RunExecutor
 from minimew.models import Run, RunEventRecord
@@ -45,7 +46,7 @@ def test_live_committed_deltas_empty_page_final_override_and_paginated_replay(cl
                 assert (await facts(repo, run_id))["status"] == "running"
                 yield ProviderDelta("天气很好")
                 # 最终正文是权威结果，可校正临时拼接内容。
-                yield ProviderCompleted("今天晴朗。")
+                yield ProviderCompleted(ModelTurn("text", "今天晴朗。"))
 
             assert await RunExecutor(repo, FakeProvider(answer)).execute(owner, thread, run_id) == (
                 "succeeded"
@@ -113,9 +114,9 @@ def test_stream_failure_retains_only_committed_prefix_and_final_status(client, m
                 elif mode == "oversize-delta":
                     yield ProviderDelta("x" * 4097)
                 elif mode == "invalid-final":
-                    yield ProviderCompleted(" ")
+                    yield ProviderCompleted(ModelTurn("text", " "))
                 elif mode == "after-completed":
-                    yield ProviderCompleted("not yet committed")
+                    yield ProviderCompleted(ModelTurn("text", "not yet committed"))
                     yield ProviderDelta("unexpected late text")
             finally:
                 closed.set()
@@ -208,7 +209,7 @@ def test_stream_timeout_retains_prefix_and_rejects_late_delta(client, model_conf
                 if not swallow:
                     raise
                 yield ProviderDelta("迟到正文")
-            yield ProviderCompleted("不得成功")
+            yield ProviderCompleted(ModelTurn("text", "不得成功"))
 
         async with repository() as repo:
             assert await RunExecutor(repo, FakeProvider(answer)).execute(owner, thread, run_id) == (
@@ -258,7 +259,7 @@ def test_stream_total_budget_keeps_only_accepted_batches(client):
             for _ in range(25):
                 yield ProviderDelta("字" * 4000)
             yield ProviderDelta("超限")
-            yield ProviderCompleted("不得成功")
+            yield ProviderCompleted(ModelTurn("text", "不得成功"))
 
         async with repository() as repo:
             assert await RunExecutor(repo, FakeProvider(answer)).execute(owner, thread, run_id) == (
@@ -312,7 +313,7 @@ def test_database_error_escapes_executor_then_expiry_preserves_committed_prefix(
                 try:
                     yield ProviderDelta("第一批")
                     yield ProviderDelta("第二批")
-                    yield ProviderCompleted("第一批第二批")
+                    yield ProviderCompleted(ModelTurn("text", "第一批第二批"))
                 finally:
                     raise RuntimeError("private-cleanup-failure-must-not-mask-database")
 
@@ -386,7 +387,7 @@ def test_two_streaming_runs_keep_content_and_cursors_isolated(client):
             await asyncio.wait_for(gate.wait(), 5)
             text = request.messages[-1].content
             yield ProviderDelta(text)
-            yield ProviderCompleted(text + "的回答")
+            yield ProviderCompleted(ModelTurn("text", text + "的回答"))
 
         async with repository() as repo:
             shared_provider = FakeProvider(answer)

@@ -1,9 +1,10 @@
-"""DeepSeek 的 LangChain Adapter；只输出公开正文，不拥有业务持久化或重试。"""
+"""DeepSeek 的 LangChain Adapter；返回公开模型回合，不拥有工具执行、持久化或重试。"""
 
 import asyncio
 import math
 import sys
 from contextlib import AsyncExitStack
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
@@ -11,22 +12,101 @@ from urllib.parse import urlsplit
 import httpx2
 import openai
 from httpx2 import TimeoutException, TransportError
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_deepseek import ChatDeepSeek
 from langsmith import tracing_context
-from pydantic import SecretStr
+from pydantic import Field, PrivateAttr, SecretStr
 
+from minimew.execution.messages import (
+    MAX_ARGUMENT_CHARS,
+    MAX_OUTPUT_CHARS,
+    MAX_TOOL_CALLS,
+    ModelTurn,
+    ToolCall,
+    json_object,
+    valid_text,
+    validate_turn,
+)
 from minimew.execution.provider import (
     MAX_DELTA_CHARS,
-    MAX_OUTPUT_CHARS,
     ProviderCompleted,
     ProviderDelta,
     ProviderFailure,
-    valid_text,
 )
 
 
+@dataclass
+class _ToolFragments:
+    id: str
+    name: str
+    parts: list[str] = field(default_factory=list)
+    size: int = 0
+
+
 class _AnswerChatDeepSeek(ChatDeepSeek):
+    expected_tools: frozenset[str] = Field(default_factory=frozenset, exclude=True, repr=False)
+    _fragments: dict[int, _ToolFragments] = PrivateAttr(default_factory=dict)
+    _wire_finished: bool = PrivateAttr(default=False)
+
+    def _accept_tools(self, calls):
+        if not isinstance(calls, list) or (calls and not self.expected_tools):
+            raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+        for item in calls:
+            if not isinstance(item, dict):
+                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            index, function = item.get("index"), item.get("function")
+            if (
+                type(index) is not int
+                or not 0 <= index < MAX_TOOL_CALLS
+                or not isinstance(function, dict)
+                or item.get("type") not in (None, "function")
+            ):
+                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            if index not in self._fragments:
+                call_id, name = item.get("id"), function.get("name")
+                if (
+                    not valid_text(call_id, 128, nonblank=True)
+                    or name not in self.expected_tools
+                    or any(part.id == call_id for part in self._fragments.values())
+                ):
+                    raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                self._fragments[index] = _ToolFragments(call_id, name)
+            fragment = self._fragments[index]
+            if item.get("id") not in (None, fragment.id) or function.get("name") not in (
+                None,
+                fragment.name,
+            ):
+                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            arguments = function.get("arguments")
+            if arguments is not None:
+                if not isinstance(arguments, str) or (
+                    arguments and not valid_text(arguments, MAX_ARGUMENT_CHARS)
+                ):
+                    raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                fragment.size += len(arguments)
+                if fragment.size > MAX_ARGUMENT_CHARS:
+                    raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                fragment.parts.append(arguments)
+
+    def completed_turn(self, text, finish):
+        if finish == "stop" and not self._fragments:
+            turn = ModelTurn("text", text)
+        elif finish == "tool_calls" and self.expected_tools and self._fragments:
+            if sorted(self._fragments) != list(range(len(self._fragments))):
+                raise ValueError("Incomplete call indexes")
+            turn = ModelTurn(
+                "tool_calls",
+                text,
+                tuple(
+                    ToolCall(value.id, value.name, "".join(value.parts))
+                    for _, value in sorted(self._fragments.items())
+                ),
+            )
+        else:
+            raise ValueError("Finish reason and tool payload disagree")
+        validate_turn(turn)
+        return turn
+
     def _convert_chunk_to_generation_chunk(self, chunk, default_chunk_class, base_generation_info):
         # LangChain 默认只取 choices[0]，并会忽略 delta=None。普通聊天应明确拒绝畸形流。
         choices = chunk.get("choices")
@@ -34,16 +114,23 @@ class _AnswerChatDeepSeek(ChatDeepSeek):
             raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
         if choices:
             choice = choices[0]
+            if not isinstance(choice, dict):
+                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
             delta = choice.get("delta")
             if (
-                choice.get("index") != 0
+                type(choice.get("index")) is not int
+                or choice.get("index") != 0
+                or self._wire_finished
                 or not isinstance(delta, dict)
                 or delta.get("role") not in (None, "assistant")
-                or delta.get("tool_calls")
                 or delta.get("function_call")
                 or (delta.get("content") is not None and not isinstance(delta["content"], str))
             ):
                 raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            if delta.get("tool_calls") is not None:
+                self._accept_tools(delta["tool_calls"])
+            if choice.get("finish_reason") is not None:
+                self._wire_finished = True
         return super()._convert_chunk_to_generation_chunk(
             chunk, default_chunk_class, base_generation_info
         )
@@ -81,7 +168,7 @@ class DeepSeekProvider:
         ):
             raise ProviderFailure()
         resources = AsyncExitStack()
-        parts, total, stopped = [], 0, False
+        parts, total, finish_reason = [], 0, None
         try:
             # SDK 3 使用 httpx2；自有客户端关闭重定向及宿主代理/身份注入。
             sync_http = resources.enter_context(httpx2.Client(trust_env=False))
@@ -113,37 +200,66 @@ class DeepSeekProvider:
                 stream_usage=True,
                 output_version="v0",
                 extra_body={"thinking": {"type": "disabled"}},
+                expected_tools=frozenset(tool.name for tool in request.tools),
             )
-            messages = [
-                HumanMessage(content=m.content)
-                if m.role == "user"
-                else AIMessage(content=m.content)
-                for m in request.messages
-            ]
+            messages = []
+            for message in request.messages:
+                if message.role == "user":
+                    messages.append(HumanMessage(content=message.content))
+                elif message.role == "tool":
+                    messages.append(
+                        ToolMessage(content=message.content, tool_call_id=message.tool_call_id)
+                    )
+                else:
+                    messages.append(
+                        AIMessage(
+                            content=message.content,
+                            tool_calls=[
+                                {
+                                    "id": call.id,
+                                    "name": call.name,
+                                    "args": json_object(call.arguments_json),
+                                    "type": "tool_call",
+                                }
+                                for call in message.tool_calls
+                            ],
+                        )
+                    )
+            bound = (
+                model.bind_tools([tool.wire() for tool in request.tools], tool_choice="auto")
+                if request.tools
+                else model
+            )
             # 不继承机器上的 LANGSMITH_TRACING；快照/正文/密钥不进入外部追踪。
             with tracing_context(enabled=False):
-                source = model.astream(messages, config={"callbacks": []})
+                source = bound.astream(messages, config={"callbacks": []})
                 resources.push_async_callback(source.aclose)
                 async for chunk in source:
-                    if not isinstance(chunk.content, str) or chunk.tool_call_chunks:
+                    if not isinstance(chunk.content, str) or (
+                        chunk.tool_call_chunks and not request.tools
+                    ):
                         raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                     text = chunk.content  # reasoning_content 等扩展字段不会进入正文。
                     if text:
-                        if stopped or not valid_text(text, MAX_OUTPUT_CHARS):
+                        if finish_reason is not None or not valid_text(text, MAX_OUTPUT_CHARS):
                             raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                         total += len(text)
                         if total > MAX_OUTPUT_CHARS:
                             raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                         parts.append(text)
-                        for start in range(0, len(text), MAX_DELTA_CHARS):
-                            yield ProviderDelta(text[start : start + MAX_DELTA_CHARS])
+                        if not request.tools:
+                            for start in range(0, len(text), MAX_DELTA_CHARS):
+                                yield ProviderDelta(text[start : start + MAX_DELTA_CHARS])
                     finish = chunk.response_metadata.get("finish_reason")
                     if finish is not None:
-                        if stopped or finish != "stop":
+                        if finish_reason is not None or finish not in ("stop", "tool_calls"):
                             raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
-                        stopped = True
-            if not stopped or not valid_text("".join(parts), MAX_OUTPUT_CHARS, nonblank=True):
+                        if finish == "tool_calls" and not request.tools:
+                            raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                        finish_reason = finish
+            if finish_reason is None:
                 raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            turn = model.completed_turn("".join(parts), finish_reason)
         except openai.APITimeoutError:
             raise ProviderFailure("PROVIDER_TIMEOUT", retryable=True) from None
         except openai.APIConnectionError:
@@ -167,4 +283,4 @@ class DeepSeekProvider:
             except Exception:
                 if primary is None:
                     raise ProviderFailure() from None
-        yield ProviderCompleted("".join(parts))
+        yield ProviderCompleted(turn)

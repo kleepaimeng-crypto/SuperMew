@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 
 import minimew.app as app_module
+from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta, ProviderFailure
 from minimew.settings import Settings
 
@@ -27,7 +28,7 @@ class BrowserProvider:
             raise ProviderFailure("PROVIDER_ERROR")
         else:
             yield ProviderDelta("天气很好")
-            yield ProviderCompleted("今天天气很好")
+            yield ProviderCompleted(ModelTurn("text", "今天天气很好"))
 
 
 def main():

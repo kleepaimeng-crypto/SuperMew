@@ -55,7 +55,15 @@ async def published_scope(sessions, user_id: UUID) -> RetrievalScope:
 
 
 async def search_published(
-    sessions, index: CandidateIndex, scope: RetrievalScope, user_id, vector, profile, *, top_k=3
+    sessions,
+    index: CandidateIndex,
+    scope: RetrievalScope,
+    user_id,
+    vector,
+    profile,
+    *,
+    top_k=3,
+    offload=asyncio.to_thread,
 ):
     if scope.user_id != user_id or any(t.scope.identity.user_id != user_id for t in scope.targets):
         raise PermissionError("Retrieval scope owner mismatch")
@@ -69,8 +77,6 @@ async def search_published(
         if time.monotonic() >= deadline:
             raise VectorError("INDEX_SCOPE_EXPIRED")
         hits.extend(
-            await asyncio.to_thread(
-                index.search, VerifiedCandidate(manifest), vector, profile, top_k=top_k
-            )
+            await offload(index.search, VerifiedCandidate(manifest), vector, profile, top_k=top_k)
         )
     return sorted(hits, key=lambda row: row["score"], reverse=True)[:top_k]

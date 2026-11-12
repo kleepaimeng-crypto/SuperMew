@@ -14,6 +14,7 @@ from test_runs_pg import account, configure_model, submit
 from test_runs_pg import client as client
 
 from minimew.conversations import ConversationNotFound
+from minimew.execution.messages import ModelTurn, ToolCall
 from minimew.execution.provider import ProviderCompleted, ProviderFailure
 from minimew.execution.service import RunExecutor
 from minimew.generated.run_event_v1 import EVENT_ADAPTER
@@ -130,7 +131,7 @@ def test_one_claim_and_thread_order_with_no_database_transaction_during_model_ca
                 assert repo.sessions.kw["bind"].pool.checkedout() == 0
                 entered.set()
                 await release.wait()
-                yield ProviderCompleted("first answer")
+                yield ProviderCompleted(ModelTurn("text", "first answer"))
 
             fake = FakeProvider(wait_for_release)
             executor = RunExecutor(repo, fake)
@@ -189,9 +190,12 @@ def test_parallel_runs_do_not_share_snapshot_messages_or_result(client, model_co
             async def reply(request):
                 await asyncio.wait_for(gate.wait(), 5)
                 yield ProviderCompleted(
-                    request.snapshot.answer.configuration.model_name
-                    + ":"
-                    + request.messages[-1].content
+                    ModelTurn(
+                        "text",
+                        request.snapshot.answer.configuration.model_name
+                        + ":"
+                        + request.messages[-1].content,
+                    )
                 )
 
             fake = FakeProvider(reply)
@@ -228,7 +232,7 @@ def test_provider_failure_is_persistent_and_sanitized(client, reply, code):
             async def generate(request):
                 if isinstance(reply, Exception):
                     raise reply
-                yield ProviderCompleted(reply)
+                yield ProviderCompleted(ModelTurn("text", reply))
 
             fake = FakeProvider(generate)
             assert await RunExecutor(repo, fake).execute(owner, thread, run_id) == "failed"
@@ -244,6 +248,45 @@ def test_provider_failure_is_persistent_and_sanitized(client, reply, code):
     assert (
         client.get(f"/v1/threads/{thread}/runs/{run_id}", headers=headers).json()["error_code"]
         == code
+    )
+
+
+def test_tool_turn_cannot_complete_ordinary_run_or_publish_intermediate_text(client):
+    headers, owner, thread, run_id = create_run(client)
+
+    async def scenario():
+        async with repository() as repo:
+            before = await facts(repo, run_id)
+
+            async def generate(request):
+                assert request.tools == ()
+                yield ProviderCompleted(
+                    ModelTurn(
+                        "tool_calls",
+                        "先查知识库",
+                        (ToolCall("call_1", "knowledge_search", '{"query":"餐费"}'),),
+                    )
+                )
+
+            fake = FakeProvider(generate)
+            assert await RunExecutor(repo, fake).execute(owner, thread, run_id) == "failed"
+            after = await facts(repo, run_id)
+            assert after["status"] == "failed" and after["error"] == "PROVIDER_INVALID_RESPONSE"
+            assert [m[0] for m in after["messages"]] == [m[0] for m in before["messages"]]
+            assert after["messages"][1][1:] == ("failed", "")
+            assert [event.type for event in after["events"]] == [
+                "run.created",
+                "run.started",
+                "message.completed",
+                "run.failed",
+            ]
+            assert after["events"][-2].data.content == ""
+            assert len(fake.requests) == 1
+
+    asyncio.run(scenario())
+    assert (
+        client.get(f"/v1/threads/{thread}/runs/{run_id}", headers=headers).json()["status"]
+        == "failed"
     )
 
 
@@ -268,7 +311,7 @@ def test_timeout_and_provider_swallowing_cancellation_cannot_report_success(
                 except asyncio.CancelledError:
                     if not swallow:
                         raise
-                    yield ProviderCompleted("late answer")
+                    yield ProviderCompleted(ModelTurn("text", "late answer"))
 
             fake = FakeProvider(swallow_cancel)
             assert await RunExecutor(repo, fake).execute(owner, thread, run_id) == "failed"
@@ -406,7 +449,7 @@ def test_executor_task_interruption_is_not_user_cancellation(client):
             async def wait(request):
                 entered.set()
                 await asyncio.Event().wait()
-                yield ProviderCompleted("unreachable")
+                yield ProviderCompleted(ModelTurn("text", "unreachable"))
 
             task = asyncio.create_task(
                 RunExecutor(repo, FakeProvider(wait)).execute(owner, thread, run_id)
@@ -433,7 +476,7 @@ def test_late_provider_cannot_overwrite_recovered_expired_run(client):
                     await release.wait()
                 except asyncio.CancelledError:
                     await release.wait()
-                yield ProviderCompleted("late answer must not persist")
+                yield ProviderCompleted(ModelTurn("text", "late answer must not persist"))
 
             task = asyncio.create_task(
                 RunExecutor(repo, FakeProvider(late)).execute(owner, thread, run_id)

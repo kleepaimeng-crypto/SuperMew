@@ -20,6 +20,7 @@ from test_runs_pg import account, submit
 from test_runs_pg import client as client
 from test_runtime_pg import runtime_app, wait_run
 
+from minimew.execution.messages import ModelTurn
 from minimew.execution.outbox import notification_lifespan
 from minimew.execution.provider import ProviderCompleted, ProviderDelta
 from minimew.execution.streaming import StreamOptions
@@ -44,7 +45,7 @@ def test_http_cancel_sse_terminal_replay_and_redis_outage(client, monkeypatch, r
         async def answer(data):
             yield ProviderDelta("今天")
             await asyncio.Event().wait()
-            yield ProviderCompleted("never")
+            yield ProviderCompleted(ModelTurn("text", "never"))
 
         app = runtime_app(monkeypatch, FakeProvider(answer))
         app.state.event_stream_options = StreamOptions(
@@ -213,7 +214,7 @@ def test_cancel_one_run_does_not_stop_other_active_run(client, monkeypatch):
         else:
             keep_started.set()
             await release_keep.wait()
-            yield ProviderCompleted("other answer")
+            yield ProviderCompleted(ModelTurn("text", "other answer"))
 
     app = runtime_app(monkeypatch, FakeProvider(answer))
     with serve_http(app) as server:

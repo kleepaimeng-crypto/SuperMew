@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 from uuid import UUID
 
+from minimew.execution.messages import (
+    InputMessage,
+    ModelTurn,
+    ToolDefinition,
+    validate_messages,
+)
 from minimew.model_control import ModelSnapshot
-
-
-@dataclass(frozen=True)
-class InputMessage:
-    role: Literal["user", "assistant"]
-    content: str
 
 
 @dataclass(frozen=True)
@@ -20,10 +20,13 @@ class ProviderRequest:
     thread_id: UUID
     snapshot: ModelSnapshot
     messages: tuple[InputMessage, ...]
+    tools: tuple[ToolDefinition, ...] = ()
+
+    def __post_init__(self):
+        validate_messages(self.messages, self.tools)
 
 
 MAX_DELTA_CHARS = 4096
-MAX_OUTPUT_CHARS = 100000
 
 
 @dataclass(frozen=True)
@@ -35,9 +38,9 @@ class ProviderDelta:
 
 @dataclass(frozen=True)
 class ProviderCompleted:
-    """Adapter 确认正常完成后的完整答案；迭代器耗尽本身不表示成功。"""
+    """Adapter已确认结束的模型回合，Run终态仍由执行器的持久事务拥有。"""
 
-    content: str
+    turn: ModelTurn
 
 
 ProviderEvent = ProviderDelta | ProviderCompleted
@@ -45,18 +48,6 @@ ProviderEvent = ProviderDelta | ProviderCompleted
 
 class Provider(Protocol):
     def stream(self, request: ProviderRequest) -> AsyncGenerator[ProviderEvent, None]: ...
-
-
-def valid_text(value: object, maximum: int, *, nonblank: bool = False) -> bool:
-    if not isinstance(value, str) or not 0 < len(value) <= maximum or "\x00" in value:
-        return False
-    if nonblank and not value.strip():
-        return False
-    try:
-        value.encode("utf-8")
-    except UnicodeEncodeError:
-        return False
-    return True
 
 
 class ProviderFailure(Exception):

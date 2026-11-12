@@ -12,6 +12,7 @@ from langsmith.run_helpers import get_tracing_context
 from pydantic import SecretStr
 
 import minimew.execution.deepseek as adapter
+from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import (
     InputMessage,
     ProviderCompleted,
@@ -136,7 +137,7 @@ def test_sdk_parameters_public_stream_and_close(transport, model_configuration, 
             )
         ]
         assert [len(e.content) for e in result if isinstance(e, ProviderDelta)] == [4096, 904, 1]
-        assert result[-1] == ProviderCompleted("x" * 5000 + "答")
+        assert result[-1] == ProviderCompleted(ModelTurn("text", "x" * 5000 + "答"))
         assert len(requests) == 1 and all(c.is_closed for c in clients)
         assert "private reasoning" not in repr(result)
 
@@ -298,8 +299,8 @@ def test_two_calls_keep_inputs_and_clients_separate(transport, model_configurati
             return [e async for e in provider.stream(data)]
 
         first, second = await asyncio.gather(collect("A"), collect("B"))
-        assert first == [ProviderDelta("A"), ProviderCompleted("A")]
-        assert second == [ProviderDelta("B"), ProviderCompleted("B")]
+        assert first == [ProviderDelta("A"), ProviderCompleted(ModelTurn("text", "A"))]
+        assert second == [ProviderDelta("B"), ProviderCompleted(ModelTurn("text", "B"))]
         assert len(requests) == 2 and len(clients) == 4 and all(c.is_closed for c in clients)
 
     asyncio.run(scenario())

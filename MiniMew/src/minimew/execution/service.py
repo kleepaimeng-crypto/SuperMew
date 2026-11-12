@@ -4,23 +4,28 @@ import asyncio
 import logging
 import sys
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from minimew.execution.context import ContextInvalid
+from minimew.execution.messages import (
+    MAX_OUTPUT_CHARS,
+    InputMessage,
+    ModelTurn,
+    valid_text,
+    validate_turn,
+)
 from minimew.execution.provider import (
     MAX_DELTA_CHARS,
-    MAX_OUTPUT_CHARS,
     Provider,
     ProviderCompleted,
     ProviderDelta,
     ProviderEvent,
     ProviderFailure,
     ProviderRequest,
-    valid_text,
 )
 from minimew.execution.repository import (
     CancellationRequested,
@@ -28,6 +33,7 @@ from minimew.execution.repository import (
     ExecutionRepository,
     OwnershipLost,
 )
+from minimew.execution.tools import ToolContext, ToolFailure, ToolRegistry
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.model_control import ModelSnapshotUnavailable
 
@@ -44,13 +50,36 @@ class AttemptProgress:
     body_committed: bool = False
 
 
+@dataclass
+class RunBudget:
+    model_requests: int = 0
+    tool_calls: int = 0
+
+    def require_model(self):
+        if self.model_requests >= 4:
+            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+
+    def require_tools(self, count):
+        self.require_model()  # 工具执行后必须仍有机会向模型交回结果。
+        if self.tool_calls + count > 6:
+            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+
+
 class RunExecutor:
     def __init__(
-        self, repository: ExecutionRepository, provider: Provider, *, cancellation_poll=0.5
+        self,
+        repository: ExecutionRepository,
+        provider: Provider,
+        *,
+        cancellation_poll=0.5,
+        registry: ToolRegistry | None = None,
+        capabilities: frozenset[str] = frozenset(),
     ):
         self.repository = repository
         self.provider = provider
         self.cancellation_poll = cancellation_poll
+        self.registry = registry if registry is not None else ToolRegistry()
+        self.capabilities = capabilities
 
     async def execute(self, user_id: UUID, thread_id: UUID, run_id: UUID) -> ExecutionOutcome:
         claim = await self.repository.claim(user_id, thread_id, run_id)
@@ -60,6 +89,15 @@ class RunExecutor:
         content = ""
         try:
             request = await self.repository.request(claim)
+            context = self.registry.bind_context(
+                ToolContext(user_id, thread_id, run_id, self.capabilities)
+            )
+            tools = self.registry.visible(context)
+            if tools:
+                try:
+                    request = replace(request, tools=tools)
+                except ValueError:
+                    raise ContextInvalid from None
             await self.repository.check_control(claim)
             remaining = await self.repository.remaining(claim)
             if remaining <= 0:
@@ -69,12 +107,14 @@ class RunExecutor:
             deadline = loop.time() + min(
                 remaining, request.snapshot.answer.configuration.timeout_seconds
             )
-            content = await self._watched_generate(claim, request, deadline)
+            content = await self._watched_generate(claim, request, deadline, context)
         except ModelSnapshotUnavailable as failure:
             error = failure.code
         except ContextInvalid:
             error = "CONTEXT_INVALID"
         except ProviderFailure as failure:
+            error = failure.code
+        except ToolFailure as failure:
             error = failure.code
         except CancellationRequested:
             # 统一终结事务会重新检查持久取消标记，并清除非失败终态的 error_code。
@@ -111,9 +151,9 @@ class RunExecutor:
             except (SQLAlchemyError, TimeoutError, OSError):
                 raise ExecutionStorageUnavailable from None
 
-    async def _watched_generate(self, claim, request, deadline):
+    async def _watched_generate(self, claim, request, deadline, context):
         model = asyncio.create_task(
-            self._generate(claim, request, deadline),
+            self._generate(claim, request, deadline, context),
             name=f"minimew-model-{request.run_id}",
         )
         monitor = asyncio.create_task(
@@ -128,6 +168,8 @@ class RunExecutor:
                 timeout=max(0, deadline - asyncio.get_running_loop().time()),
             )
             if not done:
+                if request.tools:
+                    raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
                 raise ProviderFailure("PROVIDER_TIMEOUT")
             if monitor in done:
                 await monitor  # 监视异常保留其取消/存储/资格语义，不转换为 Provider 错误。
@@ -153,16 +195,70 @@ class RunExecutor:
         if not task.cancelled():
             task.exception()
 
-    async def _generate(self, claim: Claim, request: ProviderRequest, deadline: float) -> str:
+    async def _check_active(self, claim, request, deadline):
+        if asyncio.current_task().cancelling():
+            raise asyncio.CancelledError
+        try:
+            await self.repository.check_control(claim)
+        except (SQLAlchemyError, TimeoutError, OSError):
+            raise ExecutionStorageUnavailable from None
+        if asyncio.get_running_loop().time() >= deadline:
+            if request.tools:
+                raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
+            raise ProviderFailure("PROVIDER_TIMEOUT")
+
+    async def _generate(self, claim, request, deadline, context) -> str:
+        budget = RunBudget()
         progress = AttemptProgress()
+        while True:
+            turn = await self._model_turn(claim, request, deadline, progress, budget)
+            if turn.kind == "text":
+                return turn.content
+            await self._check_active(claim, request, deadline)
+            assistant = InputMessage("assistant", turn.content, turn.tool_calls)
+            prepared = self.registry.prepare(turn.tool_calls, context)
+            # 执行前确认原调用ID未重复，且调用数据本身可装入下一轮上下文。
+            placeholders = tuple(
+                InputMessage("tool", "{}", tool_call_id=call.id) for call in turn.tool_calls
+            )
+            self._with_messages(request, (*request.messages, assistant, *placeholders))
+            budget.require_tools(len(prepared))
+            results = []
+            for call in prepared:
+                await self._check_active(claim, request, deadline)
+                budget.tool_calls += 1
+                try:
+                    async with asyncio.timeout_at(deadline) as timeout:
+                        content = await self.registry.invoke(call, context)
+                except TimeoutError:
+                    raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
+                if timeout.expired():
+                    raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
+                await self._check_active(claim, request, deadline)
+                results.append(InputMessage("tool", content, tool_call_id=call.call.id))
+            request = self._with_messages(request, (*request.messages, assistant, *results))
+
+    @staticmethod
+    def _with_messages(request, messages):
+        try:
+            return replace(request, messages=messages)
+        except ValueError:
+            raise ContextInvalid from None
+
+    async def _model_turn(self, claim, request, deadline, progress, budget) -> ModelTurn:
         for attempt in range(2):
             if attempt:
-                await self.repository.check_control(claim)
+                await self._check_active(claim, request, deadline)
+            budget.require_model()
+            budget.model_requests += 1
             try:
                 return await self._consume(claim, request, deadline, progress)
             except ProviderFailure as failure:
+                if request.tools and asyncio.get_running_loop().time() >= deadline:
+                    raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
                 if attempt == 1 or not failure.retryable or progress.body_committed:
                     raise
+                budget.require_model()
                 if await self.repository.remaining(claim) <= 0:
                     raise OwnershipLost from None
                 delay = max(0.5, failure.retry_after)
@@ -179,7 +275,7 @@ class RunExecutor:
 
     async def _consume(
         self, claim: Claim, request: ProviderRequest, deadline: float, progress: AttemptProgress
-    ) -> str:
+    ) -> ModelTurn:
         try:
             stream = self.provider.stream(request)
         except ProviderFailure:
@@ -193,10 +289,17 @@ class RunExecutor:
                 if completed is not None:
                     raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                 if isinstance(event, ProviderCompleted):
-                    if not valid_text(event.content, MAX_OUTPUT_CHARS, nonblank=True):
+                    try:
+                        validate_turn(event.turn)
+                    except ValueError:
+                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE") from None
+                    if event.turn.kind != "text" and not request.tools:
                         raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                     completed = event
                 else:
+                    # 工具模式禁止中间文字/参数直接进入公开Journal。
+                    if request.tools:
+                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                     if not valid_text(event.content, MAX_DELTA_CHARS):
                         raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                     total += len(event.content)
@@ -218,7 +321,7 @@ class RunExecutor:
                 primary_error.add_note("Provider stream cleanup also failed")
         if completed is None:
             raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
-        return completed.content
+        return completed.turn
 
     @staticmethod
     async def _next(
