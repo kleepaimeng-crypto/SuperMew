@@ -171,12 +171,16 @@
 
 ## 6. 完整 RAG 策略
 
+本章6.1–6.7子项、A/B/C工作包、现有Dense连接点及新增策略职责见[第六章计划](chapters/06-完整RAG策略.md)。当前仅开章设计，具体授权与反馈见交接记录；沿用第五章的Run/工具/Evidence/引用链，不另建问答入口。
+
+2026-11-13已收敛[A包实施与验收范围建议](chapters/06-完整RAG策略.md#a包最终实施范围建议2026-11-13待明确开始)：6.1–6.3单一Pipeline/Hybrid索引升级/RRF/有界补全/本机Base重排，保留原片段引用，建议先现有CPU环境基线。尚待明确开始，后续不重问已选模型，也不自动实施GPU/其他模型/外部API。
+
 ### 首次引入的技术与概念
 
 - LangGraph StateGraph、条件边、并行 Send：用于有界 RAG 流程编排；与模型 API、业务 Run 和持久 Job 分工不同。
 - BM25、RRF、Auto-merging、Rerank：分别解决关键词召回、排名融合、上下文完整性与候选重排。
 - Grader 结构化输出、Step-back、HyDE、子问题拆解：证据判断和查询策略。
-- Milvus 原生 BM25 复用已有基础设施，不默认加 Elasticsearch；Rerank 的 Provider/模型选择另行确认。
+- Milvus 原生 BM25 复用已有基础设施，不默认加 Elasticsearch；2026-11-13用户已选本机笔记本`BAAI/bge-reranker-base`，保留原片段引用。其他本地模型/设备部署与外部Rerank API须等用户明确提示再执行；选型不代表已授权A包编码或模型下载，实际范围见交接记录。
 
 ### 建议小步
 
