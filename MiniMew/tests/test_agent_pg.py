@@ -69,6 +69,8 @@ def test_agent_preserves_single_run_message_pair_and_terminal_journal(client):
             assert [e.type for e in saved["events"]] == [
                 "run.created",
                 "run.started",
+                "tool.started",
+                "tool.completed",
                 "message.completed",
                 "run.completed",
             ]
@@ -136,9 +138,19 @@ def test_agent_errors_commit_single_failed_terminal_without_tool_body(
             saved = await facts(repo, run_id)
             assert saved["status"] == "failed" and saved["error"] == code
             assert saved["messages"][1][1:] == ("failed", "")
+            process = (
+                ["tool.started", "tool.failed"]
+                if mode in {"tool", "result"}
+                else ["tool.started"]
+                if mode == "deadline"
+                else ["tool.started", "tool.completed"] * 3
+                if mode == "budget"
+                else []
+            )
             assert [e.type for e in saved["events"]] == [
                 "run.created",
                 "run.started",
+                *process,
                 "message.completed",
                 "run.failed",
             ]

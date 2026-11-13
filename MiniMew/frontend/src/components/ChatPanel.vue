@@ -3,6 +3,8 @@ import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useChatStore } from "../stores/chat";
 import { useThreadsStore } from "../stores/threads";
 import { terminal } from "../chat";
+import AnswerBody from "./AnswerBody.vue";
+import ToolActivity from "./ToolActivity.vue";
 
 const props = defineProps<{ threadId: string }>();
 const chat = useChatStore();
@@ -107,15 +109,22 @@ function enter(event: KeyboardEvent) {
         <div class="message-author">
           {{ message.role === "user" ? "你" : "MiniMew" }}
         </div>
-        <div class="message-body">
-          {{
-            message.content ||
-            (message.status === "pending"
-              ? "正在等待回复…"
-              : "本次未生成可保存的正文。")
-          }}
-        </div>
+        <AnswerBody
+          v-if="message.role === 'assistant'"
+          :message="message"
+          :answer="chat.answers[message.run_id]"
+          @retry="chat.loadAnswer(message.run_id, true)"
+        />
+        <div v-else class="message-body">{{ message.content }}</div>
         <template v-if="message.role === 'assistant'">
+          <ToolActivity
+            v-if="chat.runs[message.run_id]"
+            :tools="chat.runs[message.run_id]!.projection.tools"
+            :loading="chat.runs[message.run_id]!.activityLoading"
+            :loaded="chat.runs[message.run_id]!.activityLoaded"
+            :error="chat.runs[message.run_id]!.activityError"
+            @load="chat.loadActivity(message.run_id)"
+          />
           <div class="message-meta">
             <span role="status">{{ chat.statusLabel(message.run_id) }}</span>
             <button

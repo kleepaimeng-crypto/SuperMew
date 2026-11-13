@@ -47,7 +47,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0013 (head)`。0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0014 (head)`。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 
@@ -715,7 +715,7 @@ uv run --env-file .env --no-sync python scripts/check_knowledge.py
 
 ### Evidence与混合回答（5.4）
 
-先在MiniMew目录显式运行`uv run --env-file .env --no-sync alembic upgrade head`，当前head为0013。此迁移仅新增answer_materials及Message/Run关联约束，不改写旧消息、Journal或文档；旧消息不会补造引用。历史证据不可用降级迁移直接删除。
+先在MiniMew目录显式运行`uv run --env-file .env --no-sync alembic upgrade head`，0013迁移新增answer_materials及Message/Run关联约束，不改写旧消息、Journal或文档；旧消息不会补造引用。历史证据不可用降级迁移直接删除。
 
 知识工具返回的每个片段增加knowledge_base_id和Run内citation_id，例如E1；来源原文、版本、字符/行位置和hash仍来自正式检索。目录按实际回传的完整片段登记、跨检索去重，最多18份且序列化累计24000字符，每次工具结果仍不超过11000字符；整个模型上下文仍受60000字符上限约束，含服务端指令。
 
@@ -725,7 +725,17 @@ uv run --env-file .env --no-sync python scripts/check_knowledge.py
 
 `GET /v1/threads/{thread_id}/runs/{run_id}/answer`需Access Token，按用户/Thread/Run归属读取；返回run_id、message_id、status、materials。materials含sections、citations、evidence，位置为正文Unicode字符的0基[start,end)，行位置为来源原文1基。没有引用资料的旧消息、普通聊天或未成功的Run返回materials=null；健康知识查询后仅补充的成功答案有sections而citations/evidence为空。读取故障返回503 ANSWER_READ_UNAVAILABLE，不能假装空资料。
 
-message.completed v1保持message_id/status/content，SSE继续重放Journal；5.5前端可在收到完成事件后、或刷新历史时调用同一答案接口。查看旧答案不依赖当前文档指针或旧Milvus向量。OpenAPI与API TS由正式路由重新生成，未增加Event类型、错误码或生产依赖。源码职责与验收见[5.4记录](chapters/05-基础知识问答.md#54-实施记录2026-11-13)。
+message.completed v1保持message_id/status/content，SSE继续重放Journal；5.5前端已在完成与历史路径接入同一答案接口。查看旧答案不依赖当前文档指针或旧Milvus向量。OpenAPI与API TS由正式路由重新生成；5.4本身未增加Event类型，5.5的观测扩展见下节。源码职责与验收见[5.4记录](chapters/05-基础知识问答.md#54-实施记录2026-11-13)。
+
+### 引用界面与工具过程（5.5）
+
+显式升级到0014并重启API，前后端需一起更新。0014只扩展Journal允许的类型并增加工具事件guard，不改写旧消息/引用/Journal，不为旧Run补造观测。Run Event v1按现有扩展规则增加tool.started/tool.completed/tool.failed，保持旧事件与message.completed形状不变；生成Python/TS、OpenAPI/API TS及浏览器严格解析器同步。旧客户端遇到新事件应更新，不能忽略未知事件推进游标。
+
+执行器在Registry/Guardrail检查后，通过原Repository短事务保存工具开始、结束/失败事件与Outbox。公开payload仅含tool_call_id、tool_name，失败另有受控error_code，不含参数、原始结果或私有推理。按Run/调用ID/事件阶段持久幂等；每次观测保存最多2次尝试、共用原期限，重试不会重新执行handler。数据库guard检查运行/租约/取消与先开始后结束，原Run终态仍由原事务拥有。
+
+聊天页使用[答案解析](frontend/src/answers.ts)校验来源身份、分区和Unicode码点位置，[chat store](frontend/src/stores/chat.ts)按Run合并在途请求并缓存当前用户/Thread的材料；换账号/对话清除状态、拒绝迟到回填。只有校验过的引用可点击，[AnswerBody](frontend/src/components/AnswerBody.vue)显示保存的章节、版本、行号及原文，并区分模型补充。资料读取失败保留正文和已完成状态，可独立重试。
+
+[ToolActivity](frontend/src/components/ToolActivity.vue)展示公开工具状态，实时数据来自原SSE/reducer；历史详情打开时通过既有/events分页重放同一Journal，不新增进度接口或执行状态表。工具结束不等于Run结束；失败/取消终态收束未闭合工具。旧Run没有观测时只说明“没有已保存的工具记录”，不推断当时没执行工具。沿用既有页面样式，无HTML注入渲染、新UI依赖或LangGraph接入。源码框架与定向验证见[5.5记录](chapters/05-基础知识问答.md#55-实施记录2026-11-13)。
 
 ### 事件分页查询
 

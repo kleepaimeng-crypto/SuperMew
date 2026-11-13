@@ -14,6 +14,7 @@ type Schema = {
   minLength?: number;
   maxLength?: number;
   format?: string;
+  pattern?: string;
   oneOf?: Schema[];
 };
 const contract = JSON.parse(source) as Schema;
@@ -33,6 +34,7 @@ const supported = new Set([
   "minLength",
   "maxLength",
   "format",
+  "pattern",
   "oneOf",
 ]);
 
@@ -109,6 +111,7 @@ function matches(value: unknown, schema: Schema): boolean {
       return false;
     if (schema.format === "uuid" && !isUuid(value)) return false;
     if (schema.format === "date-time" && !isDateTime(value)) return false;
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) return false;
   }
   if (schema.type === "object" && !isRecord(value)) return false;
   if (schema.properties) {

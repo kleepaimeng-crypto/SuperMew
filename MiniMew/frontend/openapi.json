@@ -2314,6 +2314,15 @@
                 },
                 {
                   "$ref": "#/components/schemas/RunCancelledEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolStartedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolCompletedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ToolFailedEvent"
                 }
               ],
               "discriminator": {
@@ -2326,7 +2335,10 @@
                   "run.completed": "#/components/schemas/RunCompletedEvent",
                   "run.created": "#/components/schemas/RunCreatedEvent",
                   "run.failed": "#/components/schemas/RunFailedEvent",
-                  "run.started": "#/components/schemas/RunStartedEvent"
+                  "run.started": "#/components/schemas/RunStartedEvent",
+                  "tool.completed": "#/components/schemas/ToolCompletedEvent",
+                  "tool.failed": "#/components/schemas/ToolFailedEvent",
+                  "tool.started": "#/components/schemas/ToolStartedEvent"
                 }
               }
             },
@@ -2678,6 +2690,261 @@
         "type": "object",
         "required": ["access_token", "expires_in"],
         "title": "TokenResponse"
+      },
+      "ToolCompletedData": {
+        "properties": {
+          "tool_call_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tool Call Id"
+          },
+          "tool_name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "title": "Tool Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["tool_call_id", "tool_name"],
+        "title": "ToolCompletedData"
+      },
+      "ToolCompletedEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "tool.completed",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ToolCompletedData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "ToolCompletedEvent"
+      },
+      "ToolFailedData": {
+        "properties": {
+          "tool_call_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tool Call Id"
+          },
+          "tool_name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "title": "Tool Name"
+          },
+          "error_code": {
+            "type": "string",
+            "enum": [
+              "PROVIDER_ERROR",
+              "PROVIDER_TIMEOUT",
+              "PROVIDER_INVALID_RESPONSE",
+              "EXECUTION_EXPIRED",
+              "EXECUTOR_INTERRUPTED",
+              "MODEL_SNAPSHOT_MISSING",
+              "MODEL_SNAPSHOT_INVALID",
+              "CONTEXT_INVALID",
+              "EXECUTION_STORAGE_UNAVAILABLE",
+              "TOOL_NOT_AVAILABLE",
+              "TOOL_INVALID_ARGUMENTS",
+              "TOOL_PERMISSION_DENIED",
+              "TOOL_EXECUTION_FAILED",
+              "TOOL_INVALID_RESULT",
+              "AGENT_BUDGET_EXCEEDED",
+              "AGENT_DEADLINE_EXCEEDED",
+              "KNOWLEDGE_ENCODING_FAILED",
+              "KNOWLEDGE_RETRIEVAL_FAILED",
+              "KNOWLEDGE_SCOPE_INVALID",
+              "KNOWLEDGE_RESULT_INVALID",
+              "KNOWLEDGE_QUERY_TOO_LONG"
+            ],
+            "title": "Error Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["tool_call_id", "tool_name", "error_code"],
+        "title": "ToolFailedData"
+      },
+      "ToolFailedEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "tool.failed",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ToolFailedData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "ToolFailedEvent"
+      },
+      "ToolStartedData": {
+        "properties": {
+          "tool_call_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tool Call Id"
+          },
+          "tool_name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "title": "Tool Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["tool_call_id", "tool_name"],
+        "title": "ToolStartedData"
+      },
+      "ToolStartedEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "tool.started",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ToolStartedData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "ToolStartedEvent"
       },
       "UploadReceipt": {
         "properties": {

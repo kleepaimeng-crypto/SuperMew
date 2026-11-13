@@ -236,14 +236,26 @@ class RunExecutor:
             for call in prepared:
                 await self._check_active(claim, request, deadline)
                 budget.tool_calls += 1
+                observation = {"tool_call_id": call.call.id, "tool_name": call.call.name}
+                await self._record_tool(claim, request, deadline, "tool.started", observation)
                 try:
                     async with asyncio.timeout_at(deadline) as timeout:
                         content = await self.registry.invoke(call, context)
                 except TimeoutError:
                     raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
+                except ToolFailure as failure:
+                    await self._record_tool(
+                        claim,
+                        request,
+                        deadline,
+                        "tool.failed",
+                        {**observation, "error_code": failure.code},
+                    )
+                    raise
                 if timeout.expired():
                     raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
                 await self._check_active(claim, request, deadline)
+                await self._record_tool(claim, request, deadline, "tool.completed", observation)
                 results.append(InputMessage("tool", content, tool_call_id=call.call.id))
             try:
                 request = replace(
@@ -255,6 +267,18 @@ class RunExecutor:
                 )
             except ValueError:
                 raise ContextInvalid from None
+
+    async def _record_tool(self, claim, request, deadline, event_type, data):
+        for attempt in range(2):
+            await self._check_active(claim, request, deadline)
+            try:
+                if not await self.repository.record_tool(claim, event_type, data):
+                    raise OwnershipLost
+                return
+            except (SQLAlchemyError, OSError, TimeoutError):
+                if attempt or asyncio.get_running_loop().time() + 0.1 >= deadline:
+                    raise ExecutionStorageUnavailable from None
+                await asyncio.sleep(0.1)
 
     @staticmethod
     def _with_messages(request, messages):

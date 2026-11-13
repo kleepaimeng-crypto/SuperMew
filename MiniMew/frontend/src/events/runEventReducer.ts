@@ -18,6 +18,24 @@ export interface RunProjection extends RunBinding {
   readonly runStatus: RunStatus;
   readonly cancelRequestedAt: string | null;
   readonly errorCode: ErrorCode | null;
+  readonly tools: readonly ToolProjection[];
+}
+
+export interface ToolProjection {
+  readonly id: string;
+  readonly name: string;
+  readonly status:
+    "running" | "completed" | "failed" | "cancelled" | "interrupted";
+  readonly errorCode: ErrorCode | null;
+}
+
+function settleTools(
+  state: RunProjection,
+  status: "cancelled" | "interrupted",
+) {
+  return state.tools.map((tool) =>
+    tool.status === "running" ? { ...tool, status } : tool,
+  );
 }
 
 export type EventReduction =
@@ -43,6 +61,7 @@ export function createRunProjection(binding: RunBinding): RunProjection {
     runStatus: "pending",
     cancelRequestedAt: null,
     errorCode: null,
+    tools: [],
   };
 }
 
@@ -92,6 +111,55 @@ function transition(
   const cancelling = state.cancelRequestedAt !== null;
 
   switch (event.type) {
+    case "tool.started": {
+      if (
+        !running ||
+        !messagePending ||
+        cancelling ||
+        state.tools.length >= 6 ||
+        !event.data.tool_call_id.trim() ||
+        state.tools.some((t) => t.id === event.data.tool_call_id)
+      )
+        return null;
+      return {
+        ...state,
+        tools: [
+          ...state.tools,
+          {
+            id: event.data.tool_call_id,
+            name: event.data.tool_name,
+            status: "running",
+            errorCode: null,
+          },
+        ],
+      };
+    }
+    case "tool.completed":
+    case "tool.failed": {
+      const tool = state.tools.find((t) => t.id === event.data.tool_call_id);
+      if (
+        !running ||
+        !messagePending ||
+        cancelling ||
+        tool?.status !== "running" ||
+        tool.name !== event.data.tool_name
+      )
+        return null;
+      return {
+        ...state,
+        tools: state.tools.map((t) =>
+          t.id !== tool.id
+            ? t
+            : {
+                ...t,
+                status:
+                  event.type === "tool.completed" ? "completed" : "failed",
+                errorCode:
+                  event.type === "tool.failed" ? event.data.error_code : null,
+              },
+        ),
+      };
+    }
     case "run.created":
       return state.cursor === 0 && pending && messagePending ? state : null;
     case "run.started":
@@ -117,12 +185,20 @@ function transition(
         : null;
     }
     case "run.completed":
-      return running && state.messageStatus === "completed" && !cancelling
+      return running &&
+        state.messageStatus === "completed" &&
+        !cancelling &&
+        state.tools.every((t) => t.status !== "running")
         ? { ...state, runStatus: "succeeded" }
         : null;
     case "run.failed":
       return running && state.messageStatus === "failed" && !cancelling
-        ? { ...state, runStatus: "failed", errorCode: event.data.error_code }
+        ? {
+            ...state,
+            runStatus: "failed",
+            errorCode: event.data.error_code,
+            tools: settleTools(state, "interrupted"),
+          }
         : null;
     case "run.cancel_requested":
       return (pending || running) && messagePending && !cancelling
@@ -130,7 +206,11 @@ function transition(
         : null;
     case "run.cancelled":
       return cancelling && state.messageStatus === "cancelled"
-        ? { ...state, runStatus: "cancelled" }
+        ? {
+            ...state,
+            runStatus: "cancelled",
+            tools: settleTools(state, "cancelled"),
+          }
         : null;
   }
   return null;

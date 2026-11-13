@@ -45,7 +45,10 @@
         "run.completed",
         "run.failed",
         "run.cancel_requested",
-        "run.cancelled"
+        "run.cancelled",
+        "tool.started",
+        "tool.completed",
+        "tool.failed"
       ]
     },
     "timestamp": {
@@ -234,6 +237,73 @@
           "const": "cancelled"
         }
       }
+    },
+    "ToolStartedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_call_id",
+        "tool_name"
+      ],
+      "properties": {
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+        }
+      }
+    },
+    "ToolCompletedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_call_id",
+        "tool_name"
+      ],
+      "properties": {
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+        }
+      }
+    },
+    "ToolFailedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool_call_id",
+        "tool_name",
+        "error_code"
+      ],
+      "properties": {
+        "tool_call_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+        },
+        "error_code": {
+          "$ref": "#/$defs/ErrorCode"
+        }
+      }
     }
   },
   "oneOf": [
@@ -314,6 +384,36 @@
         },
         "data": {
           "$ref": "#/$defs/RunCancelledData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "tool.started"
+        },
+        "data": {
+          "$ref": "#/$defs/ToolStartedData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "tool.completed"
+        },
+        "data": {
+          "$ref": "#/$defs/ToolCompletedData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "tool.failed"
+        },
+        "data": {
+          "$ref": "#/$defs/ToolFailedData"
         }
       }
     }

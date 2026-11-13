@@ -1,6 +1,7 @@
 import { computed, reactive, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { ApiError, request } from "../api";
+import { parseAnswer, type AnswerView } from "../answers";
 import {
   parseMessagePage,
   parseRun,
@@ -12,6 +13,7 @@ import {
   EventProtocolError,
   isRecord,
   isUuid,
+  parseRunEvent,
 } from "../events/runEventContract";
 import {
   createRunProjection,
@@ -34,6 +36,9 @@ export interface RunView {
   error: string;
   cancelBusy: boolean;
   cancelError: string;
+  activityLoading: boolean;
+  activityLoaded: boolean;
+  activityError: string;
 }
 const pendingPrefix = "minimew.chat-pending:";
 class EventGap extends Error {}
@@ -43,6 +48,11 @@ export const useChatStore = defineStore("chat", () => {
   const threadId = ref<string | null>(null);
   const messages = ref<ChatMessage[]>([]);
   const runs = reactive<Record<string, RunView>>({});
+  const answers = reactive<Record<string, AnswerView>>({});
+  const answerRequests = new Map<
+    string,
+    { content: string; promise: Promise<void> }
+  >();
   const historyLoading = ref(false);
   const historyLoaded = ref(false);
   const historyError = ref("");
@@ -100,6 +110,8 @@ export const useChatStore = defineStore("chat", () => {
     threadId.value = null;
     messages.value = [];
     Object.keys(runs).forEach((key) => delete runs[key]);
+    Object.keys(answers).forEach((key) => delete answers[key]);
+    answerRequests.clear();
     historyLoading.value = false;
     historyLoaded.value = false;
     historyError.value = "";
@@ -213,6 +225,9 @@ export const useChatStore = defineStore("chat", () => {
         error: "",
         cancelBusy: false,
         cancelError: "",
+        activityLoading: false,
+        activityLoaded: false,
+        activityError: "",
       };
       runs[run.id] = view;
     } else {
@@ -262,6 +277,7 @@ export const useChatStore = defineStore("chat", () => {
       // 查询逐条串行，避免翻页时瞬间占满 HTTP 连接；SSE 另有两个连接上限。
       for (const message of assistants) {
         if (!current(ctx) || version !== historyVersion) return;
+        if (message.status === "completed") void loadAnswer(message.run_id);
         const existing = runs[message.run_id];
         if (existing) continue;
         const run = parseRun(
@@ -449,12 +465,14 @@ export const useChatStore = defineStore("chat", () => {
               failures = 0;
               view.error = "";
               view.connection = "live";
+              if (event.type === "run.completed") void loadAnswer(view.run.id);
             }
             return !terminal(view.projection.runStatus);
           },
         );
         if (!current(ctx) || signal.aborted) return;
         if (terminal(view.projection.runStatus)) {
+          view.activityLoaded = true;
           view.connection = "closed";
           view.replay = false;
           view.cancelError = "";
@@ -505,6 +523,133 @@ export const useChatStore = defineStore("chat", () => {
     view.replay = true;
     schedule(ctx);
   }
+
+  async function loadAnswer(id: string, retry = false): Promise<void> {
+    const ctx = context();
+    const message = displayMessages.value.find(
+      (m) => m.run_id === id && m.role === "assistant",
+    );
+    if (!ctx || !message || message.status !== "completed") return;
+    const inflight = answerRequests.get(id);
+    if (inflight?.content === message.content) return inflight.promise;
+    const cached = answers[id];
+    if (
+      cached?.content === message.content &&
+      cached.messageId === message.id &&
+      (cached.state === "loaded" || !retry)
+    )
+      return;
+    answers[id] = {
+      messageId: message.id,
+      content: message.content,
+      state: "loading",
+      materials: null,
+      error: "",
+    };
+    const task = (async () => {
+      try {
+        const materials = parseAnswer(
+          await authorized(ctx, `${runPath(ctx, id)}/answer`),
+          message,
+        );
+        if (
+          !current(ctx) ||
+          displayMessages.value.find((m) => m.id === message.id)?.content !==
+            message.content
+        )
+          return;
+        answers[id] = {
+          messageId: message.id,
+          content: message.content,
+          state: "loaded",
+          materials,
+          error: "",
+        };
+      } catch {
+        if (
+          !current(ctx) ||
+          answers[id]?.content !== message.content ||
+          answers[id]?.messageId !== message.id
+        )
+          return;
+        answers[id] = {
+          messageId: message.id,
+          content: message.content,
+          state: "error",
+          materials: null,
+          error: "引用资料暂时无法读取，回答已保存。",
+        };
+      }
+    })();
+    const entry = { content: message.content, promise: task };
+    answerRequests.set(id, entry);
+    try {
+      await task;
+    } finally {
+      if (answerRequests.get(id) === entry) answerRequests.delete(id);
+    }
+  }
+
+  async function loadActivity(id: string): Promise<void> {
+    const ctx = context(),
+      view = runs[id];
+    if (
+      !ctx ||
+      !view ||
+      view.activityLoading ||
+      view.activityLoaded ||
+      view.replay
+    )
+      return;
+    if (terminal(view.projection.runStatus)) {
+      view.activityLoaded = true;
+      return;
+    }
+    view.activityLoading = true;
+    view.activityError = "";
+    try {
+      let projection = createRunProjection({
+        threadId: ctx.threadId,
+        runId: id,
+        assistantMessageId: view.run.assistant_message_id,
+      });
+      while (!terminal(projection.runStatus)) {
+        const page = await authorized(
+          ctx,
+          `${runPath(ctx, id)}/events?after=${projection.cursor}&limit=100`,
+        );
+        if (!current(ctx)) return;
+        if (
+          !isRecord(page) ||
+          !Array.isArray(page.items) ||
+          !page.items.length ||
+          page.items.length > 100
+        )
+          throw new EventProtocolError();
+        for (const raw of page.items) {
+          const result = reduceRunEvent(projection, parseRunEvent(raw));
+          if (result.kind !== "applied") throw new EventProtocolError();
+          projection = result.state;
+        }
+        if (page.next_cursor !== projection.cursor)
+          throw new EventProtocolError();
+      }
+      const message = messages.value.find(
+        (m) => m.id === view.run.assistant_message_id,
+      );
+      if (
+        projection.runStatus !== view.run.status ||
+        (message && projection.content !== message.content)
+      )
+        throw new EventProtocolError();
+      view.projection = projection;
+      view.activityLoaded = true;
+    } catch {
+      if (current(ctx)) view.activityError = "执行过程暂时无法读取，请重试。";
+    } finally {
+      if (current(ctx)) view.activityLoading = false;
+    }
+  }
   function runStatus(view: RunView): string {
     return terminal(view.run.status)
       ? view.run.status
@@ -526,6 +671,10 @@ export const useChatStore = defineStore("chat", () => {
     )
       return "取消中";
     if (view.projection.messageStatus !== "pending") return "正在确认执行结果";
+    if (view.projection.tools.some((t) => t.status === "running"))
+      return "正在调用工具";
+    if (view.projection.tools.some((t) => t.status === "completed"))
+      return "正在组织回答";
     return status === "pending" ? "排队中" : "生成中";
   }
   const displayMessages = computed(() =>
@@ -550,6 +699,7 @@ export const useChatStore = defineStore("chat", () => {
     threadId,
     messages,
     runs,
+    answers,
     historyLoading,
     historyLoaded,
     historyError,
@@ -568,6 +718,8 @@ export const useChatStore = defineStore("chat", () => {
     cancel,
     synchronizeRun,
     retryRun,
+    loadAnswer,
+    loadActivity,
     runStatus,
     statusLabel,
   };

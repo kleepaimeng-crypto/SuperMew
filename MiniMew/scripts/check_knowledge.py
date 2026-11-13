@@ -196,6 +196,8 @@ async def main():
                         assert [e["type"] for e in events] == [
                             "run.created",
                             "run.started",
+                            "tool.started",
+                            "tool.completed",
                             "message.completed",
                             "run.completed",
                         ]

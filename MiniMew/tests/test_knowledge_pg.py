@@ -102,6 +102,10 @@ def test_run_keeps_first_scope_during_new_publication_and_next_run_uses_new_vers
             assert [e.type for e in saved["events"]] == [
                 "run.created",
                 "run.started",
+                "tool.started",
+                "tool.completed",
+                "tool.started",
+                "tool.completed",
                 "message.completed",
                 "run.completed",
             ]

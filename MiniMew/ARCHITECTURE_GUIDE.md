@@ -1,6 +1,6 @@
 # MiniMew 整体架构导读
 
-核对日期：2026-11-13。覆盖当前第四章与5.1–5.4的真实实现，并标出后续连接点。它是跨章节的架构导航，不另维护学习进度；实际进度和授权仍见[交接记录](AGENT_HANDOFF.md#当前检查点)。
+核对日期：2026-11-13。覆盖当前第四章与第五章的真实实现，并标出后续连接点。它是跨章节的架构导航，不另维护学习进度；实际进度和授权仍见[交接记录](AGENT_HANDOFF.md#当前检查点)。
 
 用户最新要求是看懂整体架构、模块关系与选择原因，不再通过简单场景或异常边界判断题推进。本文先展示整体位置，再沿请求说明调用关系、状态归属和代码，已有测试不因纯文档讲解重复执行。
 
@@ -188,6 +188,16 @@ Milvus命中payload包含chunk原文、编码文本、来源身份和节信息�
 
 [RunExecutor](src/minimew/execution/service.py)在最终文本回来后调用parse_answer；其结果显式传给[Repository](src/minimew/execution/repository.py)。原终结事务检查owner/lease/取消后，将正文写原Message、将引用和所需证据快照写[AnswerRecord](src/minimew/models.py)，并写完成事件及Outbox；末次条件写入失败全部回滚。业务Message仍是每Run的原用户/assistant两条。
 
-[answers.py](src/minimew/answers.py)单个SELECT联合Thread/Run/assistant Message/AnswerRecord检查归属并读取同一快照，再校验材料与权威正文一致；[runs API](src/minimew/api/runs.py)暴露唯一`/{run_id}/answer`资源。来源不再通过当前向量检索求得，所以新版发布或索引退休不改变历史引用。完成事件v1不加字段，5.5订阅/历史界面将按Run身份读取该资源；此处尚未接可点击引用UI。
+[answers.py](src/minimew/answers.py)单个SELECT联合Thread/Run/assistant Message/AnswerRecord检查归属并读取同一快照，再校验材料与权威正文一致；[runs API](src/minimew/api/runs.py)暴露唯一`/{run_id}/answer`资源。来源不再通过当前向量检索求得，所以新版发布或索引退休不改变历史引用。完成事件v1不加字段，5.5订阅/历史界面已按Run身份读取该资源，具体接线见下一节。
 
 本包约定“文档依据”与“模型补充（未由本次资料验证）”分区，引用绑定只认本Run实际提供的Evidence。格式/身份检查不等于语义事实核验；模型是否正确理解原文仍需后续证据评判与评测。实际用例和限制见[第五章5.4实施记录](chapters/05-基础知识问答.md#54-实施记录2026-11-13)。
+
+## 13. 5.5：两条展示链共享原Run身份
+
+引用链：ChatPanel → [chat store](frontend/src/stores/chat.ts) → 原/answer → [answers.ts](frontend/src/answers.ts)严格解析/Unicode码点换算 → [AnswerBody](frontend/src/components/AnswerBody.vue)的分区、引用按钮与版本原文。正文只由Message拥有，引用缓存只服务当前用户/Thread，不落localStorage；加载错误不会改变已完成的Run。只有服务端已持久化的材料能变成可点击引用，不从普通文本猜出处。
+
+过程链：原RunExecutor → [record_tool](src/minimew/execution/repository.py) → Journal/Outbox → 既有Redis提醒/SSE → [reducer](frontend/src/events/runEventReducer.ts)的Run私有tools投影 → [ToolActivity](frontend/src/components/ToolActivity.vue)。历史按原/events分页重建，工具状态不新建事实表；Run终态收束仍未闭合的工具，不把tool.completed解释为run.completed。公开事件只描述工具名/调用ID/结果状态，不展示参数或私有推理。
+
+观察记录与工具调用的重试所有者不同：模型仍由原执行器重试，Tool不隐式重试；记录事件时复用相同payload最多尝试2次。数据库确认丢失后，按Run/调用ID/阶段找到原Event即可继续，不再执行handler。没有增加跨进程恢复；进程中断后的Checkpoint恢复仍在第七章。
+
+这两条链只增加现有API内的模块与浏览器组件，API/独立Indexing Worker/PG/Redis/Milvus的进程关系不变。0014扩展事件类型约束与工具guard；v1旧事件与既有完成payload保持，前后端生成消费者一起更新。学习讲解按知识点，代码/测试按这条完整交付链集中处理。

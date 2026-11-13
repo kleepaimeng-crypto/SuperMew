@@ -273,6 +273,63 @@ class ExecutionRepository:
         )
         return "".join(pieces)
 
+    async def record_tool(self, claim: Claim, event_type: str, data: dict) -> bool:
+        """同Run锁下幂等追加公开观测，提交失败可复用原payload重试，不重跑工具。"""
+        if event_type not in {"tool.started", "tool.completed", "tool.failed"}:
+            raise ValueError("Invalid tool observation")
+        try:
+            async with self.sessions() as session, session.begin():
+                run = await self._locked_run(session, claim.user_id, claim.thread_id, claim.run_id)
+                now = await session.scalar(select(func.clock_timestamp()))
+                if (
+                    run.status != "running"
+                    or run.owner_token != claim.owner_token
+                    or run.lease_until <= now
+                ):
+                    return False
+                if run.cancel_requested_at is not None:
+                    raise CancellationRequested
+                rows = (
+                    await session.scalars(
+                        select(RunEventRecord).where(
+                            RunEventRecord.run_id == run.id,
+                            RunEventRecord.type.in_(
+                                ["tool.started", "tool.completed", "tool.failed"]
+                            ),
+                            RunEventRecord.data["tool_call_id"].astext == data["tool_call_id"],
+                        )
+                    )
+                ).all()
+                same = next((row for row in rows if row.type == event_type), None)
+                if same is not None:
+                    if same.data != data:
+                        raise ValueError("Tool event identity reused with different payload")
+                    return True
+                started = next((row for row in rows if row.type == "tool.started"), None)
+                if event_type != "tool.started" and (
+                    started is None
+                    or started.data["tool_name"] != data["tool_name"]
+                    or len(rows) != 1
+                ):
+                    raise ValueError("Tool observation transition is inconsistent")
+                await append_event(session, run, event_type, data)
+                await session.flush()
+                changed = await session.execute(
+                    update(Run)
+                    .where(
+                        Run.id == run.id,
+                        Run.status == "running",
+                        Run.owner_token == claim.owner_token,
+                        Run.lease_until > func.clock_timestamp(),
+                    )
+                    .values(last_event_sequence=run.last_event_sequence)
+                )
+                if changed.rowcount != 1:
+                    raise OwnershipLost
+            return True
+        except OwnershipLost:
+            return False
+
     async def finish(
         self,
         claim: Claim,

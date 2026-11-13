@@ -75,6 +75,22 @@ class RunCancelledData(ContractModel):
     status: Literal["cancelled"]
 
 
+class ToolStartedData(ContractModel):
+    tool_call_id: str = Field(min_length=1, max_length=128)
+    tool_name: str = Field(min_length=1, max_length=64, pattern="^[a-zA-Z0-9_-]{1,64}$")
+
+
+class ToolCompletedData(ContractModel):
+    tool_call_id: str = Field(min_length=1, max_length=128)
+    tool_name: str = Field(min_length=1, max_length=64, pattern="^[a-zA-Z0-9_-]{1,64}$")
+
+
+class ToolFailedData(ContractModel):
+    tool_call_id: str = Field(min_length=1, max_length=128)
+    tool_name: str = Field(min_length=1, max_length=64, pattern="^[a-zA-Z0-9_-]{1,64}$")
+    error_code: ErrorCode
+
+
 class RunEventBase(ContractModel):
     schema_version: Literal[1]
     event_id: UUID
@@ -131,6 +147,21 @@ class RunCancelledEvent(RunEventBase):
     data: RunCancelledData
 
 
+class ToolStartedEvent(RunEventBase):
+    type: Literal["tool.started"]
+    data: ToolStartedData
+
+
+class ToolCompletedEvent(RunEventBase):
+    type: Literal["tool.completed"]
+    data: ToolCompletedData
+
+
+class ToolFailedEvent(RunEventBase):
+    type: Literal["tool.failed"]
+    data: ToolFailedData
+
+
 RunEvent = Annotated[
     RunCreatedEvent
     | RunStartedEvent
@@ -139,7 +170,10 @@ RunEvent = Annotated[
     | RunCompletedEvent
     | RunFailedEvent
     | RunCancel_RequestedEvent
-    | RunCancelledEvent,
+    | RunCancelledEvent
+    | ToolStartedEvent
+    | ToolCompletedEvent
+    | ToolFailedEvent,
     Field(discriminator="type"),
 ]
 EVENT_ADAPTER = TypeAdapter(RunEvent)

@@ -2,6 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { useAuthStore } from "./auth";
 import { useChatStore } from "./chat";
+import { answerFixture } from "../../tests/fixtures/answer";
 import {
   body,
   cancelled,
@@ -34,6 +35,110 @@ beforeEach(() => {
 afterEach(() => {
   chat.close();
   vi.unstubAllGlobals();
+});
+
+it("引用加载合并在途请求，加载失败与重试不改变Run终态", async () => {
+  const { message, response } = answerFixture();
+  let answerCalls = 0;
+  let complete: (v: Response) => void = () => {};
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string) => {
+      if (path.includes("/messages"))
+        return json({ items: [messages[0], message], previous_cursor: null });
+      if (path.endsWith("/answer")) {
+        ++answerCalls;
+        if (answerCalls === 1)
+          return new Promise<Response>((resolve) => (complete = resolve));
+        return json(response);
+      }
+      return json({ ...run, status: "succeeded", finished_at: time });
+    }),
+  );
+  await chat.open(ids.thread);
+  const first = chat.loadAnswer(ids.run),
+    second = chat.loadAnswer(ids.run);
+  expect(answerCalls).toBe(1);
+  complete(json({ detail: { code: "ANSWER_READ_UNAVAILABLE" } }, 503));
+  await Promise.all([first, second]);
+  expect(chat.answers[ids.run]?.state).toBe("error");
+  expect(chat.runStatus(chat.runs[ids.run]!)).toBe("succeeded");
+  expect(chat.displayMessages[1]?.content).toBe(message.content);
+  await chat.loadAnswer(ids.run, true);
+  expect(answerCalls).toBe(2);
+  expect(chat.answers[ids.run]?.materials?.evidence[0]?.citation_id).toBe("E1");
+  await chat.loadHistory();
+  expect(answerCalls).toBe(2);
+});
+
+it("换对话后拒绝迟到的引用响应", async () => {
+  const { message, response } = answerFixture();
+  let complete: (v: Response) => void = () => {};
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string) => {
+      if (path.includes("/messages"))
+        return json({ items: [messages[0], message], previous_cursor: null });
+      if (path.endsWith("/answer"))
+        return new Promise<Response>((resolve) => (complete = resolve));
+      return json({ ...run, status: "succeeded", finished_at: time });
+    }),
+  );
+  await chat.open(ids.thread);
+  chat.close();
+  complete(json(response));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(Object.keys(chat.answers)).toHaveLength(0);
+  expect(chat.messages).toHaveLength(0);
+});
+
+it("历史工具过程由同一Journal重放，读取不会改变已保存正文", async () => {
+  const process = [
+    success[0]!,
+    success[1]!,
+    {
+      ...started[1]!,
+      type: "tool.started",
+      sequence: 3,
+      data: { tool_call_id: "c", tool_name: "knowledge_search" },
+    },
+    {
+      ...started[1]!,
+      type: "tool.completed",
+      sequence: 4,
+      data: { tool_call_id: "c", tool_name: "knowledge_search" },
+    },
+    ...success.slice(2).map((e) => ({ ...e, sequence: e.sequence + 2 })),
+  ];
+  const final = messages.map((m) =>
+    m.role === "assistant"
+      ? { ...m, status: "completed", content: "今天天气很好" }
+      : m,
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string) => {
+      if (path.includes("/messages"))
+        return json({ items: final, previous_cursor: null });
+      if (path.includes("/events?"))
+        return json({ items: process, next_cursor: process.at(-1)!.sequence });
+      if (path.endsWith("/answer"))
+        return json({
+          run_id: ids.run,
+          message_id: ids.assistant,
+          status: "succeeded",
+          materials: null,
+        });
+      return json({ ...run, status: "succeeded", finished_at: time });
+    }),
+  );
+  await chat.open(ids.thread);
+  await chat.loadActivity(ids.run);
+  expect(chat.runs[ids.run]?.activityLoaded).toBe(true);
+  expect(chat.runs[ids.run]?.projection.tools).toEqual([
+    { id: "c", name: "knowledge_search", status: "completed", errorCode: null },
+  ]);
+  expect(chat.displayMessages[1]?.content).toBe("今天天气很好");
 });
 
 it("从历史的 pending 消息重放，完整正文替换且不会重复创建消息", async () => {

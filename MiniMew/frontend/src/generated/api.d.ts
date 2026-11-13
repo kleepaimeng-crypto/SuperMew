@@ -988,6 +988,9 @@ export interface components {
         | components["schemas"]["RunFailedEvent"]
         | components["schemas"]["RunCancel_RequestedEvent"]
         | components["schemas"]["RunCancelledEvent"]
+        | components["schemas"]["ToolStartedEvent"]
+        | components["schemas"]["ToolCompletedEvent"]
+        | components["schemas"]["ToolFailedEvent"]
       )[];
       /** Next Cursor */
       next_cursor: number;
@@ -1205,6 +1208,161 @@ export interface components {
       token_type: "bearer";
       /** Expires In */
       expires_in: number;
+    };
+    /** ToolCompletedData */
+    ToolCompletedData: {
+      /** Tool Call Id */
+      tool_call_id: string;
+      /** Tool Name */
+      tool_name: string;
+    };
+    /** ToolCompletedEvent */
+    ToolCompletedEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "tool.completed";
+      data: components["schemas"]["ToolCompletedData"];
+    };
+    /** ToolFailedData */
+    ToolFailedData: {
+      /** Tool Call Id */
+      tool_call_id: string;
+      /** Tool Name */
+      tool_name: string;
+      /**
+       * Error Code
+       * @enum {string}
+       */
+      error_code:
+        | "PROVIDER_ERROR"
+        | "PROVIDER_TIMEOUT"
+        | "PROVIDER_INVALID_RESPONSE"
+        | "EXECUTION_EXPIRED"
+        | "EXECUTOR_INTERRUPTED"
+        | "MODEL_SNAPSHOT_MISSING"
+        | "MODEL_SNAPSHOT_INVALID"
+        | "CONTEXT_INVALID"
+        | "EXECUTION_STORAGE_UNAVAILABLE"
+        | "TOOL_NOT_AVAILABLE"
+        | "TOOL_INVALID_ARGUMENTS"
+        | "TOOL_PERMISSION_DENIED"
+        | "TOOL_EXECUTION_FAILED"
+        | "TOOL_INVALID_RESULT"
+        | "AGENT_BUDGET_EXCEEDED"
+        | "AGENT_DEADLINE_EXCEEDED"
+        | "KNOWLEDGE_ENCODING_FAILED"
+        | "KNOWLEDGE_RETRIEVAL_FAILED"
+        | "KNOWLEDGE_SCOPE_INVALID"
+        | "KNOWLEDGE_RESULT_INVALID"
+        | "KNOWLEDGE_QUERY_TOO_LONG";
+    };
+    /** ToolFailedEvent */
+    ToolFailedEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "tool.failed";
+      data: components["schemas"]["ToolFailedData"];
+    };
+    /** ToolStartedData */
+    ToolStartedData: {
+      /** Tool Call Id */
+      tool_call_id: string;
+      /** Tool Name */
+      tool_name: string;
+    };
+    /** ToolStartedEvent */
+    ToolStartedEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "tool.started";
+      data: components["schemas"]["ToolStartedData"];
     };
     /** UploadReceipt */
     UploadReceipt: {

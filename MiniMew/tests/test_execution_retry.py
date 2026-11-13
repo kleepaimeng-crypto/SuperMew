@@ -22,6 +22,7 @@ class Repository:
         self.remaining = AsyncMock(return_value=60)
         self.check_control = AsyncMock(return_value=None)
         self.append_delta = AsyncMock(return_value=True)
+        self.record_tool = AsyncMock(return_value=True)
 
         async def finish(claim, *, content="", error_code=None, materials=None):
             return "failed" if error_code else "succeeded"

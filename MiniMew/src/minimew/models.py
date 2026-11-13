@@ -238,7 +238,8 @@ class RunEventRecord(Base):
         CheckConstraint("jsonb_typeof(data) = 'object'", name="ck_run_events_data"),
         CheckConstraint(
             "type IN ('run.created','run.started','message.delta','message.completed',"
-            "'run.completed','run.failed','run.cancel_requested','run.cancelled')",
+            "'run.completed','run.failed','run.cancel_requested','run.cancelled',"
+            "'tool.started','tool.completed','tool.failed')",
             name="ck_run_events_type",
         ),
         Index(

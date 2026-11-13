@@ -53,6 +53,19 @@ export interface RunCancelRequestedData {
 export interface RunCancelledData {
   status: "cancelled";
 }
+export interface ToolStartedData {
+  tool_call_id: string;
+  tool_name: string;
+}
+export interface ToolCompletedData {
+  tool_call_id: string;
+  tool_name: string;
+}
+export interface ToolFailedData {
+  tool_call_id: string;
+  tool_name: string;
+  error_code: ErrorCode;
+}
 export interface RunEventBase {
   schema_version: 1;
   event_id: string;
@@ -93,6 +106,18 @@ export interface RunCancelledEvent extends RunEventBase {
   type: "run.cancelled";
   data: RunCancelledData;
 }
+export interface ToolStartedEvent extends RunEventBase {
+  type: "tool.started";
+  data: ToolStartedData;
+}
+export interface ToolCompletedEvent extends RunEventBase {
+  type: "tool.completed";
+  data: ToolCompletedData;
+}
+export interface ToolFailedEvent extends RunEventBase {
+  type: "tool.failed";
+  data: ToolFailedData;
+}
 export type RunEvent =
   | RunCreatedEvent
   | RunStartedEvent
@@ -101,4 +126,7 @@ export type RunEvent =
   | RunCompletedEvent
   | RunFailedEvent
   | RunCancel_RequestedEvent
-  | RunCancelledEvent;
+  | RunCancelledEvent
+  | ToolStartedEvent
+  | ToolCompletedEvent
+  | ToolFailedEvent;
