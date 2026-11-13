@@ -37,6 +37,8 @@ class KnowledgeQuery(ToolModel):
 
 class KnowledgeMatch(EvidenceSource):
     score: float
+    score_kind: Literal["dense_cosine", "rrf", "rerank_raw"] = "dense_cosine"
+    stage_scores: dict[str, float] = Field(default_factory=dict)
 
 
 class CitedMatch(KnowledgeMatch):
@@ -110,7 +112,7 @@ class KnowledgeService:
                 return KnowledgeResult(status="no_documents")
             result = await RagPipeline(
                 self.sessions, self.runtime, retriever=search_published
-            ).search(arguments.query, scope, context.user_id)
+            ).search(arguments.query, scope, context.user_id, context.rag_policy)
             session.last_trace = result.trace
             hits = result.rows
         except EmbeddingError as error:
@@ -137,7 +139,9 @@ class KnowledgeService:
         limited = False
         for row in hits:
             match = self.project(row, scope)
-            source = EvidenceSource(**match.model_dump(exclude={"score"}))
+            source = EvidenceSource(
+                **match.model_dump(exclude={"score", "score_kind", "stage_scores"})
+            )
             try:
                 evidence = ledger.propose(source, pending)
             except EvidenceLimit:
@@ -198,6 +202,8 @@ class KnowledgeService:
                 content_sha256=chunk.content_sha256,
                 text=chunk.source_text,
                 score=float(row["score"]),
+                score_kind=row.get("score_kind", "dense_cosine"),
+                stage_scores=row.get("stage_scores", {}),
             )
         except (ValueError, TypeError, KeyError, AttributeError):
             raise ToolFailure("KNOWLEDGE_RESULT_INVALID") from None

@@ -118,6 +118,9 @@ async def reserve_document(
     key: str,
     default_profile: str,
     document_id: UUID | None = None,
+    *,
+    index_layout: str = "dense-cosine-v1",
+    expected_current_version: UUID | None = None,
 ) -> tuple[UploadReceipt, bool]:
     request_hash = hashlib.sha256(
         json.dumps(
@@ -127,7 +130,8 @@ async def reserve_document(
         ).encode()
     ).hexdigest()
     async with session.begin():
-        initial = preset(default_profile)
+        initial = preset(default_profile).model_copy(update={"index_layout": index_layout})
+        initial = BuildConfiguration.model_validate(initial.model_dump())
         await session.execute(
             insert(KnowledgeBase)
             .values(
@@ -155,6 +159,11 @@ async def reserve_document(
             await session.flush()
         else:
             document = await owned_document(session, user_id, document_id, lock=True)
+            if expected_current_version is not None and (
+                document.current_version_id != expected_current_version
+                or document.pending_version_id is not None
+            ):
+                raise SubmissionConflict
         try:
             build = read_build(kb.build_configuration, kb.build_fingerprint)
             build = BuildConfiguration.model_validate(

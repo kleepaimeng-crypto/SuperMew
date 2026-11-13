@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     document_max_upload_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=50 * 1024 * 1024)
     embedding_profile: Literal["bge-small-zh-v1.5", "bge-m3"] = "bge-small-zh-v1.5"
     knowledge_enabled: bool = False
+    document_index_layout: Literal["dense-cosine-v1", "hybrid-jieba-bm25-v1"] = (
+        "hybrid-jieba-bm25-v1"
+    )
 
     @property
     def model_credentials_available(self) -> bool:

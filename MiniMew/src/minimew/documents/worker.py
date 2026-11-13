@@ -24,7 +24,7 @@ from minimew.documents.chunking import build_version_chunks
 from minimew.documents.index_cleanup import IndexCleanupRepository
 from minimew.documents.jobs import IndexJobRepository, OwnershipLost
 from minimew.documents.parsing import DocumentBuildError
-from minimew.documents.profiles import preset
+from minimew.documents.profiles import hybrid_preset, preset
 from minimew.documents.storage import SourceStore
 from minimew.embeddings.adapter import LocalEmbeddingAdapter
 from minimew.embeddings.config import EmbeddingRuntimeSettings
@@ -109,8 +109,9 @@ class IndexWorker:
         self.vector_batch_size = vector_batch_size
         self.jobs, self.cleanup = IndexJobRepository(sessions), IndexCleanupRepository(sessions)
         self.fingerprints = {
-            preset(PROFILE.id).model_copy(update={"source_format": fmt}).fingerprint()
+            factory(PROFILE.id).model_copy(update={"source_format": fmt}).fingerprint()
             for fmt in ("markdown", "text")
+            for factory in (preset, hybrid_preset)
         }
         self.stop = asyncio.Event()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minimew-index")

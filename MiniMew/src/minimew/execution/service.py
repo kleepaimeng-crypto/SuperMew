@@ -92,7 +92,13 @@ class RunExecutor:
         try:
             request = await self.repository.request(claim)
             context = self.registry.bind_context(
-                ToolContext(user_id, thread_id, run_id, self.capabilities)
+                ToolContext(
+                    user_id,
+                    thread_id,
+                    run_id,
+                    self.capabilities,
+                    **({"rag_policy": request.snapshot.rag} if request.snapshot.rag else {}),
+                )
             )
             tools = self.registry.visible(context)
             if tools:

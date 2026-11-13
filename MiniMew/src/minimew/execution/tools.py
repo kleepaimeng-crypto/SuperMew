@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from minimew.evidence import EvidenceLedger
 from minimew.execution.messages import ToolCall, ToolDefinition, valid_text
 from minimew.generated.run_event_v1 import ErrorCode
+from minimew.rag.protocol import RagPolicy
 
 MAX_TOOL_RESULT_CHARS = 12000
 TOOL_ERROR_CODES = frozenset(
@@ -59,6 +60,7 @@ class ToolContext:
     capabilities: frozenset[str]
     tool_sessions: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     evidence: EvidenceLedger | None = None
+    rag_policy: RagPolicy = field(default_factory=RagPolicy)
 
     def __post_init__(self):
         if self.evidence is None:

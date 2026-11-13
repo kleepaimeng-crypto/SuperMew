@@ -24,6 +24,16 @@ def canonical(value) -> str:
 PROFILE = preset("bge-small-zh-v1.5").embedding
 SPACE_HASH = hashlib.sha256(canonical(PROFILE.model_dump(mode="json")).encode()).hexdigest()
 COLLECTION = "minimew_dense_v1_" + SPACE_HASH[:16]
+HYBRID_LAYOUT = "hybrid-jieba-bm25-v1"
+ANALYZER = {"tokenizer": "jieba", "filter": ["lowercase"]}
+
+
+def collection_for(layout):
+    if layout == "dense-cosine-v1":
+        return COLLECTION
+    if layout == HYBRID_LAYOUT:
+        return "minimew_hybrid_v1_" + SPACE_HASH[:16]
+    raise VectorError("VECTOR_BUILD_MISMATCH")
 
 
 def normalized_vector(vector) -> tuple[float, ...]:
@@ -48,10 +58,15 @@ class CandidateScope:
     build_fingerprint: str
     source_sha256: str
     attempt_id: UUID
+    index_layout: str = "dense-cosine-v1"
 
     @property
     def scope_id(self) -> str:
-        return hashlib.sha256(canonical(asdict(self)).encode()).hexdigest()
+        value = asdict(self)
+        collection_for(self.index_layout)
+        if self.index_layout == "dense-cosine-v1":
+            value.pop("index_layout")  # 保持旧 manifest 的物理身份，禁止重写历史。
+        return hashlib.sha256(canonical(value).encode()).hexdigest()
 
     @property
     def scalar_fields(self) -> dict:
@@ -71,7 +86,7 @@ class VectorRecord:
     record_sha256: str
 
     def entity(self, scope: CandidateScope) -> dict:
-        return {
+        value = {
             "id": self.row_id,
             "chunk_id": self.chunk_id,
             **scope.scalar_fields,
@@ -79,6 +94,9 @@ class VectorRecord:
             "vector": list(self.vector),
             "record_sha256": self.record_sha256,
         }
+        if scope.index_layout == HYBRID_LAYOUT:
+            value["retrieval_text"] = value["payload"]["embedding_text"]
+        return value
 
 
 @dataclass(frozen=True)
@@ -112,7 +130,11 @@ def make_candidate(
     if not chunks.chunks or len(vectors) != len(chunks.chunks):
         raise VectorError("VECTOR_INVALID_VECTOR")
     scope = CandidateScope(
-        chunks.identity, chunks.build_fingerprint, chunks.source_sha256, attempt_id
+        chunks.identity,
+        chunks.build_fingerprint,
+        chunks.source_sha256,
+        attempt_id,
+        build.index_layout,
     )
     sections = {s.section_id: s for s in chunks.sections}
     rows = []

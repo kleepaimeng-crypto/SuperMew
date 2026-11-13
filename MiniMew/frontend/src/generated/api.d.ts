@@ -434,9 +434,9 @@ export interface components {
       /**
        * Index Layout
        * @default dense-cosine-v1
-       * @constant
+       * @enum {string}
        */
-      index_layout: "dense-cosine-v1";
+      index_layout: "dense-cosine-v1" | "hybrid-jieba-bm25-v1";
     };
     /** Citation */
     Citation: {

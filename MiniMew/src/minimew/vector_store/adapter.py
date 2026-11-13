@@ -6,6 +6,7 @@ from typing import Protocol
 
 from minimew.documents.profiles import EmbeddingProfile
 from minimew.vector_store.manifest import (
+    HYBRID_LAYOUT,
     PROFILE,
     SPACE_HASH,
     CandidateBuild,
@@ -59,6 +60,11 @@ class CandidateIndex:
                     canonical(row["payload"]), normalized_vector(row["vector"])
                 )
                 if (
+                    manifest.scope.index_layout == HYBRID_LAYOUT
+                    and row.get("retrieval_text") != row["payload"]["embedding_text"]
+                ):
+                    raise ValueError("Unexpected lexical text")
+                if (
                     row["record_sha256"] != entry.record_sha256
                     or actual_hash != entry.record_sha256
                 ):
@@ -74,12 +80,16 @@ class CandidateIndex:
         manifest = candidate.manifest
         entities = [record.entity(manifest.scope) for record in candidate.records]
         self._validate(manifest, entities, complete=True)
-        self.backend.ensure_collection()
+        hybrid = manifest.scope.index_layout == HYBRID_LAYOUT
+        self.backend.ensure_collection(**({"layout": HYBRID_LAYOUT} if hybrid else {}))
         existing = self.backend.read(manifest.scope, len(manifest.entries) + 1)
         seen = self._validate(manifest, existing, complete=False)
         missing = [row for row in entities if row["id"] not in seen]
         for start in range(0, len(missing), self.batch_size):
-            self.backend.upsert(missing[start : start + self.batch_size])
+            self.backend.upsert(
+                missing[start : start + self.batch_size],
+                **({"layout": HYBRID_LAYOUT} if hybrid else {}),
+            )
         return self.verify(manifest)
 
     def verify(self, manifest: CandidateManifest) -> VerifiedCandidate:
@@ -102,6 +112,23 @@ class CandidateIndex:
         values = list(normalized_vector(vector))
         manifest = verified.manifest
         rows = self.backend.search(manifest.scope, values, top_k)
+        return self._hits(manifest, rows, top_k)
+
+    def lexical(self, verified, query, *, top_k=10):
+        if verified.manifest.scope.index_layout != HYBRID_LAYOUT:
+            raise VectorError("VECTOR_CAPABILITY_UNSUPPORTED")
+        if not isinstance(query, str) or not query.strip() or not 1 <= top_k <= 20:
+            raise VectorError("VECTOR_INVALID_QUERY")
+        return self._hits(
+            verified.manifest, self.backend.lexical(verified.manifest.scope, query, top_k), top_k
+        )
+
+    def complete_rows(self, manifest):
+        rows = self.backend.read(manifest.scope, len(manifest.entries) + 1)
+        self._validate(manifest, rows, complete=True)
+        return [{"chunk_id": r["chunk_id"], "score": 0.0, "payload": r["payload"]} for r in rows]
+
+    def _hits(self, manifest, rows, top_k):
         try:
             if len(rows) > top_k:
                 raise VectorError("VECTOR_INVALID_RESULT")

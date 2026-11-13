@@ -5,11 +5,20 @@ import json
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from minimew.models import ModelAssignment, ModelProfile, Run
+from minimew.rag.protocol import RagPolicy
 
 
 class FrozenModel(BaseModel):
@@ -49,12 +58,22 @@ class ProfileSnapshot(FrozenModel):
 
 
 class ModelSnapshot(FrozenModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 1
     answer: ProfileSnapshot
+    rag: RagPolicy | None = None
+
+    @model_validator(mode="after")
+    def policy_version(self):
+        if (self.schema_version == 2) != (self.rag is not None):
+            raise ValueError("Snapshot strategy/version mismatch")
+        return self
 
     def catalog_hash(self) -> str:
         canonical = json.dumps(
-            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), allow_nan=False
+            self.model_dump(mode="json", exclude_none=True),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -99,9 +118,11 @@ async def freeze_current_snapshot(session: AsyncSession) -> ModelSnapshot:
     try:
         configuration = ModelConfiguration.model_validate(profile.configuration)
         return ModelSnapshot(
+            schema_version=2,
+            rag=RagPolicy(strategy="hybrid"),
             answer=ProfileSnapshot(
                 profile_id=profile.id, profile_version=profile.version, configuration=configuration
-            )
+            ),
         )
     except ValidationError:
         raise ModelConfigurationUnavailable from None

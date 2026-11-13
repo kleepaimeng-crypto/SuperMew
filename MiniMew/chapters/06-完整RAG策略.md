@@ -401,6 +401,17 @@ base以短输入（通常512 token级）的question+passage对为起点；必须
 
 实际命令：`uv run --no-sync pytest -q tests/test_knowledge_runtime.py tests/test_knowledge_cases.py tests/test_rag.py tests/test_knowledge.py --tb=short`，41通过（2新增、39既有，0跳过）；Ruff检查/格式通过。首次定向28项中21失败源于自动清理测试引用的PROFILE导出，修正显式导出后28通过，随后扩大至41；复跑不相加。未改变事务、模型调用、公开契约或数据库结构，本小节不重跑PG/浏览器/真实模型。没有新增依赖、迁移或生成物。
 
+
+### 6.2 实施与验收（2026-11-13）
+
+Hybrid布局为`hybrid-jieba-bm25-v1`，正文检索文本复用冻结embedding_text（标题+原文），同一集合同时保存Dense与Milvus原生BM25。分析器按[Milvus官方全文检索](https://milvus.io/docs/full-text-search.md)接线并真实检查：jieba+lowercase保留中文、E1024/E1025和AB-123；removepunct会删除连字符型号，已在创建业务数据前修正本轮自有空探测集合。BM25统计为集合级，并非每用户独立IDF；权限过滤仍严格限定同一个发布scope。应用内仅一份RRF，按各路全局排名融合和来源去重，工具返回score_kind/stage_scores明确分数含义。
+
+新知识库默认Hybrid，既有知识库保持冻结配置；`documents.upgrade`默认计划、显式--apply更新该用户KB目标并经原上传事务创建同内容新构建候选，原版本/清单/源文件不改。每份重建有确定幂等键和current/pending前置条件，正在上传时拒绝覆盖；批量可部分提交，重跑跳过同内容已排队Hybrid任务，当前指针只有Worker核验发布后变化。旧Dense策略是同接口的显式能力结果，网络和坏schema不静默降级。
+
+Run的新v2模型快照冻结RagPolicy，旧v1摘要保持；数据仍在原JSON字段，既有不可变触发器继续保护，未改变ORM/DDL所以无需新Alembic版本。构建布局枚举由正式OpenAPI生成TS，不手改消费者；Event v1与历史答案格式保持。
+
+实际验证：定向离线82通过（4新增Hybrid用例）；`check_runtime.py tests/test_hybrid_pg.py tests/test_indexing_pg.py tests/test_knowledge_pg.py tests/test_runs_pg.py`为42通过（2新增）；`check_knowledge.py`真实CPU/Milvus/原Run/Journal/Evidence与受控回答通过（原生Hybrid，6事件，收费0），临时库与自有scope清理。前序145离线运行与最终82有重叠，不相加；旧PG夹具显式选择Dense v1，原有断言不变，新Hybrid测试单独启用。Ruff和前端typecheck通过；未重跑全仓、收费模型或浏览器，未改变页面交互。6.3将在同包接续。
+
 ## 结章文字总结（完成后填写）
 
 完成后据实记录本章交付、选型、完整数据流、实际对照收益/退化、验证和未完成限制；不预填结果。

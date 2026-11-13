@@ -139,6 +139,7 @@ async def accept_upload(request, file, key, user, session, settings, document_id
             key,
             settings.embedding_profile,
             document_id,
+            index_layout=settings.document_index_layout,
         )
 
 

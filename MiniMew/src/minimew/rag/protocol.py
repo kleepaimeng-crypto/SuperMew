@@ -62,4 +62,25 @@ class RetrievalResult:
 
     @property
     def rows(self):
-        return tuple(c.row for g in self.groups for c in g.members)
+        rows = []
+        for group in self.groups:
+            for c in group.members:
+                row = c.row
+                if c.rrf is not None:
+                    row = {
+                        **row,
+                        "score": c.rerank if c.rerank is not None else c.rrf,
+                        "score_kind": "rerank_raw" if c.rerank is not None else "rrf",
+                        "stage_scores": {
+                            k: v
+                            for k, v in {
+                                "dense": c.dense,
+                                "bm25": c.bm25,
+                                "rrf": c.rrf,
+                                "rerank": c.rerank,
+                            }.items()
+                            if v is not None
+                        },
+                    }
+                rows.append(row)
+        return tuple(rows)

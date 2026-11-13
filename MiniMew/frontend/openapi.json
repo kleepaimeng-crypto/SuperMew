@@ -1307,7 +1307,7 @@
           },
           "index_layout": {
             "type": "string",
-            "const": "dense-cosine-v1",
+            "enum": ["dense-cosine-v1", "hybrid-jieba-bm25-v1"],
             "title": "Index Layout",
             "default": "dense-cosine-v1"
           }

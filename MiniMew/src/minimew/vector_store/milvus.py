@@ -4,11 +4,13 @@ import time
 
 from minimew.vector_store.config import VectorSettings
 from minimew.vector_store.manifest import (
-    COLLECTION,
+    ANALYZER,
+    HYBRID_LAYOUT,
     SPACE_HASH,
     CandidateScope,
     VectorError,
     canonical,
+    collection_for,
 )
 
 TEXT_FIELDS = {
@@ -85,20 +87,41 @@ class MilvusBackend:
         """只检查读取连接，不在API查询运行时创建或修复集合。"""
         self._rpc(self.client.list_collections)
 
-    def ensure_collection(self) -> None:
-        from pymilvus import DataType
+    def ensure_collection(self, *, layout="dense-cosine-v1") -> None:
+        from pymilvus import DataType, Function, FunctionType
 
-        if not self._rpc(self.client.has_collection, collection_name=COLLECTION):
+        collection = collection_for(layout)
+        hybrid = layout == HYBRID_LAYOUT
+        description = DESCRIPTION if not hybrid else "MiniMew hybrid jieba bm25 v1 " + SPACE_HASH
+
+        if not self._rpc(self.client.has_collection, collection_name=collection):
             schema = self.client.create_schema(
-                auto_id=False, enable_dynamic_field=False, description=DESCRIPTION
+                auto_id=False, enable_dynamic_field=False, description=description
             )
             for name, size in TEXT_FIELDS.items():
                 schema.add_field(name, DataType.VARCHAR, max_length=size, is_primary=name == "id")
             schema.add_field("payload", DataType.JSON)
             schema.add_field("vector", DataType.FLOAT_VECTOR, dim=512)
+            if hybrid:
+                schema.add_field(
+                    "retrieval_text",
+                    DataType.VARCHAR,
+                    max_length=65535,
+                    enable_analyzer=True,
+                    analyzer_params=ANALYZER,
+                )
+                schema.add_field("sparse", DataType.SPARSE_FLOAT_VECTOR)
+                schema.add_function(
+                    Function(
+                        name="lexical_bm25",
+                        input_field_names=["retrieval_text"],
+                        output_field_names=["sparse"],
+                        function_type=FunctionType.BM25,
+                    )
+                )
             self._rpc(
                 self.client.create_collection,
-                collection_name=COLLECTION,
+                collection_name=collection,
                 schema=schema,
                 consistency_level="Strong",
             )
@@ -106,20 +129,28 @@ class MilvusBackend:
             indexes.add_index(
                 field_name="vector", index_name="dense", index_type="FLAT", metric_type="COSINE"
             )
+            if hybrid:
+                indexes.add_index(
+                    field_name="sparse",
+                    index_name="lexical",
+                    index_type="SPARSE_INVERTED_INDEX",
+                    metric_type="BM25",
+                    params={"bm25_k1": 1.2, "bm25_b": 0.75},
+                )
             self._rpc(
                 self.client.create_index,
-                collection_name=COLLECTION,
+                collection_name=collection,
                 index_params=indexes,
                 sync=False,
             )
-        info = self._rpc(self.client.describe_collection, collection_name=COLLECTION)
+        info = self._rpc(self.client.describe_collection, collection_name=collection)
         fields = {field["name"]: field for field in info["fields"]}
         if (
-            info.get("description") != DESCRIPTION
+            info.get("description") != description
             or info.get("auto_id")
             or info.get("enable_dynamic_field")
             or info.get("consistency_level") != 0
-            or set(fields) != set(FIELDS)
+            or set(fields) != set(FIELDS + (["retrieval_text", "sparse"] if hybrid else []))
             or fields["vector"]["type"] != DataType.FLOAT_VECTOR
             or int(fields["vector"]["params"].get("dim", 0)) != 512
             or fields["payload"]["type"] != DataType.JSON
@@ -132,14 +163,37 @@ class MilvusBackend:
         ):
             raise VectorError("VECTOR_COLLECTION_MISMATCH")
         index = self._rpc(
-            self.client.describe_index, collection_name=COLLECTION, index_name="dense"
+            self.client.describe_index, collection_name=collection, index_name="dense"
         )
         if index.get("index_type") != "FLAT" or index.get("metric_type") != "COSINE":
             raise VectorError("VECTOR_COLLECTION_MISMATCH")
-        self._rpc(self.client.load_collection, collection_name=COLLECTION, _async=True)
+        if hybrid:
+            params = fields["retrieval_text"].get("params", {})
+            analyzer = params.get("analyzer_params")
+            if isinstance(analyzer, str):
+                import json
+
+                analyzer = json.loads(analyzer)
+            functions = info.get("functions", [])
+            lexical = self._rpc(
+                self.client.describe_index, collection_name=collection, index_name="lexical"
+            )
+            if (
+                fields["sparse"]["type"] != DataType.SPARSE_FLOAT_VECTOR
+                or str(params.get("enable_analyzer")).lower() != "true"
+                or analyzer != ANALYZER
+                or len(functions) != 1
+                or functions[0].get("input_field_names") != ["retrieval_text"]
+                or functions[0].get("output_field_names") != ["sparse"]
+                or int(functions[0].get("type", 0)) != int(FunctionType.BM25)
+                or lexical.get("metric_type") != "BM25"
+                or lexical.get("index_type") != "SPARSE_INVERTED_INDEX"
+            ):
+                raise VectorError("VECTOR_COLLECTION_MISMATCH")
+        self._rpc(self.client.load_collection, collection_name=collection, _async=True)
         deadline = time.monotonic() + self.settings.timeout_seconds
         while True:
-            state = self._rpc(self.client.get_load_state, collection_name=COLLECTION)
+            state = self._rpc(self.client.get_load_state, collection_name=collection)
             if int(state["state"]) == 3:  # SDK LoadState.Loaded
                 return
             if time.monotonic() >= deadline:
@@ -149,9 +203,10 @@ class MilvusBackend:
     def read(self, scope: CandidateScope, max_rows: int) -> list[dict]:
         iterator = self._rpc(
             self.client.query_iterator,
-            collection_name=COLLECTION,
+            collection_name=collection_for(scope.index_layout),
             filter=scope_filter(scope),
-            output_fields=FIELDS,
+            output_fields=FIELDS
+            + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
             batch_size=128,
             consistency_level="Strong",
         )
@@ -168,24 +223,44 @@ class MilvusBackend:
         finally:
             iterator.close()
 
-    def upsert(self, rows: list[dict]) -> None:
-        result = self._rpc(self.client.upsert, collection_name=COLLECTION, data=rows)
+    def upsert(self, rows: list[dict], *, layout="dense-cosine-v1") -> None:
+        result = self._rpc(self.client.upsert, collection_name=collection_for(layout), data=rows)
         if result["upsert_count"] != len(rows):
             raise VectorError("VECTOR_PARTIAL_WRITE")
 
     def search(self, scope: CandidateScope, vector: list[float], limit: int) -> list[dict]:
         result = self._rpc(
             self.client.search,
-            collection_name=COLLECTION,
+            collection_name=collection_for(scope.index_layout),
             data=[vector],
             anns_field="vector",
             filter=scope_filter(scope),
             limit=limit,
-            output_fields=FIELDS,
+            output_fields=FIELDS
+            + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
             search_params={"metric_type": "COSINE", "params": {}},
             consistency_level="Strong",
         )
         return result[0]
 
+    def lexical(self, scope, query, limit):
+        if scope.index_layout != HYBRID_LAYOUT:
+            raise VectorError("VECTOR_CAPABILITY_UNSUPPORTED")
+        return self._rpc(
+            self.client.search,
+            collection_name=collection_for(scope.index_layout),
+            data=[query],
+            anns_field="sparse",
+            filter=scope_filter(scope),
+            limit=limit,
+            output_fields=FIELDS + ["retrieval_text"],
+            search_params={"metric_type": "BM25", "params": {}},
+            consistency_level="Strong",
+        )[0]
+
     def delete(self, scope: CandidateScope) -> None:
-        self._rpc(self.client.delete, collection_name=COLLECTION, filter=scope_filter(scope))
+        self._rpc(
+            self.client.delete,
+            collection_name=collection_for(scope.index_layout),
+            filter=scope_filter(scope),
+        )

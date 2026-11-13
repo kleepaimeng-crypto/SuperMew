@@ -42,7 +42,7 @@ class BuildConfiguration(FrozenConfiguration):
     chunk_tokens: int = Field(ge=32, le=8192)
     overlap_tokens: int = Field(ge=0)
     embedding: EmbeddingProfile
-    index_layout: Literal["dense-cosine-v1"] = "dense-cosine-v1"
+    index_layout: Literal["dense-cosine-v1", "hybrid-jieba-bm25-v1"] = "dense-cosine-v1"
 
     @model_validator(mode="after")
     def budgets(self):
@@ -87,3 +87,8 @@ def read_build(value: dict, fingerprint: str) -> BuildConfiguration:
     if build.fingerprint() != fingerprint:
         raise ValueError("Build fingerprint mismatch")
     return build
+
+
+def hybrid_preset(profile_id: str) -> BuildConfiguration:
+    """显式的新构建身份；旧 preset 和已冻结的 fingerprint 不变。"""
+    return preset(profile_id).model_copy(update={"index_layout": "hybrid-jieba-bm25-v1"})

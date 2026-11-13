@@ -247,6 +247,19 @@ uv run --env-file .env --no-sync python scripts/check_chat_frontend.py tests/cha
 第三章职责地图和本轮验证范围见 [结章总结](chapters/03-最小聊天前端.md#结章文字总结2026-11-09)。
 
 
+## Hybrid 构建与显式升级（6.2）
+
+新知识库默认 `hybrid-jieba-bm25-v1`，可用 `MINIMEW_DOCUMENT_INDEX_LAYOUT=dense-cosine-v1` 显式选择 Dense 基线。已有知识库不会随环境变量重写。旧 Dense 产物只能显式报告该能力；网络和存储故障不会伪装成 Dense 降级或无资料。
+
+在 MiniMew 目录通过本地管理权限指定用户，先查看计划，再执行：
+
+```powershell
+uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <user_uuid>
+uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <user_uuid> --apply
+```
+
+升级更新该用户未来上传的构建目标，经既有候选Version/IndexJob/Worker核验发布；旧current在成功前继续可读，源文件和历史引用不改。存在并发上传时拒绝覆盖；批量可能部分入队，重新执行可继续，不自动清库或重建集合。独立Worker同时识别旧Dense和新Hybrid的显式构建身份。API/Worker需加载最新代码，普通API不执行迁移或索引构建。
+
 ## 文档入库基础（工程包 A）
 
 当前已实现 Markdown/TXT 的上传、更新版本、个人文档目录和持久 Index Job。**上传成功返回 pending/candidate，不表示已经分块、向量化或发布**；独立Worker、Milvus核验与原子发布已接入，需另行启动Worker。文档UI已接入主导航，也可通过API/Swagger操作；完整模型选择/重建页面留后续。

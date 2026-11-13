@@ -9,6 +9,8 @@ def test_jwt_settings(monkeypatch):
     monkeypatch.setenv("MINIMEW_REDIS_PASSWORD", "test-only-redis-not-for-production")
     monkeypatch.setenv("MINIMEW_DEEPSEEK_API_KEY", "test-only-never-call-network")
     monkeypatch.setenv("MINIMEW_KNOWLEDGE_ENABLED", "false")
+    # Existing document fixtures are frozen Dense v1; Hybrid tests opt into the new layout.
+    monkeypatch.setenv("MINIMEW_DOCUMENT_INDEX_LAYOUT", "dense-cosine-v1")
 
     # 旧离线/PG 用例不隐式联网。真实通知验收在专用 fixture 显式恢复资源工厂。
     @asynccontextmanager
