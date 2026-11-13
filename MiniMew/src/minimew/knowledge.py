@@ -16,7 +16,9 @@ from minimew.embeddings.errors import EmbeddingError
 from minimew.evidence import EvidenceLimit, EvidenceSource
 from minimew.execution.messages import valid_text
 from minimew.execution.tools import ToolContext, ToolFailure, ToolModel, ToolSpec
-from minimew.vector_store.manifest import PROFILE, VectorError
+from minimew.rag.pipeline import RagPipeline
+from minimew.vector_store.manifest import PROFILE as PROFILE
+from minimew.vector_store.manifest import VectorError
 
 NAME = "knowledge_search"
 CAPABILITY = "documents.read"
@@ -53,6 +55,7 @@ class KnowledgeSession:
     thread_id: UUID
     run_id: UUID
     scope: RetrievalScope | None = None
+    last_trace: object | None = None
 
 
 class KnowledgeService:
@@ -105,17 +108,11 @@ class KnowledgeService:
                 raise ToolFailure("TOOL_PERMISSION_DENIED")
             if not scope.targets:
                 return KnowledgeResult(status="no_documents")
-            vector = await self.runtime.sync(self.runtime.encoder.encode_query, arguments.query)
-            hits = await search_published(
-                self.sessions,
-                self.runtime.index,
-                scope,
-                context.user_id,
-                vector,
-                PROFILE,
-                top_k=3,
-                offload=self.runtime.sync,
-            )
+            result = await RagPipeline(
+                self.sessions, self.runtime, retriever=search_published
+            ).search(arguments.query, scope, context.user_id)
+            session.last_trace = result.trace
+            hits = result.rows
         except EmbeddingError as error:
             code = (
                 "KNOWLEDGE_QUERY_TOO_LONG"

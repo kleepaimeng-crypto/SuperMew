@@ -394,6 +394,13 @@ base以短输入（通常512 token级）的question+passage对为起点；必须
 
 本轮只更新章节/交接与计划入口，检查文档差异、本地链接和格式；不运行应用测试、不加载/下载模型、不改变运行环境、数据库或索引，不commit/push。后续从本节具体范围取得开始反馈，不再反复开章或重讲已选模型。
 
+
+### 6.1 实施与验收（2026-11-13）
+
+用户明确“开始 A 包”，按6.1–6.3范围连续实现。本节已提取 `rag/protocol.py` 和 `rag/pipeline.py`，从KnowledgeService委派唯一Dense策略入口；Run固定scope、严格投影、预算与Evidence登记保持，trace归属每个KnowledgeSession，不记录正文。Runtime仍管理资源，未新增执行进程。Hybrid与重排将在同包后续接入。
+
+实际命令：`uv run --no-sync pytest -q tests/test_knowledge_runtime.py tests/test_knowledge_cases.py tests/test_rag.py tests/test_knowledge.py --tb=short`，41通过（2新增、39既有，0跳过）；Ruff检查/格式通过。首次定向28项中21失败源于自动清理测试引用的PROFILE导出，修正显式导出后28通过，随后扩大至41；复跑不相加。未改变事务、模型调用、公开契约或数据库结构，本小节不重跑PG/浏览器/真实模型。没有新增依赖、迁移或生成物。
+
 ## 结章文字总结（完成后填写）
 
 完成后据实记录本章交付、选型、完整数据流、实际对照收益/退化、验证和未完成限制；不预填结果。
