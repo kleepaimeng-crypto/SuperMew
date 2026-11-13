@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.database import create_engine
 from minimew.documents.artifacts import read_artifact
+from minimew.model_control import ModelConfiguration, set_current_model
 from minimew.models import Document, IndexArtifact, IndexJob, IndexWorkerHeartbeat
 from minimew.settings import Settings
 from minimew.vector_store.adapter import CandidateIndex
@@ -40,6 +41,7 @@ async def stop(process):
 
 
 async def main():
+    knowledge = os.environ.get("MINIMEW_KNOWLEDGE_BROWSER_TESTS") == "1"
     with socket.socket() as probe:
         try:
             probe.bind(("127.0.0.1", 5175))
@@ -60,11 +62,30 @@ async def main():
                 MINIMEW_DOCUMENT_BROWSER_TESTS="1",
                 MINIMEW_CHAT_BROWSER_TESTS="1",
                 MINIMEW_DEEPSEEK_API_KEY="test-only-no-chat-network",
+                MINIMEW_KNOWLEDGE_ENABLED="true" if knowledge else "false",
+                MINIMEW_EXECUTION_SCAN_SECONDS="0.05",
+                MINIMEW_EVENT_POLL_SECONDS="0.05",
+                MINIMEW_CANCELLATION_POLL_SECONDS="0.05",
                 MINIMEW_INDEX_POLL_SECONDS="0.1",
                 HF_HUB_OFFLINE="1",
             )
             engine = create_engine(Settings().model_copy(update={"db_name": database}))
             sessions = async_sessionmaker(engine, expire_on_commit=False)
+            if knowledge:
+                async with sessions() as session:
+                    await set_current_model(
+                        session,
+                        "knowledge-browser",
+                        ModelConfiguration(
+                            provider="openai_compatible",
+                            model_name="controlled-answer",
+                            base_url="https://api.deepseek.com",
+                            temperature=0.2,
+                            max_output_tokens=1024,
+                            timeout_seconds=30.0,
+                            thinking={"type": "disabled"},
+                        ),
+                    )
             api = worker = backend = None
             logs = []
             try:
@@ -118,7 +139,15 @@ async def main():
                     raise RuntimeError("Owned indexing worker readiness timed out")
                 await asyncio.to_thread(
                     subprocess.run,
-                    [npm, "run", "test:e2e", "--", "tests/documents-live.spec.ts"],
+                    [
+                        npm,
+                        "run",
+                        "test:e2e",
+                        "--",
+                        "tests/knowledge-live.spec.ts"
+                        if knowledge
+                        else "tests/documents-live.spec.ts",
+                    ],
                     cwd=ROOT / "frontend",
                     check=True,
                     timeout=180,
@@ -128,10 +157,9 @@ async def main():
                     jobs = (await session.scalars(select(IndexJob))).all()
                     documents = (await session.scalars(select(Document))).all()
                     artifacts = (await session.scalars(select(IndexArtifact))).all()
-                assert len(jobs) == 2 and sorted(job.status for job in jobs) == [
-                    "failed",
-                    "succeeded",
-                ]
+                assert len(jobs) == 2 and sorted(job.status for job in jobs) == (
+                    ["succeeded", "succeeded"] if knowledge else ["failed", "succeeded"]
+                )
                 assert len(documents) == 1 and documents[0].current_version_id is not None
                 backend = await asyncio.to_thread(MilvusBackend.connect, VectorSettings())
                 for artifact in artifacts:
@@ -143,6 +171,8 @@ async def main():
                     "manifest_counts": [len(read_artifact(a).entries) for a in artifacts],
                     "owned_processes": 2,
                     "dev_database_consumed": False,
+                    "paid_model_calls": 0,
+                    "knowledge_ui": knowledge,
                 }
                 (folder / "report.json").write_text(json.dumps(report, indent=2) + "\n")
                 print(json.dumps(report))

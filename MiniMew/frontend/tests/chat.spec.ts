@@ -57,6 +57,15 @@ async function fixture(
   await page.route("**/v1/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
+    if (path.endsWith("/answer"))
+      return route.fulfill({
+        json: {
+          run_id: ids.run,
+          message_id: ids.assistant,
+          status: "succeeded",
+          materials: null,
+        },
+      });
     if (path.endsWith("/messages")) {
       if (created && historyError)
         return route.fulfill({ status: 503, json: {} });

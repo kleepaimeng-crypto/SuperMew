@@ -46,6 +46,7 @@ async def main(tests):
             MINIMEW_DB_NAME=database,
             MINIMEW_INTEGRATION_DB=database,
             MINIMEW_CHAT_BROWSER_TESTS="1",
+            MINIMEW_KNOWLEDGE_ENABLED="false",
             MINIMEW_DEEPSEEK_API_KEY="test-only-no-network",
             MINIMEW_EVENT_POLL_SECONDS="0.05",
             MINIMEW_EXECUTION_SCAN_SECONDS="0.05",

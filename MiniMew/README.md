@@ -737,6 +737,19 @@ message.completed v1保持message_id/status/content，SSE继续重放Journal；5
 
 [ToolActivity](frontend/src/components/ToolActivity.vue)展示公开工具状态，实时数据来自原SSE/reducer；历史详情打开时通过既有/events分页重放同一Journal，不新增进度接口或执行状态表。工具结束不等于Run结束；失败/取消终态收束未闭合工具。旧Run没有观测时只说明“没有已保存的工具记录”，不推断当时没执行工具。沿用既有页面样式，无HTML注入渲染、新UI依赖或LangGraph接入。源码框架与定向验证见[5.5记录](chapters/05-基础知识问答.md#55-实施记录2026-11-13)。
 
+### 第五章固定案例与真实浏览器验收（5.6）
+
+[固定案例](examples/rag/chapter05-cases.json)由`uv run --no-sync pytest -q tests/test_knowledge_cases.py`复用正式知识工具/执行器，验证有限的引用、补充、空资料和故障契约；回答模型受控，不是语义质量评测。
+
+```powershell
+$env:MINIMEW_KNOWLEDGE_BROWSER_TESTS='1'
+uv run --env-file .env --no-sync python scripts/check_documents_frontend.py
+```
+
+该入口使用已有轻量模型缓存及独立Milvus，不下载模型；创建临时库/源目录/端口及正式API和独立Worker，只替换回答Provider，收费0。浏览器验证150元v1与200元v2的历史/新Run引用、刷新工具过程、取消及换账号无资料；结束停止自有进程、精确删除并核验自有scope为空，不删集合或消费开发任务。报告为忽略的.artifacts/document-browser-*/report.json，截图为.artifacts/knowledge-desktop.png与knowledge-mobile.png，均不随Git同步。
+
+本收尾包259个不同用例通过（33新+226旧、0 skipped），包括174 Python、82 Vitest及3 Playwright（2项真实API，1项模拟HTTP）；没有重复累加复验或5.4的352项。详见[5.6实际运行记录](chapters/05-基础知识问答.md#56-固定案例与收尾验收2026-11-13)、[结章总结](chapters/05-基础知识问答.md#结章文字总结2026-11-13)和[实际代码框架](chapters/05-基础知识问答.md#本章结束时的代码框架2026-11-13)。复杂检索/语义评判、Checkpoint和评测平台仍按后续章节推进。
+
 ### 事件分页查询
 
 使用当前登录用户的 Bearer Access Token 请求：

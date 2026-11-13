@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "purpose": "第五章正式执行链的确定性验收，不是模型质量评测或第八章Dataset",
+  "cases": [
+    {
+      "id": "grounded",
+      "question": "餐费报销上限是多少？",
+      "mode": "grounded",
+      "expected_status": "succeeded",
+      "expected_error": null,
+      "expected_citations": 1
+    },
+    {
+      "id": "mixed",
+      "question": "餐费上限是多少，还有什么建议？",
+      "mode": "mixed",
+      "expected_status": "succeeded",
+      "expected_error": null,
+      "expected_citations": 1
+    },
+    {
+      "id": "empty",
+      "question": "尚未上传资料时能确认公司制度吗？",
+      "mode": "empty",
+      "expected_status": "succeeded",
+      "expected_error": null,
+      "expected_citations": 0
+    },
+    {
+      "id": "insufficient",
+      "question": "餐费资料能解释航班退票吗？",
+      "mode": "insufficient",
+      "expected_status": "succeeded",
+      "expected_error": null,
+      "expected_citations": 0
+    },
+    {
+      "id": "provider_failure",
+      "question": "查询后回答模型故障",
+      "mode": "provider_failure",
+      "expected_status": "failed",
+      "expected_error": "PROVIDER_ERROR",
+      "expected_citations": 0
+    },
+    {
+      "id": "tool_failure",
+      "question": "查询知识服务故障",
+      "mode": "tool_failure",
+      "expected_status": "failed",
+      "expected_error": "KNOWLEDGE_RETRIEVAL_FAILED",
+      "expected_citations": 0
+    },
+    {
+      "id": "forged_citation",
+      "question": "回答使用未提供的来源",
+      "mode": "forged_citation",
+      "expected_status": "failed",
+      "expected_error": "PROVIDER_INVALID_RESPONSE",
+      "expected_citations": 0
+    }
+  ]
+}
