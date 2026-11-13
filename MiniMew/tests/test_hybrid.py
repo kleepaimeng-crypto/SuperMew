@@ -15,6 +15,9 @@ from minimew.vector_store.manifest import HYBRID_LAYOUT, VectorError, canonical
 
 
 class HybridBackend(FakeBackend):
+    def fetch(self, scope, ids):
+        return [r for r in self.read(scope, 100) if r["chunk_id"] in ids]
+
     def ensure_collection(self, **kwargs):
         pass
 
@@ -53,6 +56,18 @@ def test_legacy_scope_identity_is_byte_compatible_and_layout_changes_identity():
     old.pop("index_layout")
     assert scope.scope_id == hashlib.sha256(canonical(old).encode()).hexdigest()
     assert replace(scope, index_layout=HYBRID_LAYOUT).scope_id != scope.scope_id
+
+
+def test_capabilities_are_explicit_and_unknown_layout_is_not_dense_fallback():
+    manifest = candidate().manifest
+    assert CandidateIndex.capabilities(manifest) == frozenset({"dense"})
+    assert CandidateIndex.capabilities(
+        replace(manifest, scope=replace(manifest.scope, index_layout=HYBRID_LAYOUT))
+    ) == frozenset({"dense", "bm25"})
+    with pytest.raises(VectorError, match="VECTOR_BUILD_MISMATCH"):
+        CandidateIndex.capabilities(
+            replace(manifest, scope=replace(manifest.scope, index_layout="unknown"))
+        )
 
 
 def test_hybrid_validation_rejects_changed_lexical_text_and_old_capability():

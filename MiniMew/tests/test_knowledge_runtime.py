@@ -10,6 +10,7 @@ import minimew.knowledge_runtime as runtime_module
 from minimew.embeddings.errors import EmbeddingError
 from minimew.execution.tools import ToolFailure
 from minimew.knowledge_runtime import KnowledgeRuntime, knowledge_lifespan
+from minimew.rag.reranker import RerankError
 from minimew.vector_store.manifest import VectorError
 
 
@@ -31,6 +32,7 @@ def test_disabled_mode_never_constructs_or_loads_optional_resources(monkeypatch)
     [
         (EmbeddingError("private"), "KNOWLEDGE_ENCODING_FAILED"),
         (VectorError("private"), "KNOWLEDGE_RETRIEVAL_FAILED"),
+        (RerankError("RERANK_NOT_PREPARED"), "KNOWLEDGE_RETRIEVAL_FAILED"),
     ],
 )
 def test_startup_failure_is_explicit_and_partial_client_is_closed(monkeypatch, failure, code):

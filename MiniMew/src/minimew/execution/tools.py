@@ -61,6 +61,7 @@ class ToolContext:
     tool_sessions: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
     evidence: EvidenceLedger | None = None
     rag_policy: RagPolicy = field(default_factory=RagPolicy)
+    deadline: float | None = None
 
     def __post_init__(self):
         if self.evidence is None:

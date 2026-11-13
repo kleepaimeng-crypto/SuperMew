@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from pydantic import TypeAdapter
 from sqlalchemy import func, select
 
 from minimew.documents.artifacts import read_artifact
+from minimew.documents.chunking import ChunkBuild
 from minimew.models import Document, DocumentVersion, IndexArtifact, IndexJob
 from minimew.vector_store.adapter import CandidateIndex, VerifiedCandidate
-from minimew.vector_store.manifest import CandidateManifest, VectorError
+from minimew.vector_store.manifest import CandidateManifest, VectorError, canonical
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,7 @@ class RetrievalScope:
     user_id: UUID
     targets: tuple[CandidateManifest, ...]
     expires_at: datetime
+    directory: tuple[ChunkBuild, ...] = ()
 
 
 async def published_scope(sessions, user_id: UUID) -> RetrievalScope:
@@ -40,6 +43,7 @@ async def published_scope(sessions, user_id: UUID) -> RetrievalScope:
         ).all()
         now = await session.scalar(select(func.clock_timestamp()))
         targets = []
+        directory = []
         for version, artifact in rows:
             if artifact is None:
                 raise VectorError("INDEX_ARTIFACT_INVALID")
@@ -50,8 +54,11 @@ async def published_scope(sessions, user_id: UUID) -> RetrievalScope:
             ):
                 raise VectorError("INDEX_ARTIFACT_INVALID")
             targets.append(manifest)
+            directory.append(TypeAdapter(ChunkBuild).validate_json(canonical(artifact.chunks)))
         # 严格短于旧 current 的一小时保留期，为已取得 scope 的请求留出完成窗口。
-        return RetrievalScope(user_id, tuple(targets), now + timedelta(minutes=55))
+        return RetrievalScope(
+            user_id, tuple(targets), now + timedelta(minutes=55), tuple(directory)
+        )
 
 
 async def search_published(

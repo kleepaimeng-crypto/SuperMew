@@ -2,8 +2,9 @@
 
 import hashlib
 import json
+import logging
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal
 from uuid import UUID
 
@@ -17,11 +18,18 @@ from minimew.evidence import EvidenceLimit, EvidenceSource
 from minimew.execution.messages import valid_text
 from minimew.execution.tools import ToolContext, ToolFailure, ToolModel, ToolSpec
 from minimew.rag.pipeline import RagPipeline
+from minimew.rag.protocol import MaterialGroup, RetrievalResult
 from minimew.vector_store.manifest import PROFILE as PROFILE
 from minimew.vector_store.manifest import VectorError
 
 NAME = "knowledge_search"
 CAPABILITY = "documents.read"
+logger = logging.getLogger(__name__)
+
+
+class _GroupBudget(Exception):
+    def __init__(self, code):
+        self.code = code
 
 
 class KnowledgeQuery(ToolModel):
@@ -112,7 +120,13 @@ class KnowledgeService:
                 return KnowledgeResult(status="no_documents")
             result = await RagPipeline(
                 self.sessions, self.runtime, retriever=search_published
-            ).search(arguments.query, scope, context.user_id, context.rag_policy)
+            ).search(
+                arguments.query,
+                scope,
+                context.user_id,
+                context.rag_policy,
+                deadline=context.deadline,
+            )
             session.last_trace = result.trace
             hits = result.rows
         except EmbeddingError as error:
@@ -135,31 +149,50 @@ class KnowledgeService:
             raise ToolFailure("KNOWLEDGE_RETRIEVAL_FAILED") from None
         if not hits:
             return KnowledgeResult(status="no_matches")
-        matches, pending = [], ()
-        limited = False
-        for row in hits:
-            match = self.project(row, scope)
-            source = EvidenceSource(
-                **match.model_dump(exclude={"score", "score_kind", "stage_scores"})
-            )
+        matches, pending = (), ()
+        limited = result.trace.limited
+
+        def propose_group(group):
+            trial_matches, trial_pending = matches, pending
+            for row in RetrievalResult((group,), result.trace).rows:
+                match = self.project(row, scope)
+                source = EvidenceSource(
+                    **match.model_dump(exclude={"score", "score_kind", "stage_scores"})
+                )
+                try:
+                    evidence = ledger.propose(source, trial_pending)
+                except EvidenceLimit:
+                    raise _GroupBudget("AGENT_BUDGET_EXCEEDED") from None
+                cited = CitedMatch(**match.model_dump(), citation_id=evidence.citation_id)
+                trial_matches = (*trial_matches, cited)
+                candidate = KnowledgeResult(status="ok", matches=trial_matches, limited=True)
+                if len(candidate.model_dump_json()) > 11000:
+                    raise _GroupBudget("KNOWLEDGE_RESULT_INVALID")
+                if evidence not in (*ledger.items, *trial_pending):
+                    trial_pending = (*trial_pending, evidence)
+            return trial_matches, trial_pending
+
+        for group in result.groups:
             try:
-                evidence = ledger.propose(source, pending)
-            except EvidenceLimit:
-                if not matches:
-                    raise ToolFailure("AGENT_BUDGET_EXCEEDED") from None
+                matches, pending = propose_group(group)
+            except _GroupBudget as failure:
                 limited = True
+                if group.completed:
+                    # 仅从原命中恢复有限材料，不声称已提供完整Section。
+                    for seed in group.seeds:
+                        try:
+                            matches, pending = propose_group(MaterialGroup((seed,)))
+                        except _GroupBudget:
+                            if not matches:
+                                raise ToolFailure(failure.code) from None
+                            break
+                elif not matches:
+                    raise ToolFailure(failure.code) from None
                 break
-            cited = CitedMatch(**match.model_dump(), citation_id=evidence.citation_id)
-            candidate = KnowledgeResult(status="ok", matches=(*matches, cited))
-            if len(candidate.model_dump_json()) > 11000:
-                if not matches:
-                    raise ToolFailure("KNOWLEDGE_RESULT_INVALID")
-                limited = True
-                break
-            matches.append(cited)
-            if evidence not in (*ledger.items, *pending):
-                pending = (*pending, evidence)
+        result.trace.limited = limited
         ledger.commit(pending)
+        record = logger.warning if result.trace.fallback else logger.info
+        record("rag_completed run_id=%s trace=%s", context.run_id, json.dumps(asdict(result.trace)))
         return KnowledgeResult(status="ok", matches=tuple(matches), limited=limited)
 
     @staticmethod

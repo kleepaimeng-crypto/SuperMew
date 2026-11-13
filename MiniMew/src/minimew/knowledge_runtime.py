@@ -11,6 +11,7 @@ from minimew.embeddings.config import EmbeddingRuntimeSettings
 from minimew.embeddings.errors import EmbeddingError
 from minimew.execution.tools import ToolFailure
 from minimew.knowledge import KnowledgeService
+from minimew.rag.reranker import LocalReranker, RerankError
 from minimew.vector_store.adapter import CandidateIndex
 from minimew.vector_store.config import VectorSettings
 from minimew.vector_store.manifest import PROFILE, VectorError
@@ -24,6 +25,7 @@ class KnowledgeRuntime:
         self.embedding_settings = embedding_settings or EmbeddingRuntimeSettings()
         self.vector_settings = vector_settings or VectorSettings()
         self.encoder = self.backend = self.index = None
+        self.reranker = None
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minimew-knowledge")
         self._slot = asyncio.Semaphore(1)
         self._closed = False
@@ -33,6 +35,7 @@ class KnowledgeRuntime:
         self.backend = MilvusBackend.connect(self.vector_settings)
         self.backend.probe()
         self.index = CandidateIndex(self.backend, self.vector_settings.batch_size)
+        self.reranker = LocalReranker.load(self.embedding_settings)
 
     async def start(self):
         try:
@@ -40,6 +43,8 @@ class KnowledgeRuntime:
         except EmbeddingError:
             raise ToolFailure("KNOWLEDGE_ENCODING_FAILED") from None
         except VectorError:
+            raise ToolFailure("KNOWLEDGE_RETRIEVAL_FAILED") from None
+        except RerankError:
             raise ToolFailure("KNOWLEDGE_RETRIEVAL_FAILED") from None
 
     async def sync(self, operation, *args, **kwargs):
@@ -73,6 +78,7 @@ class KnowledgeRuntime:
             if self.backend is not None:
                 self.backend.close()
             self.encoder = self.index = self.backend = None
+            self.reranker = None
 
         # 单线程FIFO保证close排在已开始的操作后，不能并发关闭正在使用的连接。
         future = asyncio.get_running_loop().run_in_executor(self._pool, close)

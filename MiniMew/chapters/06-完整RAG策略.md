@@ -412,6 +412,38 @@ Run的新v2模型快照冻结RagPolicy，旧v1摘要保持；数据仍在原JSON
 
 实际验证：定向离线82通过（4新增Hybrid用例）；`check_runtime.py tests/test_hybrid_pg.py tests/test_indexing_pg.py tests/test_knowledge_pg.py tests/test_runs_pg.py`为42通过（2新增）；`check_knowledge.py`真实CPU/Milvus/原Run/Journal/Evidence与受控回答通过（原生Hybrid，6事件，收费0），临时库与自有scope清理。前序145离线运行与最终82有重叠，不相加；旧PG夹具显式选择Dense v1，原有断言不变，新Hybrid测试单独启用。Ruff和前端typecheck通过；未重跑全仓、收费模型或浏览器，未改变页面交互。6.3将在同包接续。
 
+
+### 6.3 与 A 包集中交付（2026-11-13）
+
+用户已明确授权A包，6.1/6.2/6.3按依赖连续交付。6.3新增同Section下原chunk的单层材料补全：至少命中2个且严格超过该节可信chunk总数一半，最多6成员/累计18候选；不递归提升成父全文，不自动补相邻或上层章节的条件。目录来自同一次固定scope的不可变产物；只精确读取缺少的chunk，逐项核验原manifest，不把父全文冒充子chunk。完整组保留原片段引用，若最终6片段/知识结果/Evidence累计预算放不下整组，则回到原命中并标记limited，组内试算不提前提交E编号。畸形来源不会被当作预算不足而跳过。
+
+Base固定`BAAI/bge-reranker-base@2cfc18c9415c912f9d8155881c133215df768a70`，只用本地safetensors、CPU FP32/batch1、512完整配对窗口，启动资源失败明确拒绝知识模式。对问题+每个原片段标题/正文评分，组排序取成员最高分并稳定打破同分；该分不代表整组覆盖或答案可信概率。超窗/评分失败保留融合/组顺序并记录稳定code、attempts、耗时和fallback，禁用对照与故障回退区分；总期限耗尽不能回退继续。模型与连接随runtime生命周期管理，共用受控单线程槽，取消等待不会提前释放实际计算槽；原4次模型请求/6工具上限未放大。新Run固定策略，旧v1 Run继续明确Dense语义。
+
+实际验证记录（有重叠，不将复验累计成用例数）：
+
+- `pytest -q tests/test_rag.py tests/test_hybrid.py tests/test_rag_materials.py tests/test_knowledge.py tests/test_knowledge_runtime.py tests/test_knowledge_cases.py tests/test_evidence.py tests/test_agent.py tests/test_tools.py tests/test_cancellation.py tests/test_model_control.py tests/test_document_chunking.py tests/test_documents.py tests/test_vector_store.py --tb=short`：251通过、0跳过。新增材料用例9项；随后能力声明与策略一致性、trace调整定向42/39项通过，新增启动Rerank错误参数后runtime7项通过，覆盖各自最终状态；复跑不相加。
+- `check_runtime.py tests/test_hybrid_pg.py tests/test_knowledge_pg.py tests/test_answers_pg.py tests/test_tool_observations_pg.py tests/test_cancellation_pg.py`：46通过1失败。失败为全局过期恢复多扫到前序其他模块遗留Run，非同Run重复终结；随后在全新临时库执行整个`tests/test_cancellation_pg.py`，25通过。保持原断言、终态和超时不变，临时库均清理。6.2的42项PG记录保留，不冒充6.3新增通过。
+- `check_knowledge.py`：最终真实CPU/Milvus/Hybrid/Base→正式工具→原Run/Journal→持久答案/引用通过，回答Provider受控、收费0，6个Journal事件和自有向量范围清理。它不是DeepSeek真实工具选择/回答质量证明。
+- `check_rag.py`：自有候选策略对照最终通过，验证E1024、AB-123和E1025健康无命中、Dense/Hybrid/补全/Base四路线、补回原例外和来源身份。每路线3个样本，只作本机smoke耗时，不报告可靠p95或广泛质量提升；设备测量另存设备记录。首轮虽完成策略断言但清理报错，修正finally中连接释放后复跑发现Windows句柄签名错误；修正ctypes后完整复跑及补充编号用例通过，未改业务断言/阈值。自有临时库与候选均清理。
+- 相关Ruff、格式与文档差异检查通过；`reranker status`确认固定缓存，未重复下载。6.2生成的OpenAPI/API TS在本节未改变，沿用其类型检查结果；Event v1保持。不改变前端状态/交互，不运行全量浏览器或上级SuperMew门禁，不收费调用。
+
+开发目录升级已先隔离验收，再对本机一份已发布Dense文档执行只读计划及显式apply，Worker核验发布同内容新Hybrid版本。旧Version/源文保留，原Thread/Run/Message/Answer/Event行数与内容哈希一致；设备独立部署状态不在共同handoff重复维护。没有ORM/DDL改变，无需新迁移（仍0014）；快照与构建JSON通过原不可变保护，依赖/锁不变。
+
+### A 包实际代码框架（2026-11-13，覆盖6.1–6.3）
+
+| 源码 | 责任与协作 |
+| --- | --- |
+| [rag/protocol.py](../src/minimew/rag/protocol.py)、[model_control.py](../src/minimew/model_control.py) | 类型化策略、候选/材料组/trace；新Run冻结v2策略，旧v1摘要不变 |
+| [rag/pipeline.py](../src/minimew/rag/pipeline.py)、[fusion.py](../src/minimew/rag/fusion.py) | 唯一Dense/Hybrid编排、各路排名与应用内RRF，不接管Run或发布 |
+| [rag/merging.py](../src/minimew/rag/merging.py)、[reranker.py](../src/minimew/rag/reranker.py) | 单层同节完整材料、原片段Base评分/窗口与稳定回退；prepare是唯一显式下载命令 |
+| [documents/profiles.py](../src/minimew/documents/profiles.py)、[upgrade.py](../src/minimew/documents/upgrade.py) | 新Hybrid布局身份、默认只读的旧KB升级；真实构建仍交给原Version/Job/Worker |
+| [documents/retrieval.py](../src/minimew/documents/retrieval.py)、[artifacts.py](../src/minimew/documents/artifacts.py) | 固定scope和可信目录，核对准确目标集合/身份；旧scope保留原生命周期 |
+| [vector_store](../src/minimew/vector_store) | 原生BM25与Dense读写、schema/analyzer/索引校验、精确manifest与受限fetch，显式能力报告 |
+| [knowledge.py](../src/minimew/knowledge.py)、[knowledge_runtime.py](../src/minimew/knowledge_runtime.py) | 工具身份/scope和原子Evidence登记；runtime管理本地权重、连接与线程准入，trace只记计数/原因不记正文 |
+| [check_rag.py](../scripts/check_rag.py)、[check_knowledge.py](../scripts/check_knowledge.py) | 自有候选对照与正式发布/Run链验收，区分真实检索/重排和受控回答 |
+
+代表性请求：原RunExecutor从冻结快照绑定RagPolicy→knowledge_search绑定原用户与published scope→Pipeline编码/同scope两路召回/RRF→可信目录精确补全→runtime内Base评分→知识工具按完整组和累计预算试算、登记原chunk的E编号→原模型回合与答案持久事务/既有引用界面。查询不创建新Run，Worker仍是独立进程。6.4–6.6的Grader/LangGraph/改写/拆解未开始，整个第六章未结章；已知回答格式缺陷与章末异常专项仍待实施。
+
 ## 结章文字总结（完成后填写）
 
 完成后据实记录本章交付、选型、完整数据流、实际对照收益/退化、验证和未完成限制；不预填结果。

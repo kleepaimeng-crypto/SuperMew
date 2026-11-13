@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RagPolicy(BaseModel):
@@ -25,6 +25,12 @@ class RagPolicy(BaseModel):
     batch_size: Literal[1] = 1
     dtype: Literal["float32"] = "float32"
 
+    @model_validator(mode="after")
+    def consistent_budgets(self):
+        if max(self.fused_k, self.group_limit, self.final_k) > self.candidate_limit:
+            raise ValueError("Candidate budget cannot be smaller than selection/group budgets")
+        return self
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -44,6 +50,7 @@ class Candidate:
 class MaterialGroup:
     members: tuple[Candidate, ...]
     completed: bool = False
+    seeds: tuple[Candidate, ...] = ()
 
 
 @dataclass

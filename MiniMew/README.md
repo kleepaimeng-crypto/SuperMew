@@ -260,6 +260,27 @@ uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <use
 
 升级更新该用户未来上传的构建目标，经既有候选Version/IndexJob/Worker核验发布；旧current在成功前继续可读，源文件和历史引用不改。存在并发上传时拒绝覆盖；批量可能部分入队，重新执行可继续，不自动清库或重建集合。独立Worker同时识别旧Dense和新Hybrid的显式构建身份。API/Worker需加载最新代码，普通API不执行迁移或索引构建。
 
+## 本地重排与 RAG 策略（6.3）
+
+知识模式现在同时加载已准备的轻量Embedding和Base重排模型。首次换设备需显式准备固定Base缓存（普通启动不下载）：
+
+```powershell
+uv run --env-file .env --no-sync python -m minimew.rag.reranker prepare
+uv run --env-file .env --no-sync python -m minimew.rag.reranker status
+uv run --env-file .env --no-sync python -m minimew.rag.reranker check
+```
+
+仅采用既定Base/CPU FP32/batch1，其他模型、GPU和远端API不自动启用。启用知识功能后缺必要资源会启动失败。新Run在原模型快照冻结RAG策略，Hybrid同范围召回/RRF后可有界补全同节原片段和重排，最终保持原Evidence/答案/引用链；旧v1 Run保留Dense语义。`score_kind`与`stage_scores`区分余弦、RRF和重排原始分数；低分或非空命中不自动证明可回答。超窗不截断，重排失败明确记录trace并保留融合顺序，达到Run期限直接停止。
+
+固定本地对照与完整正式链分别执行：
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_rag.py
+uv run --env-file .env --no-sync python scripts/check_knowledge.py
+```
+
+前者比较自有未发布候选的Dense/Hybrid/补全/Base、编号与例外材料，后者验证正式发布/原Run/持久引用；都创建自有临时资源并清理，不消费开发任务。回答Provider受控、收费0，不作为真实回答质量证明。`check_rag.py`的每路线3次本机耗时不等于可靠p95。详细源码职责与验证范围见[第六章](chapters/06-完整RAG策略.md)。
+
 ## 文档入库基础（工程包 A）
 
 当前已实现 Markdown/TXT 的上传、更新版本、个人文档目录和持久 Index Job。**上传成功返回 pending/candidate，不表示已经分块、向量化或发布**；独立Worker、Milvus核验与原子发布已接入，需另行启动Worker。文档UI已接入主导航，也可通过API/Swagger操作；完整模型选择/重建页面留后续。

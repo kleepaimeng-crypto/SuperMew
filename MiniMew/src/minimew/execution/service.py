@@ -115,6 +115,7 @@ class RunExecutor:
             deadline = loop.time() + min(
                 remaining, request.snapshot.answer.configuration.timeout_seconds
             )
+            context = replace(context, deadline=deadline)
             answer = await self._watched_generate(claim, request, deadline, context)
             content, materials = answer.content, answer.materials
         except ModelSnapshotUnavailable as failure:

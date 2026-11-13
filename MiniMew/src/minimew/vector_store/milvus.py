@@ -180,6 +180,8 @@ class MilvusBackend:
             )
             if (
                 fields["sparse"]["type"] != DataType.SPARSE_FLOAT_VECTOR
+                or fields["retrieval_text"]["type"] != DataType.VARCHAR
+                or int(params.get("max_length", 0)) != 65535
                 or str(params.get("enable_analyzer")).lower() != "true"
                 or analyzer != ANALYZER
                 or len(functions) != 1
@@ -188,6 +190,8 @@ class MilvusBackend:
                 or int(functions[0].get("type", 0)) != int(FunctionType.BM25)
                 or lexical.get("metric_type") != "BM25"
                 or lexical.get("index_type") != "SPARSE_INVERTED_INDEX"
+                or lexical.get("bm25_k1") != "1.2"
+                or lexical.get("bm25_b") != "0.75"
             ):
                 raise VectorError("VECTOR_COLLECTION_MISMATCH")
         self._rpc(self.client.load_collection, collection_name=collection, _async=True)
@@ -222,6 +226,19 @@ class MilvusBackend:
             raise VectorError("VECTOR_UNAVAILABLE") from exc
         finally:
             iterator.close()
+
+    def fetch(self, scope, ids):
+        if not ids or len(ids) > 6:
+            raise VectorError("VECTOR_INVALID_QUERY")
+        return self._rpc(
+            self.client.query,
+            collection_name=collection_for(scope.index_layout),
+            filter=scope_filter(scope) + " and chunk_id in " + canonical(list(ids)),
+            output_fields=FIELDS
+            + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
+            consistency_level="Strong",
+            limit=7,
+        )
 
     def upsert(self, rows: list[dict], *, layout="dense-cosine-v1") -> None:
         result = self._rpc(self.client.upsert, collection_name=collection_for(layout), data=rows)

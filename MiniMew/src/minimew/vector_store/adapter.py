@@ -25,6 +25,8 @@ class VectorBackend(Protocol):
     def upsert(self, rows: list[dict]) -> None: ...
     def search(self, scope: CandidateScope, vector: list[float], limit: int) -> list[dict]: ...
     def delete(self, scope: CandidateScope) -> None: ...
+    def lexical(self, scope: CandidateScope, query: str, limit: int) -> list[dict]: ...
+    def fetch(self, scope: CandidateScope, ids: list[str]) -> list[dict]: ...
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,16 @@ class CandidateIndex:
             raise ValueError("Invalid batch size")
         self.backend = backend
         self.batch_size = batch_size
+
+    @staticmethod
+    def capabilities(manifest):
+        if manifest.encoding_space != SPACE_HASH:
+            raise VectorError("VECTOR_BUILD_MISMATCH")
+        if manifest.scope.index_layout == HYBRID_LAYOUT:
+            return frozenset({"dense", "bm25"})
+        if manifest.scope.index_layout == "dense-cosine-v1":
+            return frozenset({"dense"})
+        raise VectorError("VECTOR_BUILD_MISMATCH")
 
     def _validate(
         self, manifest: CandidateManifest, rows: list[dict], *, complete: bool
@@ -123,9 +135,13 @@ class CandidateIndex:
             verified.manifest, self.backend.lexical(verified.manifest.scope, query, top_k), top_k
         )
 
-    def complete_rows(self, manifest):
-        rows = self.backend.read(manifest.scope, len(manifest.entries) + 1)
-        self._validate(manifest, rows, complete=True)
+    def fetch(self, manifest, ids):
+        if not 1 <= len(ids) <= 6 or len(set(ids)) != len(ids):
+            raise VectorError("VECTOR_INVALID_QUERY")
+        rows = self.backend.fetch(manifest.scope, ids)
+        self._validate(manifest, rows, complete=False)
+        if {row["chunk_id"] for row in rows} != set(ids) or len(rows) != len(ids):
+            raise VectorError("VECTOR_MANIFEST_MISMATCH")
         return [{"chunk_id": r["chunk_id"], "score": 0.0, "payload": r["payload"]} for r in rows]
 
     def _hits(self, manifest, rows, top_k):
