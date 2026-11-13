@@ -10,6 +10,7 @@ from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from minimew.evidence import ANSWER_INSTRUCTIONS, AnswerResult, parse_answer
 from minimew.execution.context import ContextInvalid
 from minimew.execution.messages import (
     MAX_OUTPUT_CHARS,
@@ -87,6 +88,7 @@ class RunExecutor:
             return "not_claimed"
         error: ErrorCode | None = None
         content = ""
+        materials = None
         try:
             request = await self.repository.request(claim)
             context = self.registry.bind_context(
@@ -107,7 +109,8 @@ class RunExecutor:
             deadline = loop.time() + min(
                 remaining, request.snapshot.answer.configuration.timeout_seconds
             )
-            content = await self._watched_generate(claim, request, deadline, context)
+            answer = await self._watched_generate(claim, request, deadline, context)
+            content, materials = answer.content, answer.materials
         except ModelSnapshotUnavailable as failure:
             error = failure.code
         except ContextInvalid:
@@ -133,10 +136,11 @@ class RunExecutor:
             except (SQLAlchemyError, OSError, TimeoutError):
                 logger.warning("execution_interrupt_save_failed code=EXECUTION_STORAGE_UNAVAILABLE")
             raise
-        return await self._finish(claim, content, error)
+        return await self._finish(claim, content, error, materials=materials)
 
-    async def _finish(self, claim, content, error):
-        saved = await self.repository.finish(claim, content=content, error_code=error)
+    async def _finish(self, claim, content, error, *, materials=None):
+        extra = {"materials": materials} if materials is not None else {}
+        saved = await self.repository.finish(claim, content=content, error_code=error, **extra)
         if not saved:
             await self.repository.expire(claim)
             return "ownership_lost"
@@ -207,13 +211,18 @@ class RunExecutor:
                 raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
             raise ProviderFailure("PROVIDER_TIMEOUT")
 
-    async def _generate(self, claim, request, deadline, context) -> str:
+    async def _generate(self, claim, request, deadline, context) -> AnswerResult:
         budget = RunBudget()
         progress = AttemptProgress()
         while True:
             turn = await self._model_turn(claim, request, deadline, progress, budget)
             if turn.kind == "text":
-                return turn.content
+                if context.evidence.queried:
+                    try:
+                        return parse_answer(turn.content, context.evidence.items)
+                    except ValueError:
+                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE") from None
+                return AnswerResult(turn.content)
             await self._check_active(claim, request, deadline)
             assistant = InputMessage("assistant", turn.content, turn.tool_calls)
             prepared = self.registry.prepare(turn.tool_calls, context)
@@ -236,7 +245,16 @@ class RunExecutor:
                     raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
                 await self._check_active(claim, request, deadline)
                 results.append(InputMessage("tool", content, tool_call_id=call.call.id))
-            request = self._with_messages(request, (*request.messages, assistant, *results))
+            try:
+                request = replace(
+                    request,
+                    messages=(*request.messages, assistant, *results),
+                    instructions=ANSWER_INSTRUCTIONS
+                    if context.evidence.queried
+                    else request.instructions,
+                )
+            except ValueError:
+                raise ContextInvalid from None
 
     @staticmethod
     def _with_messages(request, messages):

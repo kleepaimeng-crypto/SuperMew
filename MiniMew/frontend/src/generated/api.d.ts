@@ -226,6 +226,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/threads/{thread_id}/runs/{run_id}/answer": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read Answer Materials */
+    get: operations["read_answer_materials_v1_threads__thread_id__runs__run_id__answer_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/documents": {
     parameters: {
       query?: never;
@@ -333,6 +350,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** AnswerMaterials */
+    AnswerMaterials: {
+      /** Sections */
+      sections: components["schemas"]["AnswerSection"][];
+      /** Citations */
+      citations: components["schemas"]["Citation"][];
+      /** Evidence */
+      evidence: components["schemas"]["Evidence"][];
+    };
+    /** AnswerResponse */
+    AnswerResponse: {
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Message Id
+       * Format: uuid
+       */
+      message_id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+      materials: components["schemas"]["AnswerMaterials"] | null;
+    };
+    /** AnswerSection */
+    AnswerSection: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "document" | "supplement";
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+    };
     /** Body_upload_document_v1_documents_post */
     Body_upload_document_v1_documents_post: {
       /** File */
@@ -380,6 +437,15 @@ export interface components {
        * @constant
        */
       index_layout: "dense-cosine-v1";
+    };
+    /** Citation */
+    Citation: {
+      /** Citation Id */
+      citation_id: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
     };
     /** CreateRunRequest */
     CreateRunRequest: {
@@ -460,6 +526,50 @@ export interface components {
       document_prefix: "";
       /** Max Input Tokens */
       max_input_tokens: number;
+    };
+    /** Evidence */
+    Evidence: {
+      /**
+       * Knowledge Base Id
+       * Format: uuid
+       */
+      knowledge_base_id: string;
+      /**
+       * Document Id
+       * Format: uuid
+       */
+      document_id: string;
+      /**
+       * Version Id
+       * Format: uuid
+       */
+      version_id: string;
+      /**
+       * Chunk Id
+       * Format: uuid
+       */
+      chunk_id: string;
+      /**
+       * Section Id
+       * Format: uuid
+       */
+      section_id: string;
+      /** Title Path */
+      title_path: string[];
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+      /** Start Line */
+      start_line: number;
+      /** End Line */
+      end_line: number;
+      /** Content Sha256 */
+      content_sha256: string;
+      /** Text */
+      text: string;
+      /** Citation Id */
+      citation_id: string;
     };
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -1657,6 +1767,52 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
         };
+      };
+    };
+  };
+  read_answer_materials_v1_threads__thread_id__runs__run_id__answer_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        thread_id: string;
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AnswerResponse"];
+        };
+      };
+      /** @description Conversation not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+      /** @description ANSWER_READ_UNAVAILABLE */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

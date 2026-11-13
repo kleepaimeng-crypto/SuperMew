@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
 from minimew.conversations import ConversationNotFound, owned_thread, run_messages, run_response
+from minimew.evidence import AnswerMaterials, validate_materials
 from minimew.execution.context import build_messages
 from minimew.execution.journal import append_event
 from minimew.execution.messages import MAX_OUTPUT_CHARS, valid_text
@@ -20,7 +21,7 @@ from minimew.execution.provider import (
 )
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.model_control import snapshot_for_run
-from minimew.models import Message, Run, RunEventRecord
+from minimew.models import AnswerRecord, Message, Run, RunEventRecord
 
 
 @dataclass(frozen=True)
@@ -273,16 +274,33 @@ class ExecutionRepository:
         return "".join(pieces)
 
     async def finish(
-        self, claim: Claim, *, content: str = "", error_code: ErrorCode | None = None
+        self,
+        claim: Claim,
+        *,
+        content: str = "",
+        error_code: ErrorCode | None = None,
+        materials: AnswerMaterials | None = None,
     ) -> TerminalStatus | Literal[False]:
         if error_code is not None:
             TypeAdapter(ErrorCode).validate_python(error_code)
         elif not valid_text(content, MAX_OUTPUT_CHARS, nonblank=True):
             raise ValueError("Invalid final response")
-        return await self._finalize(claim, content=content, error_code=error_code, expired=False)
+        if materials is not None:
+            if error_code is not None:
+                raise ValueError("Failed answer cannot contain successful materials")
+            validate_materials(content, materials)
+        return await self._finalize(
+            claim, content=content, error_code=error_code, expired=False, materials=materials
+        )
 
     async def _finalize(
-        self, claim: Claim, *, content: str, error_code: ErrorCode | None, expired: bool
+        self,
+        claim: Claim,
+        *,
+        content: str,
+        error_code: ErrorCode | None,
+        expired: bool,
+        materials: AnswerMaterials | None = None,
     ) -> TerminalStatus | Literal[False]:
         try:
             async with self.sessions() as session, session.begin():
@@ -310,6 +328,7 @@ class ExecutionRepository:
                     content=content,
                     error_code=error_code,
                     state=state,
+                    materials=materials,
                     conditions=[
                         Run.status == "running",
                         Run.owner_token == claim.owner_token,
@@ -330,12 +349,21 @@ class ExecutionRepository:
         state: TerminalStatus,
         conditions,
         cancel_time=None,
+        materials=None,
     ):
         assistant = (await run_messages(session, run))[1]
         assistant.content = (
             content if state == "succeeded" else await self._partial_content(session, run.id)
         )
         assistant.status = "completed" if state == "succeeded" else state
+        if state == "succeeded" and materials is not None:
+            session.add(
+                AnswerRecord(
+                    run_id=run.id,
+                    message_id=assistant.id,
+                    materials=materials.model_dump(mode="json"),
+                )
+            )
         await append_event(
             session,
             run,

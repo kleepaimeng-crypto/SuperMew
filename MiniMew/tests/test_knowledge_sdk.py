@@ -34,7 +34,10 @@ def test_sdk_receives_knowledge_schema_and_paired_original_material(
             value = json.loads(message["content"])
             assert value["status"] == "ok" and "150" in value["matches"][0]["text"]
             assert "embedding_text" not in message["content"]
-            frames = [chunk("依据工具材料回答"), chunk(finish="stop")]
+            assert body["messages"][0]["role"] == "system"
+            assert "模型补充" in body["messages"][0]["content"]
+            citation = value["matches"][0]["citation_id"]
+            frames = [chunk(f"## 文档依据\n依据工具材料回答[{citation}]"), chunk(finish="stop")]
         return httpx2.Response(
             200, headers={"content-type": "text/event-stream"}, content=wire(*frames)
         )
@@ -54,7 +57,8 @@ def test_sdk_receives_knowledge_schema_and_paired_original_material(
             == "succeeded"
         )
         assert len(requests) == 2 and all(client.is_closed for client in clients)
-        assert repo.finish.await_args.kwargs["content"] == "依据工具材料回答"
+        assert repo.finish.await_args.kwargs["content"] == "## 文档依据\n依据工具材料回答[E1]"
+        assert repo.finish.await_args.kwargs["materials"].evidence[0].citation_id == "E1"
         repo.append_delta.assert_not_awaited()
         scoped.assert_awaited_once()
         search.assert_awaited_once()

@@ -47,7 +47,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0012 (head)`。0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0013 (head)`。0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 
@@ -703,7 +703,7 @@ uv run --env-file .env --no-sync uvicorn minimew.app:create_app --factory --host
 
 结果包含`status=ok/no_documents/no_matches`、matches和limited：每项保留原文、Document/Version/chunk/section标识、字符/行位置、内容hash与相似度；不把embedding_text、向量或原始数据库对象交给模型。默认top-k=3，按整体JSON预算保留完整片段，省略额外命中时标limited，不截断原文拼出虚假完整段落。健康空结果和知识编码/检索/范围/结果/输入长度故障有不同语义；5个新错误码已从Event真源同步生成至Python/TS及OpenAPI/API TS。
 
-开启后模型可使用knowledge_search，工具模式仍整轮缓冲，不公开中间文字；普通模式保持流式。模型是否选择调用及真实答案质量本包未进行收费在线验收，候选命中不保证答案正确。正式Evidence/引用绑定和工具过程UI留5.4/5.5，当前结果仍通过原消息与Run终态显示，没有新的聊天入口或Checkpoint恢复。
+开启后模型可使用knowledge_search，工具模式仍整轮缓冲，不公开中间文字；普通模式保持流式。模型是否选择调用及真实答案质量未进行收费在线验收，候选命中不保证答案正确。5.4已接入下节的Evidence/引用绑定，工具过程及可点击引用UI留5.5，没有新的聊天入口或Checkpoint恢复。
 
 本包212个不同用例通过（45新+167旧），另有真实CPU/Milvus隔离检查1次通过：真实独立Worker发布、正式API知识资源/Tool/Run查询、首位餐费150元及正确版本；回答Provider受控，收费调用0，精确清理1个自有scope及临时库。可复现命令：
 
@@ -712,6 +712,20 @@ uv run --env-file .env --no-sync python scripts/check_knowledge.py
 ```
 
 报告位于忽略的`.artifacts/knowledge-check.json`，不包含Key/登录Token。脚本仅使用随机临时PG、临时源目录和自身登记的精确向量scope，不删除集合或操作开发任务；原通知通道不属于此检查。完整[5.3职责框架与运行记录](chapters/05-基础知识问答.md#53-实施记录2026-11-12)保存通过、复跑、失败修正和未执行范围。
+
+### Evidence与混合回答（5.4）
+
+先在MiniMew目录显式运行`uv run --env-file .env --no-sync alembic upgrade head`，当前head为0013。此迁移仅新增answer_materials及Message/Run关联约束，不改写旧消息、Journal或文档；旧消息不会补造引用。历史证据不可用降级迁移直接删除。
+
+知识工具返回的每个片段增加knowledge_base_id和Run内citation_id，例如E1；来源原文、版本、字符/行位置和hash仍来自正式检索。目录按实际回传的完整片段登记、跨检索去重，最多18份且序列化累计24000字符，每次工具结果仍不超过11000字符；整个模型上下文仍受60000字符上限约束，含服务端指令。
+
+实际执行知识工具后，服务端追加混合回答指令。最终文本可包含`## 文档依据`与`## 模型补充（未由本次资料验证）`两个分区，顺序固定、空分区省略。文档依据每段须有来自本Run的`[E1]`等引用；模型补充不能挂文档引用。没有资料时只输出明确标识的补充；普通聊天不强制套用该版式。服务端检查格式和来源身份，不承诺自动证明语义支持关系；不合规使用既有PROVIDER_INVALID_RESPONSE失败，不额外发起纠错调用。
+
+最终Message正文、引用映射、所引用的原文快照和Run终态同事务保存；取消、过期或失去owner资格不能留下成功引用。正文只属于Message，answer_materials不重复存储权威正文，也不实现Checkpoint恢复。
+
+`GET /v1/threads/{thread_id}/runs/{run_id}/answer`需Access Token，按用户/Thread/Run归属读取；返回run_id、message_id、status、materials。materials含sections、citations、evidence，位置为正文Unicode字符的0基[start,end)，行位置为来源原文1基。没有引用资料的旧消息、普通聊天或未成功的Run返回materials=null；健康知识查询后仅补充的成功答案有sections而citations/evidence为空。读取故障返回503 ANSWER_READ_UNAVAILABLE，不能假装空资料。
+
+message.completed v1保持message_id/status/content，SSE继续重放Journal；5.5前端可在收到完成事件后、或刷新历史时调用同一答案接口。查看旧答案不依赖当前文档指针或旧Milvus向量。OpenAPI与API TS由正式路由重新生成，未增加Event类型、错误码或生产依赖。源码职责与验收见[5.4记录](chapters/05-基础知识问答.md#54-实施记录2026-11-13)。
 
 ### 事件分页查询
 

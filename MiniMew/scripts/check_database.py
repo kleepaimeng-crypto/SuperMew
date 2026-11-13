@@ -21,7 +21,7 @@ async def check_transactions():
     try:
         async with engine.connect() as connection:
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-            assert revision == "0012", revision
+            assert revision == "0013", revision
             tables = (
                 (
                     await connection.execute(
@@ -38,6 +38,7 @@ async def check_transactions():
                 "refresh_tokens",
                 "runs",
                 "messages",
+                "answer_materials",
                 "model_profiles",
                 "model_assignments",
                 "run_events",
@@ -72,7 +73,7 @@ async def check_transactions():
                 await session.execute(text("INSERT INTO transaction_probe VALUES (3)"))
                 # 未提交关闭 Session，也必须回滚。
             assert await connection.scalar(text("SELECT count(*) FROM transaction_probe")) == 1
-        print("PASS: revision 0012; expected tables; commit/rollback/session cleanup")
+        print("PASS: revision 0013; expected tables; commit/rollback/session cleanup")
     finally:
         await engine.dispose()
 

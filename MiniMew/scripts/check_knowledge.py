@@ -62,8 +62,9 @@ class ControlledAnswer:
         else:
             self.tool_result = json.loads(request.messages[-1].content)
             assert self.tool_result["status"] == "ok"
+            match = self.tool_result["matches"][0]
             yield ProviderCompleted(
-                ModelTurn("text", "检索原文：" + self.tool_result["matches"][0]["text"])
+                ModelTurn("text", f"## 文档依据\n检索原文：{match['text']}[{match['citation_id']}]")
             )
 
 
@@ -199,6 +200,15 @@ async def main():
                             "run.completed",
                         ]
                         assert "150" in events[-2]["data"]["content"]
+                        assert set(events[-2]["data"]) == {"message_id", "status", "content"}
+                        answer = client.get(path + "/answer", headers=headers)
+                        assert answer.status_code == 200
+                        materials = answer.json()["materials"]
+                        assert materials["evidence"][0]["version_id"] == version
+                        assert materials["evidence"][0]["citation_id"] == "E1"
+                        assert "150" in materials["evidence"][0]["text"]
+                        assert materials["citations"][0]["citation_id"] == "E1"
+                        assert answer.json()["message_id"] == events[-2]["data"]["message_id"]
                         assert controlled.requests == 2
                         report.update(
                             passed=True,
@@ -208,20 +218,22 @@ async def main():
                             top_score=result["matches"][0]["score"],
                             terminal=state["status"],
                             journal_events=len(events),
+                            evidence_citations=len(materials["citations"]),
                         )
                 finally:
                     cleanup = KnowledgeRuntime()
                     try:
-                        cleanup.backend = await cleanup.sync(
-                            MilvusBackend.connect, VectorSettings()
-                        )
-                        index = CandidateIndex(cleanup.backend)
                         async with sessions() as session:
                             artifacts = (await session.scalars(select(IndexArtifact))).all()
                         manifests = [read_artifact(artifact) for artifact in artifacts]
                         report["owned_scopes"] = [asdict(manifest.scope) for manifest in manifests]
-                        for manifest in manifests:
-                            await cleanup.sync(index.delete_candidate, manifest.scope)
+                        if manifests:
+                            cleanup.backend = await cleanup.sync(
+                                MilvusBackend.connect, VectorSettings()
+                            )
+                            index = CandidateIndex(cleanup.backend)
+                            for manifest in manifests:
+                                await cleanup.sync(index.delete_candidate, manifest.scope)
                         report["cleaned_exact_scopes"] = len(manifests)
                     finally:
                         await cleanup.aclose()

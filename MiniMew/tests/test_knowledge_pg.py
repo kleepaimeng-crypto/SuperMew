@@ -80,7 +80,10 @@ def test_run_keeps_first_scope_during_new_publication_and_next_run_uses_new_vers
                     yield tool_turn("hotel")
                 else:
                     seen.append(json.loads(data.messages[-1].content))
-                    yield ProviderCompleted(ModelTurn("text", seen[-1]["matches"][0]["text"]))
+                    match = seen[-1]["matches"][0]
+                    yield ProviderCompleted(
+                        ModelTurn("text", f"## 文档依据\n{match['text']}[{match['citation_id']}]")
+                    )
 
             executor = RunExecutor(
                 repo,
@@ -114,8 +117,9 @@ def test_run_keeps_first_scope_during_new_publication_and_next_run_uses_new_vers
                     yield tool_turn()
                 else:
                     next_results.append(json.loads(data.messages[-1].content))
+                    match = next_results[-1]["matches"][0]
                     yield ProviderCompleted(
-                        ModelTurn("text", next_results[-1]["matches"][0]["text"])
+                        ModelTurn("text", f"## 文档依据\n{match['text']}[{match['citation_id']}]")
                     )
 
             next_executor = RunExecutor(
@@ -286,7 +290,10 @@ def test_api_lifespan_wires_real_knowledge_tool_into_automatic_run(
         else:
             value = json.loads(data.messages[-1].content)
             assert value["status"] == "ok" and "150" in value["matches"][0]["text"]
-            yield ProviderCompleted(ModelTurn("text", value["matches"][0]["text"]))
+            match = value["matches"][0]
+            yield ProviderCompleted(
+                ModelTurn("text", f"## 文档依据\n{match['text']}[{match['citation_id']}]")
+            )
 
     provider = FakeProvider(answer)
     with serve_http(runtime_app(monkeypatch, provider)) as server:

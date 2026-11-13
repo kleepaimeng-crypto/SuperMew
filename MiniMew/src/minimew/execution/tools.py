@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from minimew.evidence import EvidenceLedger
 from minimew.execution.messages import ToolCall, ToolDefinition, valid_text
 from minimew.generated.run_event_v1 import ErrorCode
 
@@ -57,8 +58,13 @@ class ToolContext:
     run_id: UUID
     capabilities: frozenset[str]
     tool_sessions: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    evidence: EvidenceLedger | None = None
 
     def __post_init__(self):
+        if self.evidence is None:
+            object.__setattr__(
+                self, "evidence", EvidenceLedger(self.user_id, self.thread_id, self.run_id)
+            )
         if not all(
             isinstance(value, UUID) for value in (self.user_id, self.thread_id, self.run_id)
         ):

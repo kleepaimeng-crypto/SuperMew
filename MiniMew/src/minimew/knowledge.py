@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from minimew.documents.chunking import Chunk, Section
 from minimew.documents.retrieval import RetrievalScope, published_scope, search_published
 from minimew.embeddings.errors import EmbeddingError
+from minimew.evidence import EvidenceLimit, EvidenceSource
 from minimew.execution.messages import valid_text
 from minimew.execution.tools import ToolContext, ToolFailure, ToolModel, ToolSpec
 from minimew.vector_store.manifest import PROFILE, VectorError
@@ -32,24 +33,17 @@ class KnowledgeQuery(ToolModel):
         return value
 
 
-class KnowledgeMatch(ToolModel):
-    document_id: UUID
-    version_id: UUID
-    chunk_id: UUID
-    section_id: UUID
-    title_path: tuple[str, ...]
-    start: int = Field(ge=0)
-    end: int = Field(gt=0)
-    start_line: int = Field(ge=1)
-    end_line: int = Field(ge=1)
-    content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-    text: str = Field(min_length=1)
+class KnowledgeMatch(EvidenceSource):
     score: float
+
+
+class CitedMatch(KnowledgeMatch):
+    citation_id: str = Field(pattern=r"^E[1-9][0-9]*$")
 
 
 class KnowledgeResult(ToolModel):
     status: Literal["ok", "no_documents", "no_matches"]
-    matches: tuple[KnowledgeMatch, ...] = ()
+    matches: tuple[CitedMatch, ...] = ()
     limited: bool = False
 
 
@@ -86,16 +80,23 @@ class KnowledgeService:
     @staticmethod
     def authorize(context, arguments):
         session = context.tool_sessions.get(NAME)
-        return isinstance(session, KnowledgeSession) and (
-            session.user_id,
-            session.thread_id,
-            session.run_id,
-        ) == (context.user_id, context.thread_id, context.run_id)
+        return (
+            isinstance(session, KnowledgeSession)
+            and (
+                session.user_id,
+                session.thread_id,
+                session.run_id,
+            )
+            == (context.user_id, context.thread_id, context.run_id)
+            and context.evidence.owns(context.user_id, context.thread_id, context.run_id)
+        )
 
     async def search(self, context: ToolContext, arguments: KnowledgeQuery) -> KnowledgeResult:
         if not self.authorize(context, arguments):
             raise ToolFailure("TOOL_PERMISSION_DENIED")
         session = context.tool_sessions[NAME]
+        ledger = context.evidence
+        ledger.queried = True
         try:
             if session.scope is None:
                 session.scope = await published_scope(self.sessions, context.user_id)
@@ -135,16 +136,30 @@ class KnowledgeService:
             raise ToolFailure("KNOWLEDGE_RETRIEVAL_FAILED") from None
         if not hits:
             return KnowledgeResult(status="no_matches")
-        matches = []
+        matches, pending = [], ()
+        limited = False
         for row in hits:
             match = self.project(row, scope)
-            candidate = KnowledgeResult(status="ok", matches=(*matches, match))
+            source = EvidenceSource(**match.model_dump(exclude={"score"}))
+            try:
+                evidence = ledger.propose(source, pending)
+            except EvidenceLimit:
+                if not matches:
+                    raise ToolFailure("AGENT_BUDGET_EXCEEDED") from None
+                limited = True
+                break
+            cited = CitedMatch(**match.model_dump(), citation_id=evidence.citation_id)
+            candidate = KnowledgeResult(status="ok", matches=(*matches, cited))
             if len(candidate.model_dump_json()) > 11000:
                 if not matches:
                     raise ToolFailure("KNOWLEDGE_RESULT_INVALID")
-                return KnowledgeResult(status="ok", matches=tuple(matches), limited=True)
-            matches.append(match)
-        return KnowledgeResult(status="ok", matches=tuple(matches))
+                limited = True
+                break
+            matches.append(cited)
+            if evidence not in (*ledger.items, *pending):
+                pending = (*pending, evidence)
+        ledger.commit(pending)
+        return KnowledgeResult(status="ok", matches=tuple(matches), limited=limited)
 
     @staticmethod
     def project(row, scope):
@@ -173,6 +188,7 @@ class KnowledgeService:
             ):
                 raise ValueError("Invalid knowledge match")
             return KnowledgeMatch(
+                knowledge_base_id=chunk.identity.knowledge_base_id,
                 document_id=chunk.identity.document_id,
                 version_id=chunk.identity.version_id,
                 chunk_id=chunk.chunk_id,

@@ -714,6 +714,68 @@
         }
       }
     },
+    "/v1/threads/{thread_id}/runs/{run_id}/answer": {
+      "get": {
+        "tags": ["runs"],
+        "summary": "Read Answer Materials",
+        "operationId": "read_answer_materials_v1_threads__thread_id__runs__run_id__answer_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found"
+          },
+          "503": {
+            "description": "ANSWER_READ_UNAVAILABLE"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/documents": {
       "post": {
         "tags": ["documents"],
@@ -1070,6 +1132,95 @@
   },
   "components": {
     "schemas": {
+      "AnswerMaterials": {
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerSection"
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Sections"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Citations"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "type": "array",
+            "maxItems": 18,
+            "title": "Evidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["sections", "citations", "evidence"],
+        "title": "AnswerMaterials"
+      },
+      "AnswerResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Message Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "succeeded", "failed", "cancelled"],
+            "title": "Status"
+          },
+          "materials": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerMaterials"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["run_id", "message_id", "status", "materials"],
+        "title": "AnswerResponse"
+      },
+      "AnswerSection": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["document", "supplement"],
+            "title": "Kind"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["kind", "start", "end"],
+        "title": "AnswerSection"
+      },
       "Body_upload_document_v1_documents_post": {
         "properties": {
           "file": {
@@ -1165,6 +1316,29 @@
         "type": "object",
         "required": ["chunk_tokens", "overlap_tokens", "embedding"],
         "title": "BuildConfiguration"
+      },
+      "Citation": {
+        "properties": {
+          "citation_id": {
+            "type": "string",
+            "pattern": "^E[1-9][0-9]*$",
+            "title": "Citation Id"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["citation_id", "start", "end"],
+        "title": "Citation"
       },
       "CreateRunRequest": {
         "properties": {
@@ -1346,6 +1520,96 @@
           "max_input_tokens"
         ],
         "title": "EmbeddingProfile"
+      },
+      "Evidence": {
+        "properties": {
+          "knowledge_base_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Knowledge Base Id"
+          },
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "chunk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Chunk Id"
+          },
+          "section_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Section Id"
+          },
+          "title_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Title Path"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "End"
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "End Line"
+          },
+          "content_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Content Sha256"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "citation_id": {
+            "type": "string",
+            "pattern": "^E[1-9][0-9]*$",
+            "title": "Citation Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "knowledge_base_id",
+          "document_id",
+          "version_id",
+          "chunk_id",
+          "section_id",
+          "title_path",
+          "start",
+          "end",
+          "start_line",
+          "end_line",
+          "content_sha256",
+          "text",
+          "citation_id"
+        ],
+        "title": "Evidence"
       },
       "HTTPValidationError": {
         "properties": {

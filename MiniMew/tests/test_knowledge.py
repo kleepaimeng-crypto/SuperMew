@@ -1,6 +1,7 @@
 """知识Tool的范围、结果投影和错误语义；所有重资源为测试注入。"""
 
 import asyncio
+import hashlib
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -194,11 +195,22 @@ def test_output_budget_keeps_whole_matches_and_reports_limited(monkeypatch):
     service, registry, context, _, _, _, hits = setup_service(monkeypatch)
     # 仅测试投影后的结果预算；真实payload验证在上面的用例中覆盖。
     scope = knowledge.published_scope.return_value
-    match = service.project(hits[0], scope).model_copy(update={"text": "x" * 5000})
+    text = "x" * 5000
+    original = service.project(hits[0], scope)
+    match = original.model_copy(
+        update={
+            "text": text,
+            "end": original.start + len(text),
+            "content_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        }
+    )
     monkeypatch.setattr(service, "project", lambda row, scope: match)
     result = json.loads(asyncio.run(invoke(registry, context)))
     assert result["limited"] is True and 0 < len(result["matches"]) < 3
     assert all(m["text"] == "x" * 5000 for m in result["matches"])
+    assert {m["citation_id"] for m in result["matches"]} == {
+        item.citation_id for item in context.evidence.items
+    }
 
 
 def test_tool_session_directory_is_immutable_and_scope_not_exposed_in_schema(monkeypatch):

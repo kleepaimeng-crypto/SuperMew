@@ -150,6 +150,7 @@ class Message(Base):
         ),
         UniqueConstraint("thread_id", "sequence", name="uq_messages_thread_sequence"),
         UniqueConstraint("run_id", "role", name="uq_messages_run_role"),
+        UniqueConstraint("id", "run_id", name="uq_messages_id_run"),
         CheckConstraint("sequence > 0", name="ck_messages_sequence"),
         CheckConstraint(
             "(role = 'user' AND status = 'completed') OR "
@@ -167,6 +168,27 @@ class Message(Base):
     status: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnswerRecord(Base):
+    """仅保存答案依据；唯一正文仍属于Message。"""
+
+    __tablename__ = "answer_materials"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["message_id", "run_id"],
+            ["messages.id", "messages.run_id"],
+            name="fk_answer_message_run",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint("jsonb_typeof(materials) = 'object'", name="ck_answer_materials_object"),
+        CheckConstraint("octet_length(materials::text) <= 262144", name="ck_answer_materials_size"),
+    )
+    run_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("runs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    message_id: Mapped[UUID] = mapped_column(Uuid, unique=True)
+    materials: Mapped[dict] = mapped_column(JSONB(none_as_null=True))
 
 
 class ModelProfile(Base):

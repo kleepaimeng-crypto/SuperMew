@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.exc import SQLAlchemyError
 
+from minimew.answers import AnswerResponse, read_answer
 from minimew.api.auth import (
     AuthenticatedAccess,
     CurrentUser,
@@ -201,3 +202,26 @@ async def read_run(
         return await get_run(session, user.id, thread_id, run_id)
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None
+
+
+@router.get(
+    "/{run_id}/answer",
+    response_model=AnswerResponse,
+    responses={
+        404: {"description": "Conversation not found"},
+        503: {"description": "ANSWER_READ_UNAVAILABLE"},
+    },
+)
+async def read_answer_materials(
+    thread_id: UUID, run_id: UUID, user: CurrentUser, session: SessionDependency
+) -> AnswerResponse:
+    try:
+        return await read_answer(session, user.id, thread_id, run_id)
+    except ConversationNotFound:
+        raise HTTPException(
+            404, "Conversation not found", headers={"Cache-Control": "no-store"}
+        ) from None
+    except (SQLAlchemyError, ValueError, TimeoutError, OSError):
+        raise HTTPException(
+            503, detail={"code": "ANSWER_READ_UNAVAILABLE"}, headers={"Cache-Control": "no-store"}
+        ) from None

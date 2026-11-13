@@ -126,7 +126,7 @@ class InputMessage:
             raise ValueError("Only tool results carry tool_call_id")
 
 
-def validate_messages(messages, tools):
+def validate_messages(messages, tools, instructions=""):
     if (
         not isinstance(messages, tuple)
         or not 1 <= len(messages) <= MAX_MESSAGES
@@ -138,7 +138,11 @@ def validate_messages(messages, tools):
     names = {tool.name for tool in tools}
     if len(names) != len(tools):
         raise ValueError("Duplicate tool definition")
-    size = sum(len(tool.name) + len(tool.description) + len(tool.parameters_json) for tool in tools)
+    if not isinstance(instructions, str) or (instructions and not valid_text(instructions, 4096)):
+        raise ValueError("Invalid server instructions")
+    size = len(instructions) + sum(
+        len(tool.name) + len(tool.description) + len(tool.parameters_json) for tool in tools
+    )
     pending, used = set(), set()
     if any(not isinstance(message, InputMessage) for message in messages):
         raise ValueError("Invalid message")

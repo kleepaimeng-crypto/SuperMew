@@ -21,9 +21,10 @@ class ProviderRequest:
     snapshot: ModelSnapshot
     messages: tuple[InputMessage, ...]
     tools: tuple[ToolDefinition, ...] = ()
+    instructions: str = ""
 
     def __post_init__(self):
-        validate_messages(self.messages, self.tools)
+        validate_messages(self.messages, self.tools, self.instructions)
 
 
 MAX_DELTA_CHARS = 4096

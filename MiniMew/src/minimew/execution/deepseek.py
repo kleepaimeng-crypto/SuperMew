@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import httpx2
 import openai
 from httpx2 import TimeoutException, TransportError
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_deepseek import ChatDeepSeek
 from langsmith import tracing_context
 from pydantic import Field, PrivateAttr, SecretStr
@@ -203,6 +203,8 @@ class DeepSeekProvider:
                 expected_tools=frozenset(tool.name for tool in request.tools),
             )
             messages = []
+            if request.instructions:
+                messages.append(SystemMessage(content=request.instructions))
             for message in request.messages:
                 if message.role == "user":
                     messages.append(HumanMessage(content=message.content))
