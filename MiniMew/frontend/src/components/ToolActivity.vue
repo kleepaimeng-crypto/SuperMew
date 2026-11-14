@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ToolProjection } from "../events/runEventReducer";
+import { errorPresentation } from "../runErrors";
 defineProps<{
   tools: readonly ToolProjection[];
   loading: boolean;
@@ -37,6 +38,10 @@ function toggled(event: Event) {
           }"
           >{{ labels[tool.status] }}</span
         >
+        <p v-if="tool.status === 'failed'" class="tool-failure-reason">
+          {{ errorPresentation(tool.errorCode).reason }}
+          <code>{{ errorPresentation(tool.errorCode).code }}</code>
+        </p>
       </li>
     </ol>
     <p v-else-if="loaded">这次回答没有已保存的工具记录。</p>
@@ -73,11 +78,17 @@ ol {
 }
 li {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 20px;
   max-width: 420px;
   padding: 7px 0;
   border-bottom: 1px solid #dde2dc;
+}
+.tool-failure-reason {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+  color: #76542f;
 }
 .tool-state {
   flex-shrink: 0;

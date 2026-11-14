@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 from uuid import UUID
 
+from minimew.execution.diagnostics import Diagnostic
 from minimew.execution.messages import (
     InputMessage,
     ModelTurn,
@@ -61,10 +62,12 @@ class ProviderFailure(Exception):
         *,
         retryable: bool = False,
         retry_after: float = 0,
+        diagnostic: Diagnostic | None = None,
     ):
         if code not in {"PROVIDER_ERROR", "PROVIDER_TIMEOUT", "PROVIDER_INVALID_RESPONSE"}:
             raise ValueError("Unsupported Provider error code")
         self.code = code
         self.retryable = retryable
         self.retry_after = retry_after
+        self.diagnostic = diagnostic
         super().__init__(code)

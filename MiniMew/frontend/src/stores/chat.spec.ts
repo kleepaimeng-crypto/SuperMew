@@ -37,6 +37,36 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("刷新失败历史无需重放工具即可显示持久错误原因，读取故障不覆盖它", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string) => {
+      if (path.includes("/messages"))
+        return json({
+          items: messages.map((m) =>
+            m.role === "assistant"
+              ? { ...m, status: "failed", content: "" }
+              : m,
+          ),
+          previous_cursor: null,
+        });
+      if (path.includes("/events")) return json({}, 503);
+      return json({
+        ...run,
+        status: "failed",
+        finished_at: time,
+        error_code: "PROVIDER_INVALID_RESPONSE",
+      });
+    }),
+  );
+  await chat.open(ids.thread);
+  expect(chat.failureInfo(ids.run)?.reason).toContain("结构或引用校验");
+  await chat.loadActivity(ids.run);
+  expect(chat.runs[ids.run]?.activityError).toContain("无法读取");
+  expect(chat.failureInfo(ids.run)?.code).toBe("PROVIDER_INVALID_RESPONSE");
+  expect(chat.runStatus(chat.runs[ids.run]!)).toBe("failed");
+});
+
 it("引用加载合并在途请求，加载失败与重试不改变Run终态", async () => {
   const { message, response } = answerFixture();
   let answerCalls = 0;

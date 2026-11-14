@@ -15,7 +15,9 @@ from minimew.execution.control import (
     ExecutionStorageUnavailable,
     OwnershipLost,
 )
+from minimew.execution.diagnostics import Diagnostic, capture
 from minimew.execution.messages import ToolCall, ToolDefinition, valid_text
+from minimew.execution.provider import ProviderFailure
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.rag.protocol import RagPolicy
 
@@ -39,10 +41,11 @@ TOOL_ERROR_CODES = frozenset(
 
 
 class ToolFailure(Exception):
-    def __init__(self, code: ErrorCode):
+    def __init__(self, code: ErrorCode, *, diagnostic: Diagnostic | None = None):
         if code not in TOOL_ERROR_CODES:
             raise ValueError("Unsupported tool failure")
         self.code = code
+        self.diagnostic = diagnostic
         super().__init__(code)
 
 
@@ -147,8 +150,15 @@ class Guardrail:
             return GuardrailDecision("DENY")
         try:
             allowed = spec.authorize(context, arguments)
-        except Exception:
-            raise ToolFailure("TOOL_EXECUTION_FAILED") from None
+        except Exception as error:
+            raise ToolFailure(
+                "TOOL_EXECUTION_FAILED",
+                diagnostic=capture(
+                    "guardrail",
+                    "authorization_check_failed",
+                    error,
+                ),
+            ) from None
         return GuardrailDecision("ALLOW" if allowed is True else "DENY")
 
     @classmethod
@@ -210,13 +220,30 @@ class ToolRegistry:
             result = await prepared.spec.handler(context, prepared.arguments)
         except (ToolFailure, CancellationRequested, OwnershipLost, ExecutionStorageUnavailable):
             raise
-        except Exception:
-            raise ToolFailure("TOOL_EXECUTION_FAILED") from None
+        except Exception as error:
+            detail = error.diagnostic if isinstance(error, ProviderFailure) else None
+            raise ToolFailure(
+                "TOOL_EXECUTION_FAILED",
+                diagnostic=detail
+                or capture(
+                    "tool",
+                    "handler_failed",
+                    error,
+                    cause_code=error.code if isinstance(error, ProviderFailure) else None,
+                ),
+            ) from None
         try:
             result = prepared.spec.result.model_validate(result, strict=True)
             content = result.model_dump_json()
             if not valid_text(content, MAX_TOOL_RESULT_CHARS, nonblank=True):
                 raise ValueError("Tool result budget exceeded")
-        except (ValueError, TypeError):
-            raise ToolFailure("TOOL_INVALID_RESULT") from None
+        except (ValueError, TypeError) as error:
+            raise ToolFailure(
+                "TOOL_INVALID_RESULT",
+                diagnostic=capture(
+                    "tool_result",
+                    "result_contract_invalid",
+                    error,
+                ),
+            ) from None
         return content

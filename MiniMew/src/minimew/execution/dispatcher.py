@@ -6,6 +6,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from minimew.execution.diagnostics import capture, emit
 from minimew.execution.repository import ExecutionRepository
 from minimew.execution.service import RunExecutor
 
@@ -67,7 +68,13 @@ class RunDispatcher:
         self.active.pop(run, None)
         if not task.cancelled() and task.exception() is not None:
             # 记录稳定诊断，不把 SDK/数据库原始异常或凭据写入日志。
-            logger.error("execution_task_failed run_id=%s code=EXECUTION_TASK_ERROR", run)
+            emit(
+                logger,
+                "execution_task_failed",
+                run,
+                "EXECUTION_TASK_ERROR",
+                capture("executor_task", "unexpected_task_failure", task.exception()),
+            )
 
     async def drain(self):
         tasks = set(self.active.values())

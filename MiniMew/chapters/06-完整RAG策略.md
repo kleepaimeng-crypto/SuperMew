@@ -4,6 +4,8 @@
 
 ## 第六章结束后的必做补齐：异常反馈（2026-11-13，待执行）
 
+2026-11-14更新：以下保留原始待办范围，实际交付见[专项实施记录](#章后专项异常反馈实施记录2026-11-14)。
+
 用户明确要求：“等第6章结束后，补充完整的异常反馈，确保错误可以记录在日志以及前端显示。”本项在第六章结束后安排专项实现；本次仅保存待办与验收要求，不提前修改应用代码，不将其记为已完成。
 
 背景：实际文档问答曾因空标题元数据触发`KNOWLEDGE_RESULT_INVALID`。失败状态、错误码和Journal已保存，但后端捕获typed异常后未输出足够诊断日志，前端仅展示“未完成/回答未完成”，用户无法理解原因。持久失败状态正确不等于异常反馈完整。
@@ -604,3 +606,38 @@ A包的Pipeline负责从固定published scope中寻找、补全和排序可定�
 代表性“餐费、住宿和提交期限”走读：API预留/冻结→Executor外层模型→Registry授权→knowledge.py固定scope→pipeline.py提供实际材料→workflow.py初评/plan/Send→各子任务同一Pipeline→按计划索引去重选材→原问题复评→knowledge.py一次Evidence提交→Executor调用最终回答→evidence.py解析引用→Repository写原Message/终态/Event。C的此例在聚合选材时遗漏期限，故不能从“每个子任务有材料”直接推导最终覆盖完整；查看观察资产的跨度/缺口可定位这一点。
 
 本章将原知识工具内候选检索职责提取到rag模块，保留正式工具与原Run入口，没有为策略新增第二条聊天路径。C只新增显式验收资产，无生产目录重构。后续持久Checkpoint/HITL与评测Job/Gate仍属第七/八章，不在本框架中伪装成已实现模块。
+
+## 章后专项：异常反馈实施记录（2026-11-14）
+
+用户在第六章结章反馈后回复“继续”。依据此前明确的“章后补充完整异常反馈”要求及本章开头已列明四项范围，本轮连续完成工程专项；未增加引用格式修复、聚合覆盖算法或第七章的编码授权。原始待办段落保留为2026-11-13范围快照，当前实际实现以本节及交接检查点为准。
+
+### 整体位置与输入输出
+
+错误沿原执行链处理：Provider/知识检索/工具/答案校验边界产生稳定错误码及私有Diagnostic → RunExecutor按原事务处理并记录服务端诊断 → 原Run/Event公开错误码 → 前端实时投影或持久Run读取 → 共同中文展示。Diagnostic不进入数据库公开字段、Journal、答案或浏览器状态；前端不接收异常堆栈或模型原文作为错误说明，也不自行宣布终态。
+
+[diagnostics.py](../src/minimew/execution/diagnostics.py)只保存固定stage/reason、异常类型、最多12帧的文件名/函数/行号，以及适用的底层稳定code。堆栈省去源码行、locals、异常文本与参数；不使用logger.exception或原始SQL/HTTP/Pydantic错误字符串。外层模型、内部grade/plan/rewrite、知识编码/向量/原文投影与工具结果在各自归一化处保留私有上下文，最终处理边界统一记录，未预期handler/存储/后台Task故障为ERROR，预期失败与可恢复尝试为WARNING。重试和受控子任务失败单独有次数/子任务序号，不逐层重复打印同份异常正文。
+
+`execution_diagnostic`后的JSON包含event/run_id/thread_id/code/stage/reason，工具失败含tool_call_id，重试含attempt。`execution_failure_handled`仅表示执行器已处理失败，后续持久事务仍会检查取消和owner；它不是替代Journal的终态。`execution_terminal_write_failed`表示终态写入失败，不能据日志声称已保存failed。后台任务兜底也只记录安全堆栈；原始异常消息、Header、DSN、文档和私有推理不写入这些诊断。
+
+已知导语问题现在可记录`stage=answer_validation`、`reason=document_paragraph_missing_citation`和Run编号，公开码仍为PROVIDER_INVALID_RESPONSE；保留原引用校验，没有自动删导语、补引用、修模型答案或悄然重试整个任务。
+
+### 前端与状态边界
+
+[runErrors.ts](../frontend/src/runErrors.ts)为全部21个正式错误码提供中文原因和与现有能力一致的操作建议；[RunFailure.vue](../frontend/src/components/RunFailure.vue)显示原因，并可展开错误码/任务编号。[ChatPanel](../frontend/src/components/ChatPanel.vue)与[chat store](../frontend/src/stores/chat.ts)统一使用同一映射：历史终态Run优先，进行中Run使用权威Event投影，不从空正文或连接关闭猜失败。未知网络错误码继续被现有严格协议校验拒绝并提示同步；展示映射自身有UNKNOWN_ERROR受控提示，不回显未知字符串。
+
+[ToolActivity](../frontend/src/components/ToolActivity.vue)显示tool.failed的原因与稳定码，工具取消/中断保留各自状态。空失败回答不再只显示“本次未生成可保存的正文”，会提示失败并附原因；取消显示取消提示。连接中断仍按原游标恢复，引用/过程读取失败仍显示各自读取提示与重试加载按钮，不能将已成功回答改成failed。建议用户重新提问表示创建新任务；同步历史或重连不会重新执行已终态Run，本包不新增自动重试按钮或隐藏执行路径。
+
+### 验证与复验
+
+- 后端首次运行`tests/test_agent.py tests/test_execution_retry.py tests/test_reasoning.py tests/test_reasoning_graph.py tests/test_knowledge.py tests/test_deepseek.py`103项既有测试通过，SDK畸形响应注入有1条预期Pydantic序列化警告。新增`tests/test_execution_diagnostics.py`7项通过：Provider/handler/工具结果/引用协议故障、内部Grader跨工具边界、终态写入故障、安全堆栈与Secret排除。最终日志等级/终结关联参数调整后，只重复诊断/Agent/重试38项，全部通过，不叠加为新用例。末次补齐Provider流清理失败诊断后，定向诊断/重试/内部角色/SDK52项通过（1条同类预期警告），复跑不叠加。
+- `uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_diagnostics_pg.py tests/test_execution_pg.py tests/test_agent_pg.py tests/test_reasoning_pg.py tests/test_cancellation_pg.py tests/test_answers_pg.py`70通过（2新增、68既有），最终对2个新增PG用例复验通过。核对单Run/两个Message、tool.failed/run.failed、公开错误字段不扩散Diagnostic、取消和已有答案路径；自有临时库清理。后端合计180个不同pytest（9新增、171既有），所选0 skipped。
+- `npm run test -- src/runErrors.spec.ts src/stores/chat.spec.ts src/events/toolErrors.spec.ts src/events/runEventReducer.spec.ts`79通过（24新增、55既有）；涵盖全部21码、未知字符串不回显、实时/历史同因，以及过程读取失败不覆盖业务失败。`npm run typecheck`与改动文件Prettier检查通过。
+- Playwright新增1440px/390px两场景通过：工具/整体失败说明、展开码与Run编号、刷新恢复与无横向溢出；真实API/PG既有聊天场景扩展错误说明/刷新断言后通过，使用正式执行器/Journal/SSE并注入受控Provider，收费0。另重复390px一次仅为收集并目视检查截图，结果复用，不计第4个场景。截图在本机忽略的`.artifacts/errors-mobile.png`及`chat-live.png`。
+- 首次浏览器2场景因缺少Playwright自有Chromium而未能启动，不能计通过；显式浏览器下载未推进后停止自有下载进程，改用本机已安装Edge的显式测试channel，两场景复跑成功。新增`MINIMEW_TEST_BROWSER_CHANNEL`仅控制Playwright测试，未设置仍使用原默认测试浏览器；不修改生产浏览器或依赖。最后Prettier只修正该测试配置格式，无行为变化。
+- 定向Ruff check/format、Event生成漂移和文档差异/链接检查通过；未修改公开Event真源/枚举、HTTP DTO、DDL/迁移或依赖，不手改生成物。未重跑真实Embedding/Base/Milvus质量矩阵、整个MiniMew/上级全量、收费DeepSeek；本轮改变日志/错误展示而非召回算法，相关Run/并发/持久状态与浏览器消费者已定向覆盖。
+
+### 交付与剩余边界
+
+本专项日志与实时/历史展示已接通。API已在无活跃Run时重启加载新版，前端热更新，ready与页面可用；开发历史未回写。设备配置/浏览器缓存、启动器PID和本机验收日志独立保存于设备文件，不写入共同授权状态。
+
+保留两项未修复的功能边界：模型未引用导语仍会被拒绝；C固定跨章节例的聚合材料覆盖仍可能退化到2/3。后续应分别列修复范围及必要验证，不将提示改善当成质量或格式问题已解决。第七章Checkpoint/HITL尚未启动。

@@ -35,12 +35,22 @@ test("真实 API/PG：提问、Journal/SSE、取消、失败与刷新恢复", as
   await page.getByLabel("你的问题", { exact: true }).fill("模拟失败");
   await page.getByRole("button", { name: "发送问题", exact: true }).click();
   await expect(page.getByText("回答未完成", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("本次回答失败原因")).toContainText(
+    "模型服务调用失败",
+  );
+  await page.getByText("错误详情", { exact: true }).click();
+  await expect(page.getByLabel("本次回答失败原因")).toContainText(
+    "PROVIDER_ERROR",
+  );
   await expect(page.getByRole("article", { name: "MiniMew 回复" })).toHaveCount(
     3,
   );
   await page.reload();
   await expect(page.getByText("已取消", { exact: true })).toBeVisible();
   await expect(page.getByText("回答未完成", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("本次回答失败原因")).toContainText(
+    "模型服务调用失败",
+  );
   await page.screenshot({
     path: "../.artifacts/chat-live.png",
     fullPage: true,

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   body,
+  event,
   cancelled,
   frame,
   ids,
@@ -10,6 +11,7 @@ import {
   success,
   time,
 } from "./fixtures/chat";
+import type { ErrorCode } from "../src/generated/run-event-v1";
 
 async function fixture(
   page: Page,
@@ -20,6 +22,8 @@ async function fixture(
     | "refresh"
     | "failure"
     | "history-error" = "normal",
+  failureCode: ErrorCode = "PROVIDER_TIMEOUT",
+  toolFailure = false,
 ) {
   let created = mode !== "submit" && mode !== "history-error";
   let complete = false;
@@ -69,8 +73,11 @@ async function fixture(
     if (path.endsWith("/messages")) {
       if (created && historyError)
         return route.fulfill({ status: 503, json: {} });
-      const content =
-        mode === "cancel" || mode === "failure" ? "今天" : "今天天气很好";
+      const content = toolFailure
+        ? ""
+        : mode === "cancel" || mode === "failure"
+          ? "今天"
+          : "今天天气很好";
       const status =
         mode === "cancel"
           ? "cancelled"
@@ -123,7 +130,17 @@ async function fixture(
       if (streams === 1)
         return route.fulfill({
           contentType: "text/event-stream",
-          body: [...started, body].map(frame).join(""),
+          body: [
+            ...started,
+            toolFailure
+              ? event("tool.started", 3, {
+                  tool_call_id: "case_search",
+                  tool_name: "knowledge_search",
+                })
+              : body,
+          ]
+            .map(frame)
+            .join(""),
         });
       if (mode === "cancel" && !cancelRequested)
         return route.fulfill({
@@ -131,8 +148,24 @@ async function fixture(
           body: frame(body),
         });
       complete = true;
-      const tail =
-        mode === "cancel"
+      const tail = toolFailure
+        ? [
+            event("tool.failed", 4, {
+              tool_call_id: "case_search",
+              tool_name: "knowledge_search",
+              error_code: failureCode,
+            }),
+            event("message.completed", 5, {
+              message_id: ids.assistant,
+              status: "failed",
+              content: "",
+            }),
+            event("run.failed", 6, {
+              status: "failed",
+              error_code: failureCode,
+            }),
+          ]
+        : mode === "cancel"
           ? cancelled
           : mode === "failure"
             ? [
@@ -147,7 +180,7 @@ async function fixture(
                 {
                   ...success[4]!,
                   type: "run.failed",
-                  data: { status: "failed", error_code: "PROVIDER_TIMEOUT" },
+                  data: { status: "failed", error_code: failureCode },
                 },
               ]
             : success.slice(2);
@@ -169,7 +202,7 @@ async function fixture(
                     : "succeeded",
               finished_at: time,
               cancel_requested_at: cancelRequested ? time : null,
-              error_code: mode === "failure" ? "PROVIDER_TIMEOUT" : null,
+              error_code: mode === "failure" ? failureCode : null,
             }
           : run,
       });
@@ -292,3 +325,33 @@ test("失败保留半截正文，切换对话与退出不带出旧消息", async
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("article")).toHaveCount(0);
 });
+
+for (const width of [1440, 390]) {
+  test(`错误原因、工具错误码和历史恢复 ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 950 });
+    await fixture(page, "failure", "KNOWLEDGE_RESULT_INVALID", true);
+    await page.goto(`/threads/${ids.thread}`);
+    const notice = page.getByLabel("本次回答失败原因");
+    await expect(notice).toContainText("检索资料的来源或结构未通过校验");
+    await notice.getByText("错误详情", { exact: true }).click();
+    await expect(notice).toContainText("KNOWLEDGE_RESULT_INVALID");
+    await expect(notice).toContainText(ids.run);
+    await page.getByText("执行过程", { exact: false }).click();
+    await expect(page.locator(".tool-failure-reason")).toContainText(
+      "KNOWLEDGE_RESULT_INVALID",
+    );
+    await page.reload();
+    await expect(notice).toContainText("检索资料的来源或结构未通过校验");
+    await notice.getByText("错误详情", { exact: true }).click();
+    await expect(notice).toContainText("KNOWLEDGE_RESULT_INVALID");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: test.info().outputPath(`failure-${width}.png`),
+      fullPage: true,
+    });
+  });
+}

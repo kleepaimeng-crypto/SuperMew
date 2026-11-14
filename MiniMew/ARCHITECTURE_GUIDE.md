@@ -209,3 +209,9 @@ Milvus命中payload包含chunk原文、编码文本、来源身份和节信息�
 可把Pipeline理解为“如何寻找和选择资料”，Workflow理解为“当前资料不足时怎样继续寻找”；最终答案与可恢复业务执行仍由原Run系统承载。评分模型和回答模型是两个职责，目前复用同一冻结配置，并不表示有两个独立服务或两份额度。[内部Caller](src/minimew/execution/reasoning.py)私有消费模型输出，复用原Provider/资格/总期限/共享预算；没有持久checkpointer，节点恢复仍待第七章。
 
 一次跨章节问题沿“原Run → Registry/Guardrail → 固定scope → Pipeline → Workflow/Send → 聚合选材/原问题复评 → Evidence → 最终回答/引用 → 原终结事务”流动。子问题材料经最终预算后可能被丢弃，故“每个子问题查到了”不等于“最后模型看全了”。C包固定例确实观测到直接检索覆盖3/3、拆解聚合后2/3；受控Grader报足够也不能当成完整性证明。完整实现/取舍/对照见[第六章总结](chapters/06-完整RAG策略.md#结章文字总结2026-11-14)。
+
+## 15. 失败怎样进入日志与界面
+
+核对日期：2026-11-14。[归一化边界](src/minimew/execution/tools.py)保留私有[Diagnostic](src/minimew/execution/diagnostics.py)，[执行器](src/minimew/execution/service.py)负责记录可关联日志并沿原事务处理Run；公开协议仍只给稳定错误码，前端[映射](frontend/src/runErrors.ts)按实时Event/持久Run显示原因。服务端诊断和公开错误展示承担不同职责，Diagnostic不进入Journal或浏览器。
+
+日志中的文件/函数/行号可定位问题，异常文本、源码行、局部变量和模型正文被排除。失败处理日志不代替终结事务：存储不可用时可能无法保存终态，日志会标记写入失败；取消仍由原事务裁定。前端也不从断流、资料读取失败或空正文推出业务失败，因此刷新与实时界面能遵循同一事实来源。

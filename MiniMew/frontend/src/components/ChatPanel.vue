@@ -5,6 +5,7 @@ import { useThreadsStore } from "../stores/threads";
 import { terminal } from "../chat";
 import AnswerBody from "./AnswerBody.vue";
 import ToolActivity from "./ToolActivity.vue";
+import RunFailure from "./RunFailure.vue";
 
 const props = defineProps<{ threadId: string }>();
 const chat = useChatStore();
@@ -117,6 +118,10 @@ function enter(event: KeyboardEvent) {
         />
         <div v-else class="message-body">{{ message.content }}</div>
         <template v-if="message.role === 'assistant'">
+          <RunFailure
+            :failure="chat.failureInfo(message.run_id)"
+            :run-id="message.run_id"
+          />
           <ToolActivity
             v-if="chat.runs[message.run_id]"
             :tools="chat.runs[message.run_id]!.projection.tools"
@@ -169,6 +174,10 @@ function enter(event: KeyboardEvent) {
         </template>
       </article>
       <div v-if="acceptedMissing" class="chat-notice" role="status">
+        <RunFailure
+          :failure="chat.failureInfo(chat.acceptedRunId!)"
+          :run-id="chat.acceptedRunId!"
+        />
         <span
           >问题已提交，消息记录尚未同步。{{
             chat.statusLabel(chat.acceptedRunId!)

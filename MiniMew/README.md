@@ -291,6 +291,14 @@ uv run --env-file .env --no-sync python scripts/check_rag_suite.py --write-obser
 
 本次编号/跨章节例的Hybrid扩大必要材料覆盖，但拆解例聚合后可从3/3降至2/3，受控“足够”不能消除原文缺口。详见[结章总结与代码框架](chapters/06-完整RAG策略.md#结章文字总结2026-11-14)。内存受限时需先检查进行中任务，再安排本地模型并存；显式验收不会自动停止开发服务。
 
+### 执行异常反馈（第六章后专项）
+
+失败回答显示中文原因，可展开错误码和任务编号；工具过程也展示tool.failed原因。实时SSE与刷新后的持久Run共用映射，连接中断、引用/过程读取故障及取消保持各自状态。同步历史不会重跑旧任务；提示重新提问时会创建新任务。
+
+服务端`execution_diagnostic`记录Run、阶段、稳定reason和安全堆栈（文件/函数/行号），不记录异常文本、源码行、locals、原始凭据或模型正文。`execution_failure_handled`表示失败已处理，持久终态以原Run/Event为准；终态写入失败会另有`execution_terminal_write_failed`。例如未引用导语可定位为`answer_validation/document_paragraph_missing_citation`，公开码仍为PROVIDER_INVALID_RESPONSE；本专项不放宽引用校验。
+
+定向入口：`tests/test_execution_diagnostics.py`、`check_runtime.py tests/test_diagnostics_pg.py`及前端`src/runErrors.spec.ts`。浏览器按既有Playwright命令执行，已安装Edge的设备可显式设置`MINIMEW_TEST_BROWSER_CHANNEL=msedge`；省略时沿用默认测试浏览器。详见[实施记录](chapters/06-完整RAG策略.md#章后专项异常反馈实施记录2026-11-14)。
+
 ### 模型缓存与候选策略（6.3）
 
 知识模式现在同时加载已准备的轻量Embedding和Base重排模型。首次换设备需显式准备固定Base缓存（普通启动不下载）：

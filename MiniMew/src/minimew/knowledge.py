@@ -15,6 +15,7 @@ from minimew.documents.chunking import Chunk, Section
 from minimew.documents.retrieval import RetrievalScope, published_scope, search_published
 from minimew.embeddings.errors import EmbeddingError
 from minimew.evidence import EvidenceLimit, EvidenceSource
+from minimew.execution.diagnostics import capture, emit
 from minimew.execution.messages import valid_text
 from minimew.execution.tools import ToolContext, ToolFailure, ToolModel, ToolSpec
 from minimew.rag.pipeline import RagPipeline
@@ -138,28 +139,60 @@ class KnowledgeService:
                 if error.code == "EMBEDDING_INPUT_TOO_LONG"
                 else "KNOWLEDGE_ENCODING_FAILED"
             )
-            raise ToolFailure(code) from None
+            raise ToolFailure(
+                code,
+                diagnostic=capture(
+                    "embedding",
+                    "query_encoding_failed",
+                    error,
+                    cause_code=error.code,
+                ),
+            ) from None
         except VectorError as error:
             code = (
                 "KNOWLEDGE_SCOPE_INVALID"
                 if error.code.startswith("INDEX_")
                 else "KNOWLEDGE_RETRIEVAL_FAILED"
             )
-            raise ToolFailure(code) from None
+            raise ToolFailure(
+                code,
+                diagnostic=capture(
+                    "retrieval",
+                    "vector_query_failed",
+                    error,
+                    cause_code=error.code,
+                ),
+            ) from None
         except PermissionError:
             raise ToolFailure("TOOL_PERMISSION_DENIED") from None
-        except (SQLAlchemyError, OSError, TimeoutError):
-            raise ToolFailure("KNOWLEDGE_RETRIEVAL_FAILED") from None
+        except (SQLAlchemyError, OSError, TimeoutError) as error:
+            raise ToolFailure(
+                "KNOWLEDGE_RETRIEVAL_FAILED",
+                diagnostic=capture(
+                    "retrieval",
+                    "catalog_or_transport_failed",
+                    error,
+                ),
+            ) from None
         if context.reasoning is not None:
             from minimew.rag.workflow import run_workflow
 
             async def retrieve(query):
                 context.run_budget.take_retrieval()
-                return await RagPipeline(
+                extra = await RagPipeline(
                     self.sessions, self.runtime, retriever=search_published
                 ).search(
                     query, scope, context.user_id, context.rag_policy, deadline=context.deadline
                 )
+                if extra.trace.fallback:
+                    emit(
+                        logger,
+                        "rag_query_fallback",
+                        context.run_id,
+                        extra.trace.fallback,
+                        capture("retrieval", "explicit_fallback"),
+                    )
+                return extra
 
             draft, pending, assessment = await run_workflow(
                 context,
@@ -271,5 +304,12 @@ class KnowledgeService:
                 score_kind=row.get("score_kind", "dense_cosine"),
                 stage_scores=row.get("stage_scores", {}),
             )
-        except (ValueError, TypeError, KeyError, AttributeError):
-            raise ToolFailure("KNOWLEDGE_RESULT_INVALID") from None
+        except (ValueError, TypeError, KeyError, AttributeError) as error:
+            raise ToolFailure(
+                "KNOWLEDGE_RESULT_INVALID",
+                diagnostic=capture(
+                    "material_projection",
+                    "source_contract_invalid",
+                    error,
+                ),
+            ) from None

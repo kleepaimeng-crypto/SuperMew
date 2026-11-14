@@ -6,6 +6,7 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:5175",
     browserName: "chromium",
+    channel: process.env.MINIMEW_TEST_BROWSER_CHANNEL,
     headless: true,
   },
   webServer: {

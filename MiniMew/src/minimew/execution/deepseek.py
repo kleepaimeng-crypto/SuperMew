@@ -17,6 +17,7 @@ from langchain_deepseek import ChatDeepSeek
 from langsmith import tracing_context
 from pydantic import Field, PrivateAttr, SecretStr
 
+from minimew.execution.diagnostics import capture
 from minimew.execution.messages import (
     MAX_ARGUMENT_CHARS,
     MAX_OUTPUT_CHARS,
@@ -262,27 +263,76 @@ class DeepSeekProvider:
             if finish_reason is None:
                 raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
             turn = model.completed_turn("".join(parts), finish_reason)
-        except openai.APITimeoutError:
-            raise ProviderFailure("PROVIDER_TIMEOUT", retryable=True) from None
-        except openai.APIConnectionError:
-            raise ProviderFailure(retryable=True) from None
-        except TimeoutException:
-            raise ProviderFailure("PROVIDER_TIMEOUT", retryable=True) from None
-        except TransportError:
-            raise ProviderFailure(retryable=True) from None
+        except openai.APITimeoutError as failure:
+            raise ProviderFailure(
+                "PROVIDER_TIMEOUT",
+                retryable=True,
+                diagnostic=capture(
+                    request.purpose,
+                    "provider_timeout",
+                    failure,
+                ),
+            ) from None
+        except openai.APIConnectionError as failure:
+            raise ProviderFailure(
+                retryable=True,
+                diagnostic=capture(
+                    request.purpose,
+                    "provider_connection_failed",
+                    failure,
+                ),
+            ) from None
+        except TimeoutException as failure:
+            raise ProviderFailure(
+                "PROVIDER_TIMEOUT",
+                retryable=True,
+                diagnostic=capture(
+                    request.purpose,
+                    "transport_timeout",
+                    failure,
+                ),
+            ) from None
+        except TransportError as failure:
+            raise ProviderFailure(
+                retryable=True,
+                diagnostic=capture(
+                    request.purpose,
+                    "transport_failed",
+                    failure,
+                ),
+            ) from None
         except openai.APIStatusError as failure:
             raise ProviderFailure(
                 retryable=failure.status_code in (408, 429) or failure.status_code >= 500,
                 retry_after=retry_after_seconds(failure.response.headers),
+                diagnostic=capture(
+                    request.purpose,
+                    "provider_http_error",
+                    failure,
+                    cause_code=f"HTTP_{failure.status_code}",
+                ),
             ) from None
-        except (ValueError, TypeError, KeyError):
-            raise ProviderFailure("PROVIDER_INVALID_RESPONSE") from None
+        except (ValueError, TypeError, KeyError) as failure:
+            raise ProviderFailure(
+                "PROVIDER_INVALID_RESPONSE",
+                diagnostic=capture(
+                    request.purpose,
+                    "provider_response_invalid",
+                    failure,
+                ),
+            ) from None
         finally:
             primary = sys.exception()
             try:
                 async with asyncio.timeout(3):
                     await resources.aclose()
-            except Exception:
+            except Exception as failure:
                 if primary is None:
-                    raise ProviderFailure() from None
+                    raise ProviderFailure(
+                        diagnostic=capture(
+                            request.purpose,
+                            "provider_cleanup_failed",
+                            failure,
+                        )
+                    ) from None
         yield ProviderCompleted(turn)

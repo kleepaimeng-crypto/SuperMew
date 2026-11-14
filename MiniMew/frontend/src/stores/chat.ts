@@ -21,6 +21,7 @@ import {
   type RunProjection,
 } from "../events/runEventReducer";
 import { readRunEvents, waitForRetry } from "../events/runEventStream";
+import { failureForRun } from "../runErrors";
 import { useAuthStore } from "./auth";
 
 interface Intent {
@@ -677,6 +678,10 @@ export const useChatStore = defineStore("chat", () => {
       return "正在组织回答";
     return status === "pending" ? "排队中" : "生成中";
   }
+  function failureInfo(id: string) {
+    const view = runs[id];
+    return view ? failureForRun(view.run, view.projection) : null;
+  }
   const displayMessages = computed(() =>
     messages.value.map((message) => {
       const projection = runs[message.run_id]?.projection;
@@ -722,5 +727,6 @@ export const useChatStore = defineStore("chat", () => {
     loadActivity,
     runStatus,
     statusLabel,
+    failureInfo,
   };
 });

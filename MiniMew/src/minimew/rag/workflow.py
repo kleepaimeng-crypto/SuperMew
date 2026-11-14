@@ -1,6 +1,7 @@
 """Run内有界StateGraph；不配置checkpointer、不提交Evidence或Run终态。"""
 
 import asyncio
+import logging
 import operator
 import re
 from typing import Annotated, TypedDict
@@ -9,10 +10,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
 from minimew.embeddings.errors import EmbeddingError
+from minimew.execution.diagnostics import capture, emit
 from minimew.execution.provider import ProviderFailure
 from minimew.rag.protocol import MaterialGroup, RetrievalResult
 from minimew.rag.reasoning import Grade, Plan, Rewrite, grade_materials
 from minimew.vector_store.manifest import VectorError
+
+logger = logging.getLogger(__name__)
 
 
 class State(TypedDict, total=False):
@@ -80,6 +84,15 @@ async def run_workflow(context, question, initial, retrieve, prepare):
                 return {"pieces": ((state["index"], result, grade),)}
 
             except (ProviderFailure, VectorError, EmbeddingError) as exc:
+                emit(
+                    logger,
+                    "rag_subtask_failed",
+                    context.run_id,
+                    exc.code,
+                    getattr(exc, "diagnostic", None) or capture("subtask", "subtask_failed", exc),
+                    thread_id=context.thread_id,
+                    subtask=state["index"] + 1,
+                )
                 return {"pieces": ((state["index"], None, exc.code),)}
 
     def combine(original, extras):

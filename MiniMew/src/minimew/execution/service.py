@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from minimew.evidence import ANSWER_INSTRUCTIONS, AnswerResult, parse_answer
 from minimew.execution.context import ContextInvalid
 from minimew.execution.control import ExecutionStorageUnavailable
+from minimew.execution.diagnostics import capture, emit
 from minimew.execution.messages import (
     MAX_OUTPUT_CHARS,
     InputMessage,
@@ -103,6 +104,8 @@ class RunExecutor:
         error: ErrorCode | None = None
         content = ""
         materials = None
+        diagnostic = None
+        failed_tool = None
         try:
             request = await self.repository.request(claim)
             context = self.registry.bind_context(
@@ -135,19 +138,33 @@ class RunExecutor:
             content, materials = answer.content, answer.materials
         except ModelSnapshotUnavailable as failure:
             error = failure.code
+            diagnostic = capture("snapshot", "snapshot_unavailable", failure)
         except ContextInvalid:
             error = "CONTEXT_INVALID"
+            diagnostic = capture("context", "context_invalid")
         except ProviderFailure as failure:
             error = failure.code
+            diagnostic = failure.diagnostic or capture("answer_model", "provider_failed", failure)
         except ToolFailure as failure:
             error = failure.code
+            diagnostic = failure.diagnostic or capture("tool", "tool_failed", failure)
+            failed_tool = getattr(failure, "tool_call_id", None)
         except CancellationRequested:
             # 统一终结事务会重新检查持久取消标记，并清除非失败终态的 error_code。
             error = "EXECUTOR_INTERRUPTED"
-        except ExecutionStorageUnavailable:
-            logger.warning("execution_monitor_failed code=EXECUTION_STORAGE_UNAVAILABLE")
+        except ExecutionStorageUnavailable as failure:
+            emit(
+                logger,
+                "execution_storage_unavailable",
+                run_id,
+                "EXECUTION_STORAGE_UNAVAILABLE",
+                capture("execution_control", "storage_unavailable", failure),
+                thread_id=thread_id,
+            )
             async with asyncio.timeout(3):
-                return await self._finish(claim, "", "EXECUTION_STORAGE_UNAVAILABLE")
+                return await self._finish(
+                    claim, "", "EXECUTION_STORAGE_UNAVAILABLE", run_id=run_id, thread_id=thread_id
+                )
         except OwnershipLost:
             await self.repository.expire(claim)
             return "ownership_lost"
@@ -155,14 +172,45 @@ class RunExecutor:
             try:
                 async with asyncio.timeout(3):
                     await self.repository.finish(claim, error_code="EXECUTOR_INTERRUPTED")
-            except (SQLAlchemyError, OSError, TimeoutError):
-                logger.warning("execution_interrupt_save_failed code=EXECUTION_STORAGE_UNAVAILABLE")
+            except (SQLAlchemyError, OSError, TimeoutError) as failure:
+                emit(
+                    logger,
+                    "execution_interrupt_save_failed",
+                    run_id,
+                    "EXECUTION_STORAGE_UNAVAILABLE",
+                    capture("interrupt_write", "storage_write_failed", failure),
+                    thread_id=thread_id,
+                )
             raise
-        return await self._finish(claim, content, error, materials=materials)
+        if error is not None and diagnostic is not None:
+            # 表示失败已被执行器处理；持久终态仍由下面事务裁定（取消可能先获胜）。
+            emit(
+                logger,
+                "execution_failure_handled",
+                run_id,
+                error,
+                diagnostic,
+                thread_id=thread_id,
+                tool_call_id=failed_tool,
+            )
+        return await self._finish(
+            claim, content, error, materials=materials, run_id=run_id, thread_id=thread_id
+        )
 
-    async def _finish(self, claim, content, error, *, materials=None):
+    async def _finish(self, claim, content, error, *, materials=None, run_id, thread_id):
         extra = {"materials": materials} if materials is not None else {}
-        saved = await self.repository.finish(claim, content=content, error_code=error, **extra)
+        try:
+            saved = await self.repository.finish(claim, content=content, error_code=error, **extra)
+        except (SQLAlchemyError, OSError, TimeoutError) as failure:
+            emit(
+                logger,
+                "execution_terminal_write_failed",
+                run_id,
+                "EXECUTION_STORAGE_UNAVAILABLE",
+                capture("terminal_write", "storage_write_failed", failure),
+                thread_id=thread_id,
+            )
+            raise
         if not saved:
             await self.repository.expire(claim)
             return "ownership_lost"
@@ -209,7 +257,9 @@ class RunExecutor:
                 if not task.cancelled():
                     task.exception()
             if pending:
-                logger.warning("execution_cleanup_timeout count=%s", len(pending))
+                logger.warning(
+                    "execution_cleanup_timeout run_id=%s count=%s", request.run_id, len(pending)
+                )
                 for task in pending:
                     # 首次取消可能已被 Provider 吞掉；清理预算结束后再次请求停止。
                     task.cancel()
@@ -259,8 +309,22 @@ class RunExecutor:
                 if context.evidence.queried:
                     try:
                         return parse_answer(turn.content, context.evidence.items)
-                    except ValueError:
-                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE") from None
+                    except ValueError as failure:
+                        reasons = {
+                            "Document paragraph lacks citation": (
+                                "document_paragraph_missing_citation"
+                            ),
+                            "Unknown citation": "unknown_citation",
+                            "Missing answer sections": "missing_answer_sections",
+                        }
+                        raise ProviderFailure(
+                            "PROVIDER_INVALID_RESPONSE",
+                            diagnostic=capture(
+                                "answer_validation",
+                                reasons.get(str(failure), "answer_contract_invalid"),
+                                failure,
+                            ),
+                        ) from None
                 return AnswerResult(turn.content)
             await self._check_active(claim, request, deadline)
             assistant = InputMessage("assistant", turn.content, turn.tool_calls)
@@ -283,6 +347,7 @@ class RunExecutor:
                 except TimeoutError:
                     raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
                 except ToolFailure as failure:
+                    failure.tool_call_id = call.call.id
                     await self._record_tool(
                         claim,
                         request,
@@ -351,6 +416,16 @@ class RunExecutor:
                 delay = max(0.5, failure.retry_after)
                 if asyncio.get_running_loop().time() + delay >= deadline:
                     raise ProviderFailure("PROVIDER_TIMEOUT") from None
+                emit(
+                    logger,
+                    "model_retry",
+                    request.run_id,
+                    failure.code,
+                    failure.diagnostic
+                    or capture("answer_model", "retryable_provider_failure", failure),
+                    thread_id=request.thread_id,
+                    attempt=attempt + 1,
+                )
                 try:
                     async with asyncio.timeout_at(deadline):
                         await asyncio.sleep(delay)
@@ -367,8 +442,14 @@ class RunExecutor:
             stream = self.provider.stream(request)
         except ProviderFailure:
             raise
-        except Exception:
-            raise ProviderFailure() from None
+        except Exception as failure:
+            raise ProviderFailure(
+                diagnostic=capture(
+                    "answer_model",
+                    "stream_initialization_failed",
+                    failure,
+                )
+            ) from None
         completed: ProviderCompleted | None = None
         total = 0
         try:
@@ -378,8 +459,15 @@ class RunExecutor:
                 if isinstance(event, ProviderCompleted):
                     try:
                         validate_turn(event.turn)
-                    except ValueError:
-                        raise ProviderFailure("PROVIDER_INVALID_RESPONSE") from None
+                    except ValueError as failure:
+                        raise ProviderFailure(
+                            "PROVIDER_INVALID_RESPONSE",
+                            diagnostic=capture(
+                                "answer_model",
+                                "model_turn_invalid",
+                                failure,
+                            ),
+                        ) from None
                     if event.turn.kind != "text" and not request.tools:
                         raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                     completed = event
@@ -401,9 +489,23 @@ class RunExecutor:
             try:
                 async with asyncio.timeout(3):
                     await stream.aclose()
-            except Exception:
+            except Exception as failure:
                 if primary_error is None:
-                    raise ProviderFailure() from None
+                    raise ProviderFailure(
+                        diagnostic=capture(
+                            "answer_model",
+                            "stream_cleanup_failed",
+                            failure,
+                        )
+                    ) from None
+                emit(
+                    logger,
+                    "model_cleanup_failed",
+                    request.run_id,
+                    "PROVIDER_ERROR",
+                    capture("answer_model", "stream_cleanup_failed", failure),
+                    thread_id=request.thread_id,
+                )
                 # 清理错误不能覆盖数据库故障或原有失败；不附加原始 Provider 异常。
                 primary_error.add_note("Provider stream cleanup also failed")
         if completed is None:
@@ -428,8 +530,14 @@ class RunExecutor:
             raise ProviderFailure("PROVIDER_TIMEOUT") from None
         except ProviderFailure:
             raise
-        except Exception:
-            raise ProviderFailure() from None
+        except Exception as failure:
+            raise ProviderFailure(
+                diagnostic=capture(
+                    "answer_model",
+                    "provider_stream_failed",
+                    failure,
+                )
+            ) from None
         # 不信任吞掉 CancelledError 后迟到输出的 Provider。
         if timeout.expired() or loop.time() >= deadline:
             raise ProviderFailure("PROVIDER_TIMEOUT")
