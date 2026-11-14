@@ -1,6 +1,6 @@
 # MiniMew 整体架构导读
 
-核对日期：2026-11-13。覆盖当前第四章与第五章的真实实现，并标出后续连接点。它是跨章节的架构导航，不另维护学习进度；实际进度和授权仍见[交接记录](AGENT_HANDOFF.md#当前检查点)。
+核对日期：2026-11-14。覆盖第四至第六章的真实实现，并标出后续连接点。它是跨章节的架构导航，不另维护学习进度；实际进度和授权仍见[交接记录](AGENT_HANDOFF.md#当前检查点)。
 
 用户最新要求是看懂整体架构、模块关系与选择原因，不再通过简单场景或异常边界判断题推进。本文先展示整体位置，再沿请求说明调用关系、状态归属和代码，已有测试不因纯文档讲解重复执行。
 
@@ -63,7 +63,7 @@ flowchart LR
 
 **第二步：取得执行资格。** [RunDispatcher](src/minimew/execution/dispatcher.py)后台扫描PG中的候选Run，调用[RunExecutor](src/minimew/execution/service.py)；由[ExecutionRepository](src/minimew/execution/repository.py)的领取事务裁定谁能执行。Dispatcher负责“何时启动、同时执行几个”，Executor负责“启动后怎样走完整个工作”。查询候选和领取资格是两个职责。
 
-**第三步：推进模型与工具回合。** Executor组织有界上下文，调用Provider。模型返回文本时准备最终答案；返回工具请求时交Registry解析及参数校验、Guardrail授权，再调用handler，将关联结果回传模型。每个Run的上下文、预算和结果独立，最多4次模型请求/6次工具调用，重试仅限当前模型请求。
+**第三步：推进模型与工具回合。** Executor组织有界上下文，调用Provider。模型返回文本时准备最终答案；返回工具请求时交Registry解析及参数校验、Guardrail授权，再调用handler，将关联结果回传模型。每个Run的上下文、预算和结果独立，旧v1/v2最多4次模型尝试/6次工具调用；新v3外层仍最多4、工具6，外层与内部角色/重试合计12次、检索8次，共享总期限并保留最终回答额度。
 
 当前默认知识开关关闭，Registry为空，仍是普通聊天。5.3开启后服务端装配真实knowledge_search、只读能力和每Run私有KnowledgeSession；5.2历史包只验收通用循环，5.3已另行验证真实知识链。
 
@@ -201,3 +201,11 @@ Milvus命中payload包含chunk原文、编码文本、来源身份和节信息�
 观察记录与工具调用的重试所有者不同：模型仍由原执行器重试，Tool不隐式重试；记录事件时复用相同payload最多尝试2次。数据库确认丢失后，按Run/调用ID/阶段找到原Event即可继续，不再执行handler。没有增加跨进程恢复；进程中断后的Checkpoint恢复仍在第七章。
 
 这两条链只增加现有API内的模块与浏览器组件，API/独立Indexing Worker/PG/Redis/Milvus的进程关系不变。0014扩展事件类型约束与工具guard；v1旧事件与既有完成payload保持，前后端生成消费者一起更新。学习讲解按知识点，代码/测试按这条完整交付链集中处理。
+
+## 14. 第六章：知识工具内部的两层策略
+
+核对日期：2026-11-14。入口仍是Executor调用已授权knowledge_search：[Pipeline](src/minimew/rag/pipeline.py)处理候选编码、Dense/BM25、RRF、有限补全与Base排序；[Workflow](src/minimew/rag/workflow.py)处理预算后的材料评判、一次改写、一次有限拆解/并发与原问题复评。两者都不拥有Run终态，也不会新建子问题业务Message。[KnowledgeService](src/minimew/knowledge.py)负责固定published scope和最终一次Evidence登记。
+
+可把Pipeline理解为“如何寻找和选择资料”，Workflow理解为“当前资料不足时怎样继续寻找”；最终答案与可恢复业务执行仍由原Run系统承载。评分模型和回答模型是两个职责，目前复用同一冻结配置，并不表示有两个独立服务或两份额度。[内部Caller](src/minimew/execution/reasoning.py)私有消费模型输出，复用原Provider/资格/总期限/共享预算；没有持久checkpointer，节点恢复仍待第七章。
+
+一次跨章节问题沿“原Run → Registry/Guardrail → 固定scope → Pipeline → Workflow/Send → 聚合选材/原问题复评 → Evidence → 最终回答/引用 → 原终结事务”流动。子问题材料经最终预算后可能被丢弃，故“每个子问题查到了”不等于“最后模型看全了”。C包固定例确实观测到直接检索覆盖3/3、拆解聚合后2/3；受控Grader报足够也不能当成完整性证明。完整实现/取舍/对照见[第六章总结](chapters/06-完整RAG策略.md#结章文字总结2026-11-14)。

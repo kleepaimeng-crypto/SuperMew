@@ -511,10 +511,96 @@ Planner只返回2–4个非空、去重、长度受限的检索问题；每个�
 
 未运行：整个MiniMew/上级全量回归、全量浏览器、收费DeepSeek质量、完整RAG评测平台、GPU/M3、Checkpoint恢复。原因分别为影响范围局限工具内部/共享预算，前端行为未改，以及后续章节/未授权收费边界。A包的全候选本机benchmark未重复，因为索引、编码、补全及Base源码未变。第六章尚未结章，6.7与既有未引用导语缺陷、章后完整异常反馈仍待后续范围，不标记已修复。
 
-## 结章文字总结（完成后填写）
+### C包：6.7具体范围（2026-11-14，待明确开始）
 
-完成后据实记录本章交付、选型、完整数据流、实际对照收益/退化、验证和未完成限制；不预填结果。
+B包完成后用户回复“继续”。本轮核对现有实现与A/B运行报告，继续整理6.7工作包及整体架构说明；未将该反馈扩展为尚未列明范围的应用编码授权。B包最终提交c4b0e78已推送个人仓库main。下列范围获得明确开始反馈后连续实施，不逐案例重新确认。
 
-## 本章结束时的代码框架（完成后填写）
+#### 在整体架构中的位置
 
-完成后基于实际源码梳理唯一RAG入口、召回/融合/合并/重排/评判/图编排、Run上下文/预算/trace和持久引用的关系，标出仍属后续章节的能力。
+A包的Pipeline负责从固定published scope中寻找、补全和排序可定位材料；B包的Workflow负责根据实际材料决定直接返回、单次改写或有限拆解；RunExecutor仍负责期限、取消、持久Message/Event和终态。C包是在这些正式入口外增加显式验收入口和可重现案例，不增加运行时聊天route或第二套检索实现。
+
+检索模型和Grader回答不同问题：前者的材料是否包含必要规则，可以用固定原文/span与人工写明的预期条件核对；后者的覆盖判断是否可靠，需要真实模型输出与案例预期对照。受控Grader/Planner只证明编排接线，不作为语义质量裁判，也不把它的预设输出计为策略收益。
+
+#### 一次授权后的实施顺序与验收
+
+| 顺序 | 具体工作 | 可审阅结果 |
+| --- | --- | --- |
+| C.1 固定案例 | 在MiniMew内保存小型案例资产：编号/型号精确匹配、语义问法、供餐例外、跨章节条件、不足/歧义/冲突；写明预期原文依据、必要限制、可支持部分及不能推出的结论 | 用例预期来自固定资料与人工明确规则；案例版本/内容指纹可核对，不照抄本次模型输出当答案 |
+| C.2 正式入口对照 | 扩展现有显式验收脚本，复用RagPipeline比较Dense、Hybrid、补全、Base；用KnowledgeService/原Run验证B包直接评分、一次改写、有限拆解到最终Evidence/答案引用 | 相同资料与问题下记录最后实际提供的材料、必要条件覆盖/遗漏、引用定位、稳定错误/降级；不另写业务算法或直接改开发库 |
+| C.3 成本与失败 | 记录本地检索阶段耗时、真实执行的模型尝试/重试与检索数、总期限及有限路由；覆盖尚缺的预算后覆盖和受控部分/全部失败协作 | 冷加载与热运行分开；样本量和统计方法明确，小样本不宣称可靠p95；受控模型耗时不冒充真实DeepSeek时延，收费明确为0 |
+| C.4 集中结章 | 汇总A/B最终状态已覆盖的有效检查，只补新增脚本/案例和此前未覆盖的跨模块链路；保存第六章总结、真实模块框架与代表性请求走读 | 给出各策略收益/退化及证据边界、实际运行命令与结果；6.7必要检查通过后按持续授权单独commit/push到已核对的个人main |
+
+具体输入是版本化固定资料、问题和明确的期望依据；输出是可重现案例、机器可读对照报告及中文结章说明。运行报告包含scope/资料指纹、模型revision、冻结策略、样本数、材料标识、调用数与阶段耗时；无Secret、私有推理或整份文档日志。设备耗时/内存、容器状态和启动故障继续只写设备文档，共同总结保存可移植结论与复现入口。
+
+已有`check_rag.py`只比较A包四条候选路线、每路线3次样本；已有`check_knowledge.py`在最终B代码下验证了正式发布→原Run→持久引用的充分材料路线。C包补的是固定案例和路线之间尚缺的协作/覆盖报告，条件未变的历史结果标明原记录后复用，不机械重跑B包252项或全仓测试。脚本/案例新增或修正行为先跑定向离线检查；真实检查仅用显式临时PG、自有scope、本地缓存模型并精确清理，不消费开发库任务。
+
+默认继续真实本地Embedding/Base/Milvus与受控回答/Grader/Planner，不调用收费DeepSeek、不新增模型/依赖或下载，不建立第八章Dataset/Job/Gate平台。报告明确“真实模型语义质量及线上成本尚未测”，不能因编排验收通过声称所有复杂问题都能正确回答。若以后要做真实DeepSeek小规模质量对照，先单独列调用/费用上限和具体案例，再获对应授权。
+
+不纳入本包：第七章Checkpoint/HITL、持久暂停恢复、新模型/GPU、完整模型选择UI、已知答案未引用导语修复及完整异常反馈专项。第六章结束后必须接续安排既定异常反馈专项；完成C包不等于这些问题已修复。当前只保存具体方案，结章总结和验收结果仍留空，待用户明确“开始C包”（或同义开始反馈）。
+
+### 6.7 实施与C包验收（2026-11-14）
+
+用户明确“开始 C 包”，授权上方C.1–C.4范围连续实施；实际完成固定案例、正式发布资料对照、受控Run路线、可移植观察资产及本章总结/框架。本次没有修改生产RAG、执行器或引用校验行为。
+
+#### 案例、入口与观测口径
+
+[chapter06-policy.md](../examples/rag/chapter06-policy.md)为固定示例资料，[chapter06-cases.json](../examples/rag/chapter06-cases.json)含11个带预期依据/不能推出结论的案例；输入按UTF-8/LF规范化，案例与源文本共同指纹为`48a768f6148590086560d8f9ab4665abcf5d5f53a1b78accf60be49f9dcdbda4`。预期锚点唯一定位原文，覆盖依据实际[start,end)区间并集核对，拒绝原文/hash伪造；不把相邻片段之间的空洞或重复片段计为覆盖。覆盖只表示必要原文被提供，不等于答案正确或Grader准确；无已知答案的案例记coverage=null，不能奖励为100%。
+
+[check_rag_suite.py](../scripts/check_rag_suite.py)创建隔离临时PG与自有上传，通过正式API→独立Worker发布同一资料，再复用RagPipeline与KnowledgeService.prepare比较7案例×4路线，统一按v3材料预算选择；另通过原API预留Run、原RunExecutor/Registry/KnowledgeService/Workflow/终结事务验收全部11案例。只替换Provider为显式预置路由/失败，无真实DeepSeek调用。完成标准包含精确向量清理和临时库删除；模型资源加载失败时清理不再依赖重载模型。
+
+完整本机报告在忽略的`.artifacts/rag-suite-check.json`；显式`--write-observation`生成[共同观察资产](../examples/rag/chapter06-observation.json)，白名单保留版本指纹、模型revision/策略、原文跨度/覆盖缺口、稳定错误及尝试数，不含设备时延、运行身份、Secret或原始模型消息。它是此次观察，不是自动质量Gate或第八章baseline系统。BM25仍受共享集合统计影响，不能保证其他时点/设备分数完全相同。
+
+#### 实际收益、无收益与退化
+
+| 固定案例 | Dense最终材料 | Hybrid / 补全 / Base最终材料 | B包受控路线的观察 |
+| --- | --- | --- | --- |
+| E1024＋AB-123 | 必要锚点1/2 | 三路线均2/2 | 直接评分、3次模型尝试、1次检索 |
+| 餐费额度与非自动发放 | 2/2 | 均2/2 | 3次模型尝试；此次没有证据说明复杂策略优于Dense |
+| 公司/接待方供餐例外 | 2/2 | 均2/2 | 一次改写，5次模型尝试、2次检索；未增加本例锚点覆盖 |
+| 餐费＋住宿＋提交期限 | 2/3 | 三路线均3/3 | 拆解后最终只保留2/3；7次模型尝试、3次检索，出现退化 |
+| 培训歧义、同时有效通知冲突 | 必要锚点均齐 | 三路线均齐 | ambiguous/conflicting是预置模型输出，不能证明真实模型能识别这些情况 |
+| 火星补贴未知 | 有近邻材料，coverage=null | 仍有近邻，coverage=null | 预置不足→一次改写→仍不足；不能从非空结果推出金额 |
+
+跨章节退化被保留为观察：B的新增候选优先、确定性组选择和final_k/材料预算会改变实际可见材料；本例直接Base路线齐全，拆解聚合后遗漏提交期限。报告标记`sufficient_with_missing_anchors=true`，即受控“足够”与人工必要锚点缺口不一致。没有为让结果好看而改查询、放大预算、减少预期锚点或把预置Grader当裁判；生产策略未在C包悄然改动。今后可另列“聚合时保护已覆盖方面”的改进范围，并用同一案例对照；不能在本章宣称所有复杂问题已可靠回答。
+
+部分子Grader失败的正式Run成功返回明确insufficient及PROVIDER_ERROR缺口，9次模型尝试、4次检索；两个子Grader全失败时Run以TOOL_EXECUTION_FAILED失败，5次模型尝试；单次可重试Grader失败后4次尝试完成，重试计数1；入口/子Grader重试耗尽内部额度时11次尝试后以AGENT_BUDGET_EXCEEDED失败，未越过12总额度或污染Evidence。11场景共58次受控模型尝试、24次真实Pipeline查询，收费0；9成功/2预期失败，均只创建原Run的两个业务Message，不写内部正文分片。
+
+#### 实际命令、失败及复验
+
+- 新增`tests/test_rag_cases.py`最终17项通过，涵盖案例/观察指纹、无效预期/路由、跨度并集/缺口/伪造、未知答案不计满分、小样本统计、真实尝试计数、入口/聚合Grader只看预算后幸存材料、导出白名单。首次13项收集因脚本目录不在pytest路径失败，按现有脚本测试入口修正后13通过；补2项后15通过；白名单测试首次夹具缺policy，1失败/15通过，补全实际契约后16通过；最后加入观察指纹检查17通过。保留原业务断言，复跑不计新增。
+- `uv run --env-file .env --no-sync python scripts/check_rag_suite.py`首次因本机Base加载MemoryError失败，已清理自有scope/临时库，不能计通过。释放本次开发服务模型内存后，默认每路线3样本的28项材料观察+11正式Run场景通过；为覆盖最终草稿一致性/可移植导出，再次默认3样本通过。
+- 最终清理/报告收尾完善后，`uv run --env-file .env --no-sync python scripts/check_rag_suite.py --samples 1 --write-observation`再次通过28材料观察+11场景、1自有scope精确清理及临时库删除。最终代码使用1样本，因此selection_stable=null，不拿单样本证明排序稳定；原3样本结果留在本机记录，不相加冒充更多案例。模型语义质量/真实DeepSeek时延未测；本地p50/最大值仅保存设备文件，不报告可靠p95。
+- `uv run --no-sync ruff check scripts/rag_cases.py scripts/check_rag_suite.py tests/test_rag_cases.py`与相同文件format检查通过；纯文档差异/本地链接核对通过。A/B最终生产代码、依赖、配置、数据库结构、协议消费者未变化，按实际影响复用对应验收记录，不重跑B的252项或上级全量，不重复浏览器/模型下载。17个新pytest与真实CLI观察分开报告，不相加称作pytest数量。
+
+无新增依赖、迁移、公开HTTP/Event Contract、前端状态或正式评测平台；仅新增案例、验收脚本/测试、观察资产及文档。设备独立的资源故障、服务暂停/恢复和测量在devices记录。本章基础链已结章，真实DeepSeek质量、聚合覆盖改进、未引用导语缺陷及章后完整异常反馈保留为明确边界；第七章未开始。
+
+## 结章文字总结（2026-11-14）
+
+覆盖6.1–6.7。本章在既有持久Run与已发布文档之上完成了唯一RAG策略入口：Dense作为基线，显式Hybrid构建使Milvus原生BM25与向量在同scope内召回；RRF融合名次，单层有限补全保护上下文，固定Base重排候选；最后按实际材料草稿评分，必要时一次Step-back或一次有限Planner/Send，聚合后仍评判原用户问题。策略、内部输出上限和全Run额度随v3快照冻结；旧v1/v2摘要和原语义不变。
+
+主要取舍是把“找什么材料”和“一次执行是否完成”分开：Pipeline/Workflow只交付候选、覆盖状态与可定位原文；KnowledgeService拥有用户scope和最终Evidence提交；RunExecutor/Repository拥有执行资格、持久Message/Event及终态。向量分数、RRF和Base分数不是答案可信概率；Grader也可能判断错，预设模型接线不能替代真实质量对照。完成图或断开SSE都不能提前宣布Run完成。
+
+一条实际请求先由API事务预留Run及两个Message并冻结模型，Dispatcher/Executor领取资格；模型提出knowledge_search后Registry/Guardrail校验，KnowledgeService取得固定published scope；Pipeline检索并组织材料，Workflow用共享60秒Profile期限、12模型尝试/4外层/6工具/8检索额度编排；只有最终预算通过的材料一次进入Evidence，随后原模型回答、引用解析、原持久终结事务保存结果，Journal经SSE投影到前端。子问题是内部任务，不是多个业务对话；内部模型文本不写公开正文。
+
+文档候选仍通过独立Worker构建/核验/原子发布，读current不会看到失败candidate。Hybrid仅能力不兼容可显式Dense降级，Base错误/超窗不截断、保留顺序并记录code/attempts；Provider故障不当作健康无知识。部分子任务失败有可用材料但明确缺口，全部失败、取消、owner/存储故障与预算耗尽遵循各自边界。没有配置持久checkpointer，进程退出不能恢复到图中某个节点。
+
+实际验证按A/B/C各节记录保留，不合并重叠用例数；C确认Hybrid在固定编号/跨章节案例扩大必要材料覆盖，也确认补全/重排未在所有例子继续提升，以及拆解可能降低最终覆盖。模型费用本次为0，未做真实DeepSeek质量或生产时延评估。公共Contract/数据库仍沿用既有版本；本章未建立第八章评测平台。用户已通过自然讨论选择了模型/预算和工作包，不预填“完全掌握”。
+
+下一步先落实已经约定的完整异常反馈专项，并另行明确未引用导语缺陷和聚合覆盖改进的范围；第七章将在原Run/Checkpoint归属上扩展持久暂停、恢复和HITL，不能用新发一条用户Message模拟恢复。实际反馈、待办与授权以交接记录为准。
+
+## 本章结束时的代码框架（2026-11-14）
+
+| 模块 | 职责及上下游关系 | 数据/状态归属 | 源码 |
+| --- | --- | --- | --- |
+| 发布目录与升级 | 既有Worker发布；升级复用Version/Job/清单/current路径，为Pipeline提供固定范围 | PG保存current/产物；Milvus保存候选向量 | [retrieval.py](../src/minimew/documents/retrieval.py)、[upgrade.py](../src/minimew/documents/upgrade.py) |
+| 候选协议/冻结策略 | 定义候选身份、组、阶段分数、RAG策略与快照版本 | 策略冻结进Run；trace仅本次调用 | [protocol.py](../src/minimew/rag/protocol.py)、[model_control.py](../src/minimew/model_control.py) |
+| 唯一候选Pipeline | 编码→同scope召回→RRF→有限补全→可选Base→按组选择 | 不拥有Evidence或Run终态 | [pipeline.py](../src/minimew/rag/pipeline.py)、[fusion.py](../src/minimew/rag/fusion.py)、[merging.py](../src/minimew/rag/merging.py)、[reranker.py](../src/minimew/rag/reranker.py) |
+| 知识工具 | Registry handler固定用户/版本scope；投影原文/span/hash，生成预算草稿并最终一次提交Evidence | KnowledgeSession与EvidenceLedger每Run私有 | [knowledge.py](../src/minimew/knowledge.py)、[evidence.py](../src/minimew/evidence.py) |
+| Workflow/角色契约 | StateGraph条件边、Send子任务、评分/单次改写/有限拆解与聚合 | 图状态局限本次工具；共享计数在Run预算；无持久Checkpoint | [workflow.py](../src/minimew/rag/workflow.py)、[reasoning.py](../src/minimew/rag/reasoning.py) |
+| Run模型调用/执行 | 内部角色复用Provider，受限重试/私有输出；外层Executor管理资格/取消、额度和模型工具循环 | RunModelCaller/RunBudget本Run持有，PG事务拥有持久事实 | [reasoning.py](../src/minimew/execution/reasoning.py)、[service.py](../src/minimew/execution/service.py)、[repository.py](../src/minimew/execution/repository.py) |
+| 重资源生命周期 | API加载只读本地编码/Base与向量连接，同步操作单线程准入，退出排空后关闭 | 模型可跨Run共享，query/材料/预算不共享；Worker另进程 | [knowledge_runtime.py](../src/minimew/knowledge_runtime.py) |
+| 显式验收与案例 | 复用上述真实入口，仅在验收进程注入预设Provider，核对原文和协议、保存观察 | 固定资料进Git；设备耗时与临时报告不混入共同进度 | [check_rag_suite.py](../scripts/check_rag_suite.py)、[rag_cases.py](../scripts/rag_cases.py)、[cases](../examples/rag/chapter06-cases.json) |
+
+代表性“餐费、住宿和提交期限”走读：API预留/冻结→Executor外层模型→Registry授权→knowledge.py固定scope→pipeline.py提供实际材料→workflow.py初评/plan/Send→各子任务同一Pipeline→按计划索引去重选材→原问题复评→knowledge.py一次Evidence提交→Executor调用最终回答→evidence.py解析引用→Repository写原Message/终态/Event。C的此例在聚合选材时遗漏期限，故不能从“每个子任务有材料”直接推导最终覆盖完整；查看观察资产的跨度/缺口可定位这一点。
+
+本章将原知识工具内候选检索职责提取到rag模块，保留正式工具与原Run入口，没有为策略新增第二条聊天路径。C只新增显式验收资产，无生产目录重构。后续持久Checkpoint/HITL与评测Job/Gate仍属第七/八章，不在本框架中伪装成已实现模块。

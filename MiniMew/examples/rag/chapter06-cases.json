@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "source": "chapter06-policy.md",
+  "cases": [
+    {"id":"identifier","question":"条款 E1024 和型号 AB-123 分别说明什么？","mode":"direct","required":["条款编号 E1024","设备型号 AB-123 的故障代码 X17 表示电源模块异常"],"unavailable":[],"queries":[],"rewrite":null,"note":"精确编号不等于语义召回一定靠前；比较实际最后保留材料。"},
+    {"id":"meal","question":"出差吃饭能报多少，是否不花钱也能领？","mode":"direct","required":["每人每天餐费报销上限150元","不能将额度理解为自动发放的补贴"],"unavailable":[],"queries":[],"rewrite":null,"note":"额度与自动发放是不同含义。"},
+    {"id":"exception","question":"接待方已经安排午饭了，还能把这顿再报一次吗？","mode":"rewrite","required":["公司或接待方已提供的餐食不得重复报销","不能据此推出该自然日的所有其他实际餐饮一律不得申报"],"unavailable":[],"queries":[],"rewrite":"出差餐费报销适用条件与接待方供餐重复报销例外","note":"只对照最后提供的原文，不能以受控改写的预设输出证明模型会改写。"},
+    {"id":"cross","question":"出差餐费、住宿的上限和返程后的提交期限分别是什么？","mode":"plan","required":["每人每天餐费报销上限150元","每人每晚上限350元","返程后5个工作日内提交"],"unavailable":[],"queries":["出差餐费上限","出差住宿上限和返程后提交期限"],"rewrite":"出差餐费住宿报销上限和提交期限","note":"子问题曾找到材料不能代替最终聚合后的覆盖检查。"},
+    {"id":"unknown","question":"火星基地的餐饮补贴每天是多少？","mode":"insufficient","required":[],"unavailable":["火星基地每日补贴200元"],"queries":[],"rewrite":"火星基地餐饮补贴标准","note":"有非空近邻也不能推出资料未规定的金额；不足状态为受控注入。"},
+    {"id":"ambiguous","question":"培训的餐费标准是多少？","mode":"ambiguous","required":["本资料没有规定海外培训餐费或海外培训每日补贴标准"],"unavailable":[],"queries":[],"rewrite":null,"note":"问题未明确国内、海外及是否适用差旅；歧义输出为编排输入，不是模型质量结果。"},
+    {"id":"conflict","question":"项目甲交通报销到底是80元还是100元？","mode":"conflicting","required":["项目甲通知一规定交通报销上限80元","项目甲通知二规定交通报销上限100元","本资料无法唯一确定项目甲交通报销上限"],"unavailable":[],"queries":[],"rewrite":null,"note":"不得将两个通知直接合成为唯一金额。"},
+    {"id":"partial","question":"出差餐费、住宿的上限和提交期限分别是什么？","mode":"partial","required":["每人每天餐费报销上限150元","每人每晚上限350元","返程后5个工作日内提交"],"unavailable":[],"queries":["出差餐费上限","出差住宿上限和提交期限"],"rewrite":"出差餐费住宿上限和提交期限","note":"第二子问题Grader受控失败；应保留材料并显式标记不足/稳定错误码。"},
+    {"id":"failure","question":"出差餐费与住宿规则分别是什么？","mode":"failure","required":["每人每天餐费报销上限150元","每人每晚上限350元"],"unavailable":[],"queries":["出差餐费规则","出差住宿规则"],"rewrite":null,"note":"两个子问题Grader均受控失败；正式Run必须失败，不能伪装健康无资料。"},
+    {"id":"retry","question":"返程后要在多久之内提交差旅申请？","mode":"retry","required":["返程后5个工作日内提交"],"unavailable":[],"queries":[],"rewrite":null,"note":"第一次Grader调用注入可重试失败，重试也计入总次数。"},
+    {"id":"budget","question":"差旅的餐费、住宿、提交期限和设备故障规则分别是什么？","mode":"budget","required":["每人每天餐费报销上限150元","每人每晚上限350元","返程后5个工作日内提交","设备型号 AB-123 的故障代码 X17 表示电源模块异常"],"unavailable":[],"queries":["餐费规则","住宿规则","差旅申请期限","设备故障规则"],"rewrite":null,"note":"入口及子Grader首次尝试注入可重试失败，耗尽内部额度时明确停止，保留最终回答额度不能使总预算增大。"}
+  ]
+}

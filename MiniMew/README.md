@@ -260,7 +260,7 @@ uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <use
 
 升级更新该用户未来上传的构建目标，经既有候选Version/IndexJob/Worker核验发布；旧current在成功前继续可读，源文件和历史引用不改。存在并发上传时拒绝覆盖；批量可能部分入队，重新执行可继续，不自动清库或重建集合。独立Worker同时识别旧Dense和新Hybrid的显式构建身份。API/Worker需加载最新代码，普通API不执行迁移或索引构建。
 
-## 本地模型与 RAG 策略（6.3–6.6）
+## 本地模型与 RAG 策略（6.3–6.7）
 
 ### Run 内材料评判（6.4）
 
@@ -277,6 +277,19 @@ v3最多12次模型尝试（含重试）、外层4次、工具6次、检索8次�
 ### 有限拆解与聚合（6.6）
 
 材料不足且存在多方面缺口时，Planner全Run最多一次拆成2–4子问题，并发2复用固定scope与共享期限/额度；按计划顺序去重选材，再按原用户问题评判实际保留材料。部分失败明确返回不足/稳定失败码，全部子任务失败则工具失败。子任务不会创建业务Message或独立答案；原Run仍只在持久终结事务宣布完成。离线/真实PG入口分别为`tests/test_reasoning*.py`和`check_runtime.py tests/test_reasoning_pg.py`，真实CPU/Milvus受控链用`scripts/check_knowledge.py`；不代表收费模型质量或节点恢复能力。
+
+### 固定案例与结章对照（6.7）
+
+```powershell
+uv run --no-sync pytest -q tests/test_rag_cases.py
+uv run --env-file .env --no-sync python scripts/check_rag_suite.py
+# 显式更新共同观察资产；默认只写忽略的完整报告
+uv run --env-file .env --no-sync python scripts/check_rag_suite.py --write-observation
+```
+
+使用[固定资料](examples/rag/chapter06-policy.md)/[案例](examples/rag/chapter06-cases.json)，临时PG、独立Worker发布及自有Milvus scope，比较实际预算后材料，并沿原Run验收受控评分/改写/拆解/失败/额度与引用。默认每路线3样本，`--samples 1`只做单次检查；不报告可靠p95。共享[观察资产](examples/rag/chapter06-observation.json)不含设备时延/身份，不是生产质量Gate；真实DeepSeek质量与线上时延未测，收费0。
+
+本次编号/跨章节例的Hybrid扩大必要材料覆盖，但拆解例聚合后可从3/3降至2/3，受控“足够”不能消除原文缺口。详见[结章总结与代码框架](chapters/06-完整RAG策略.md#结章文字总结2026-11-14)。内存受限时需先检查进行中任务，再安排本地模型并存；显式验收不会自动停止开发服务。
 
 ### 模型缓存与候选策略（6.3）
 
