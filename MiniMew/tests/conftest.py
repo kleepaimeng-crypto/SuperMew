@@ -9,6 +9,7 @@ def test_jwt_settings(monkeypatch):
     monkeypatch.setenv("MINIMEW_REDIS_PASSWORD", "test-only-redis-not-for-production")
     monkeypatch.setenv("MINIMEW_DEEPSEEK_API_KEY", "test-only-never-call-network")
     monkeypatch.setenv("MINIMEW_KNOWLEDGE_ENABLED", "false")
+    monkeypatch.setenv("MINIMEW_REASONING_ENABLED", "false")  # legacy v2 regression fixtures
     # Existing document fixtures are frozen Dense v1; Hybrid tests opt into the new layout.
     monkeypatch.setenv("MINIMEW_DOCUMENT_INDEX_LAYOUT", "dense-cosine-v1")
 

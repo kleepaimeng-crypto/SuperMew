@@ -19,6 +19,7 @@ from minimew.execution.messages import valid_text
 from minimew.execution.tools import ToolContext, ToolFailure, ToolModel, ToolSpec
 from minimew.rag.pipeline import RagPipeline
 from minimew.rag.protocol import MaterialGroup, RetrievalResult
+from minimew.rag.reasoning import Grade
 from minimew.vector_store.manifest import PROFILE as PROFILE
 from minimew.vector_store.manifest import VectorError
 
@@ -57,6 +58,7 @@ class KnowledgeResult(ToolModel):
     status: Literal["ok", "no_documents", "no_matches"]
     matches: tuple[CitedMatch, ...] = ()
     limited: bool = False
+    assessment: Grade | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 @dataclass
@@ -118,6 +120,8 @@ class KnowledgeService:
                 raise ToolFailure("TOOL_PERMISSION_DENIED")
             if not scope.targets:
                 return KnowledgeResult(status="no_documents")
+            if context.reasoning is not None:
+                context.run_budget.take_retrieval()
             result = await RagPipeline(
                 self.sessions, self.runtime, retriever=search_published
             ).search(
@@ -128,7 +132,6 @@ class KnowledgeService:
                 deadline=context.deadline,
             )
             session.last_trace = result.trace
-            hits = result.rows
         except EmbeddingError as error:
             code = (
                 "KNOWLEDGE_QUERY_TOO_LONG"
@@ -147,8 +150,30 @@ class KnowledgeService:
             raise ToolFailure("TOOL_PERMISSION_DENIED") from None
         except (SQLAlchemyError, OSError, TimeoutError):
             raise ToolFailure("KNOWLEDGE_RETRIEVAL_FAILED") from None
+        draft, pending = self.prepare(context, result, scope)
+        if context.reasoning is not None:
+            from minimew.rag.reasoning import Grade, grade_materials
+
+            assessment = (
+                await grade_materials(
+                    context.model_caller, context.question or arguments.query, draft
+                )
+                if draft.matches
+                else Grade(status="insufficient", supported=(), missing=("未找到相关材料",))
+            )
+            draft = draft.model_copy(update={"assessment": assessment})
+            if len(draft.model_dump_json()) > 11000:
+                raise ToolFailure("KNOWLEDGE_RESULT_INVALID")
+        ledger.commit(pending)
+        record = logger.warning if result.trace.fallback else logger.info
+        record("rag_completed run_id=%s trace=%s", context.run_id, json.dumps(asdict(result.trace)))
+        return draft
+
+    def prepare(self, context, result, scope):
+        ledger = context.evidence
+        hits = result.rows
         if not hits:
-            return KnowledgeResult(status="no_matches")
+            return KnowledgeResult(status="no_matches"), ()
         matches, pending = (), ()
         limited = result.trace.limited
 
@@ -166,7 +191,9 @@ class KnowledgeService:
                 cited = CitedMatch(**match.model_dump(), citation_id=evidence.citation_id)
                 trial_matches = (*trial_matches, cited)
                 candidate = KnowledgeResult(status="ok", matches=trial_matches, limited=True)
-                if len(candidate.model_dump_json()) > 11000:
+                if len(candidate.model_dump_json()) > (
+                    8000 if context.reasoning is not None else 11000
+                ):
                     raise _GroupBudget("KNOWLEDGE_RESULT_INVALID")
                 if evidence not in (*ledger.items, *trial_pending):
                     trial_pending = (*trial_pending, evidence)
@@ -190,10 +217,7 @@ class KnowledgeService:
                     raise ToolFailure(failure.code) from None
                 break
         result.trace.limited = limited
-        ledger.commit(pending)
-        record = logger.warning if result.trace.fallback else logger.info
-        record("rag_completed run_id=%s trace=%s", context.run_id, json.dumps(asdict(result.trace)))
-        return KnowledgeResult(status="ok", matches=tuple(matches), limited=limited)
+        return KnowledgeResult(status="ok", matches=tuple(matches), limited=limited), pending
 
     @staticmethod
     def project(row, scope):

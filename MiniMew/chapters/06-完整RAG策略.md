@@ -444,6 +444,21 @@ Base固定`BAAI/bge-reranker-base@2cfc18c9415c912f9d8155881c133215df768a70`，�
 
 代表性请求：原RunExecutor从冻结快照绑定RagPolicy→knowledge_search绑定原用户与published scope→Pipeline编码/同scope两路召回/RRF→可信目录精确补全→runtime内Base评分→知识工具按完整组和累计预算试算、登记原chunk的E编号→原模型回合与答案持久事务/既有引用界面。查询不创建新Run，Worker仍是独立进程。6.4–6.6的Grader/LangGraph/改写/拆解未开始，整个第六章未结章；已知回答格式缺陷与章末异常专项仍待实施。
 
+
+### 6.4 实施记录（2026-11-14）
+
+用户明确“开始 B 包”，据此开始上方6.4–6.6具体范围；历史“待开始”是当时状态。6.4完成共享基础与材料评判，随后在同一授权内继续6.5/6.6。
+
+正式连接点仍是`RunExecutor → ToolRegistry/Guardrail → KnowledgeService → RagPipeline`。新增[RunModelCaller](../src/minimew/execution/reasoning.py)只负责内部角色调用，复用本Run冻结Provider配置、资格检查、绝对期限与预算，不创建业务Message或独立执行器。[reasoning契约](../src/minimew/rag/reasoning.py)严格限定足够、不足、歧义、冲突、支持引用和缺口；支持引用只能来自送入Grader的实际草稿，不能根据被预算删去的候选评判。
+
+[KnowledgeService.prepare](../src/minimew/knowledge.py)先在试算Evidence目录内生成最多8000字符材料草稿，Grader后连assessment整体核对11000字符，再一次提交Evidence；旧v1/v2继续原11000材料和原样JSON。草稿评分/失败期间不污染正式ledger。v3在Run预留事务冻结；显式`MINIMEW_REASONING_ENABLED=false`只让之后新Run选v2，不回写旧Run。12次总额度包含外层、内部及实际重试；内部先占额度再await，最多占到11，为最终回答留一次。外层最多4、工具6、检索8；内部调用并发2、至多一次重试，SDK重试仍关闭。1024/512/256 token上限均不超过原Profile上限，当前60秒Profile的总期限不变。
+
+执行资格信号移至[control.py](../src/minimew/execution/control.py)，原repository/service导入仍可用。工具边界显式传播取消、owner丢失及存储故障，不能将它们包成一般工具失败；内部正文分片由caller私有消费，不写公开Journal。最终回答仍用原解析与原终结事务，新增提示要求说明材料不足/歧义/冲突，不放宽既有引用断言。
+
+验证：共享基础/旧知识工具定向38项通过；12项新reasoning测试包含严格引用、旧摘要、保留最终额度、检索8次、重试尝试计数、并发2、取消释放及三个资格信号穿透（均保留断言）。B包集中回归与真实链结果在6.6记录，不能将复跑数相加。模型JSON异常不冒充无资料；真实DeepSeek费用与语义质量未测。新增测试路径为`tests/test_reasoning.py`。OpenAPI从正式路由导出并经前端生成器规范化后无差异；无需改公开Event、DDL或评测资产。
+
+
+
 ## 结章文字总结（完成后填写）
 
 完成后据实记录本章交付、选型、完整数据流、实际对照收益/退化、验证和未完成限制；不预填结果。

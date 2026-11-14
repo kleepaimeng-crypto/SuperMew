@@ -13,6 +13,7 @@ from sqlalchemy.orm import aliased
 from minimew.conversations import ConversationNotFound, owned_thread, run_messages, run_response
 from minimew.evidence import AnswerMaterials, validate_materials
 from minimew.execution.context import build_messages
+from minimew.execution.control import CancellationRequested, OwnershipLost
 from minimew.execution.journal import append_event
 from minimew.execution.messages import MAX_OUTPUT_CHARS, valid_text
 from minimew.execution.provider import (
@@ -31,14 +32,6 @@ class Claim:
     run_id: UUID
     owner_token: UUID
     lease_until: datetime
-
-
-class OwnershipLost(Exception):
-    pass
-
-
-class CancellationRequested(Exception):
-    pass
 
 
 TerminalStatus = Literal["succeeded", "failed", "cancelled"]

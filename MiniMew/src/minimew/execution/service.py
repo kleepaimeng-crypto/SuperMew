@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from minimew.evidence import ANSWER_INSTRUCTIONS, AnswerResult, parse_answer
 from minimew.execution.context import ContextInvalid
+from minimew.execution.control import ExecutionStorageUnavailable
 from minimew.execution.messages import (
     MAX_OUTPUT_CHARS,
     InputMessage,
@@ -42,10 +43,6 @@ ExecutionOutcome = Literal["succeeded", "failed", "cancelled", "not_claimed", "o
 logger = logging.getLogger(__name__)
 
 
-class ExecutionStorageUnavailable(Exception):
-    pass
-
-
 @dataclass
 class AttemptProgress:
     body_committed: bool = False
@@ -55,10 +52,27 @@ class AttemptProgress:
 class RunBudget:
     model_requests: int = 0
     tool_calls: int = 0
+    internal_requests: int = 0
+    retrieval_queries: int = 0
+    planner_used: bool = False
+    rewrite_used: bool = False
+    reasoning: bool = False
 
     def require_model(self):
-        if self.model_requests >= 4:
+        if self.model_requests >= 4 or (
+            self.reasoning and self.model_requests + self.internal_requests >= 12
+        ):
             raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+
+    def take_internal(self):
+        if self.model_requests + self.internal_requests >= 11:
+            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+        self.internal_requests += 1
+
+    def take_retrieval(self):
+        if self.retrieval_queries >= 8:
+            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+        self.retrieval_queries += 1
 
     def require_tools(self, count):
         self.require_model()  # 工具执行后必须仍有机会向模型交回结果。
@@ -98,6 +112,7 @@ class RunExecutor:
                     run_id,
                     self.capabilities,
                     **({"rag_policy": request.snapshot.rag} if request.snapshot.rag else {}),
+                    reasoning=request.snapshot.reasoning,
                 )
             )
             tools = self.registry.visible(context)
@@ -219,7 +234,24 @@ class RunExecutor:
             raise ProviderFailure("PROVIDER_TIMEOUT")
 
     async def _generate(self, claim, request, deadline, context) -> AnswerResult:
-        budget = RunBudget()
+        budget = RunBudget(reasoning=context.reasoning is not None)
+        if context.reasoning is not None:
+            from minimew.execution.reasoning import RunModelCaller
+
+            caller = RunModelCaller(
+                self.provider,
+                request,
+                budget,
+                deadline,
+                lambda: self._check_active(claim, request, deadline),
+                context.reasoning,
+            )
+            context = replace(
+                context,
+                model_caller=caller,
+                run_budget=budget,
+                question=request.messages[-1].content,
+            )
         progress = AttemptProgress()
         while True:
             turn = await self._model_turn(claim, request, deadline, progress, budget)
@@ -269,6 +301,12 @@ class RunExecutor:
                     request,
                     messages=(*request.messages, assistant, *results),
                     instructions=ANSWER_INSTRUCTIONS
+                    + (
+                        "工具assessment是材料覆盖评判；明确交代不足、歧义与冲突，"
+                        "不可把有命中当作足够回答，不可把模型补充当成资料事实。"
+                        if context.reasoning is not None
+                        else ""
+                    )
                     if context.evidence.queried
                     else request.instructions,
                 )

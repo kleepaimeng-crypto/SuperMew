@@ -22,6 +22,7 @@ class ProviderRequest:
     messages: tuple[InputMessage, ...]
     tools: tuple[ToolDefinition, ...] = ()
     instructions: str = ""
+    purpose: Literal["answer", "grade", "plan", "rewrite"] = "answer"
 
     def __post_init__(self):
         validate_messages(self.messages, self.tools, self.instructions)

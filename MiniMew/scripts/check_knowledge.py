@@ -41,8 +41,25 @@ class ControlledAnswer:
     def __init__(self):
         self.requests = 0
         self.tool_result = None
+        self.internal_requests = 0
 
     async def stream(self, request):
+        if request.purpose == "grade":
+            self.internal_requests += 1
+            data = json.loads(request.messages[-1].content)
+            yield ProviderCompleted(
+                ModelTurn(
+                    "text",
+                    json.dumps(
+                        {
+                            "status": "sufficient",
+                            "supported": [m["citation_id"] for m in data["materials"]],
+                            "missing": [],
+                        }
+                    ),
+                )
+            )
+            return
         self.requests += 1
         if request.messages[-1].role != "tool":
             assert request.tools[0].name == "knowledge_search"
@@ -215,6 +232,8 @@ async def main():
                         report.update(
                             passed=True,
                             model_requests=controlled.requests,
+                            internal_model_requests=controlled.internal_requests,
+                            total_model_requests=controlled.requests + controlled.internal_requests,
                             version_id=version,
                             top_chunk_id=result["matches"][0]["chunk_id"],
                             top_score=result["matches"][0]["score"],

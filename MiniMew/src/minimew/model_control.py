@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from minimew.models import ModelAssignment, ModelProfile, Run
 from minimew.rag.protocol import RagPolicy
+from minimew.rag.reasoning import ReasoningPolicy, ReasoningSettings
 
 
 class FrozenModel(BaseModel):
@@ -58,13 +59,16 @@ class ProfileSnapshot(FrozenModel):
 
 
 class ModelSnapshot(FrozenModel):
-    schema_version: Literal[1, 2] = 1
+    schema_version: Literal[1, 2, 3] = 1
     answer: ProfileSnapshot
     rag: RagPolicy | None = None
+    reasoning: ReasoningPolicy | None = None
 
     @model_validator(mode="after")
     def policy_version(self):
-        if (self.schema_version == 2) != (self.rag is not None):
+        if (self.schema_version >= 2) != (self.rag is not None) or (self.schema_version == 3) != (
+            self.reasoning is not None
+        ):
             raise ValueError("Snapshot strategy/version mismatch")
         return self
 
@@ -117,8 +121,10 @@ async def freeze_current_snapshot(session: AsyncSession) -> ModelSnapshot:
         raise ModelConfigurationUnavailable
     try:
         configuration = ModelConfiguration.model_validate(profile.configuration)
+        reasoning = ReasoningPolicy() if ReasoningSettings().enabled else None
         return ModelSnapshot(
-            schema_version=2,
+            schema_version=3 if reasoning is not None else 2,
+            reasoning=reasoning,
             rag=RagPolicy(strategy="hybrid"),
             answer=ProfileSnapshot(
                 profile_id=profile.id, profile_version=profile.version, configuration=configuration

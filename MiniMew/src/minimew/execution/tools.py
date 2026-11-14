@@ -10,6 +10,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from minimew.evidence import EvidenceLedger
+from minimew.execution.control import (
+    CancellationRequested,
+    ExecutionStorageUnavailable,
+    OwnershipLost,
+)
 from minimew.execution.messages import ToolCall, ToolDefinition, valid_text
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.rag.protocol import RagPolicy
@@ -62,6 +67,10 @@ class ToolContext:
     evidence: EvidenceLedger | None = None
     rag_policy: RagPolicy = field(default_factory=RagPolicy)
     deadline: float | None = None
+    reasoning: object | None = None
+    model_caller: object | None = None
+    run_budget: object | None = None
+    question: str = ""
 
     def __post_init__(self):
         if self.evidence is None:
@@ -199,7 +208,7 @@ class ToolRegistry:
         Guardrail.check(context, prepared.spec, prepared.arguments)
         try:
             result = await prepared.spec.handler(context, prepared.arguments)
-        except ToolFailure:
+        except (ToolFailure, CancellationRequested, OwnershipLost, ExecutionStorageUnavailable):
             raise
         except Exception:
             raise ToolFailure("TOOL_EXECUTION_FAILED") from None

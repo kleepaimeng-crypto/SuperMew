@@ -262,6 +262,14 @@ uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <use
 
 ## 本地重排与 RAG 策略（6.3）
 
+### Run 内材料评判（6.4）
+
+新Run默认冻结v3策略：同一Provider承担回答与内部材料评判，先对实际有预算草稿评判，再原子登记Evidence。`MINIMEW_REASONING_ENABLED=false`只让之后新Run冻结v2；历史Run继续自身快照。该开关不代替`MINIMEW_KNOWLEDGE_ENABLED`，不下载模型。
+
+v3最多12次模型尝试（含重试）、外层4次、工具6次、检索8次；内部最多并发2并保留最终回答的一次额度，共用原Profile总期限。Grader/Planner/Rewrite输出上限分别1024/512/256 token且不超过Profile上限。内部JSON和中间文字不进入公开Journal，最终答案继续原引用校验与持久化链。详见[第六章实现记录](chapters/06-完整RAG策略.md#64-实施记录2026-11-14)。
+
+
+
 知识模式现在同时加载已准备的轻量Embedding和Base重排模型。首次换设备需显式准备固定Base缓存（普通启动不下载）：
 
 ```powershell
