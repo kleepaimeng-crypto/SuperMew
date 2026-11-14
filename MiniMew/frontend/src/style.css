@@ -519,6 +519,31 @@ dd {
   font-size: 13px;
   padding: 10px 0;
 }
+.hitl-form {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #abb9a7;
+  border-radius: 8px;
+  background: #f0f3eb;
+}
+.hitl-form label {
+  display: block;
+  font-weight: 600;
+}
+.hitl-help {
+  color: #536552;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.hitl-form textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #abb9a7;
+  border-radius: 6px;
+}
 .chat-composer {
   border-top: 1px solid #dde2dc;
   padding-top: 16px;

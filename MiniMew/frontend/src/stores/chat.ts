@@ -12,6 +12,7 @@ import {
 import {
   EventProtocolError,
   isRecord,
+  isDateTime,
   isUuid,
   parseRunEvent,
 } from "../events/runEventContract";
@@ -40,6 +41,11 @@ export interface RunView {
   activityLoading: boolean;
   activityLoaded: boolean;
   activityError: string;
+  resumeDraft: string;
+  resumeBusy: boolean;
+  resumePending: boolean;
+  resumeAccepted: boolean;
+  resumeError: string;
 }
 const pendingPrefix = "minimew.chat-pending:";
 class EventGap extends Error {}
@@ -68,6 +74,16 @@ export const useChatStore = defineStore("chat", () => {
   let owner = new AbortController();
   let historyController: AbortController | undefined;
   const subscriptions = new Map<string, AbortController>();
+  // 一次性凭据只保留在当前页面闭包，既不持久化也不进入事件投影。
+  const resumeIntents = new Map<
+    string,
+    {
+      checkpoint_id: string;
+      token: string;
+      idempotency_key: string;
+      answer: string;
+    }
+  >();
 
   function storageKey(userId: string, thread: string) {
     return `${pendingPrefix}${userId}:${thread}`;
@@ -107,6 +123,7 @@ export const useChatStore = defineStore("chat", () => {
     historyController?.abort();
     subscriptions.forEach((controller) => controller.abort());
     subscriptions.clear();
+    resumeIntents.clear();
     owner = new AbortController();
     threadId.value = null;
     messages.value = [];
@@ -229,6 +246,11 @@ export const useChatStore = defineStore("chat", () => {
         activityLoading: false,
         activityLoaded: false,
         activityError: "",
+        resumeDraft: "",
+        resumeBusy: false,
+        resumePending: false,
+        resumeAccepted: false,
+        resumeError: "",
       };
       runs[run.id] = view;
     } else {
@@ -412,6 +434,85 @@ export const useChatStore = defineStore("chat", () => {
         view.cancelError = "取消结果未确认，可查询状态或重试取消。";
     } finally {
       if (current(ctx)) view.cancelBusy = false;
+    }
+  }
+
+  async function resumeRun(id: string): Promise<void> {
+    const ctx = context(),
+      view = runs[id];
+    const waiting = view?.projection.waiting;
+    if (
+      !ctx ||
+      !view ||
+      !waiting ||
+      view.resumeBusy ||
+      view.cancelBusy ||
+      view.projection.cancelRequestedAt ||
+      view.run.cancel_requested_at ||
+      view.resumeAccepted ||
+      runStatus(view) !== "waiting_input"
+    )
+      return;
+    if (
+      !view.resumeDraft.trim() ||
+      [...view.resumeDraft].length > 1024 ||
+      view.resumeDraft.includes("\0")
+    )
+      return;
+    view.resumeBusy = true;
+    view.resumeError = "";
+    try {
+      let intent = resumeIntents.get(id);
+      if (!intent) {
+        const credential = await authorized(
+          ctx,
+          `${runPath(ctx, id)}/resume-credential`,
+          "POST",
+        );
+        if (!current(ctx)) return;
+        if (
+          !isRecord(credential) ||
+          credential.checkpoint_id !== waiting.checkpointId ||
+          typeof credential.token !== "string" ||
+          !/^[A-Za-z0-9_-]{32,128}$/.test(credential.token) ||
+          typeof credential.prompt !== "string" ||
+          !isDateTime(credential.expires_at)
+        )
+          throw new EventProtocolError();
+        intent = {
+          checkpoint_id: waiting.checkpointId,
+          token: credential.token,
+          idempotency_key: crypto.randomUUID(),
+          answer: view.resumeDraft,
+        };
+        resumeIntents.set(id, intent);
+        view.resumePending = true;
+      }
+      const run = parseRun(
+        await authorized(ctx, `${runPath(ctx, id)}/resume`, "POST", intent),
+        ctx.threadId,
+        id,
+      );
+      if (!current(ctx)) return;
+      attachRun(run, true);
+      resumeIntents.delete(id);
+      view.resumePending = false;
+      view.resumeAccepted = true;
+      view.resumeDraft = "";
+      schedule(ctx);
+    } catch (cause) {
+      if (!current(ctx)) return;
+      if (cause instanceof ApiError && [404, 409, 422].includes(cause.status)) {
+        resumeIntents.delete(id);
+        view.resumePending = false;
+        view.resumeError =
+          "等待已结束、凭据已更新或补充被拒绝，请同步任务状态。";
+        await synchronizeRun(id);
+      } else {
+        view.resumeError = "补充结果尚未确认，请重试；会沿用原补充和幂等键。";
+      }
+    } finally {
+      if (current(ctx)) view.resumeBusy = false;
     }
   }
 
@@ -671,6 +772,9 @@ export const useChatStore = defineStore("chat", () => {
       view.projection.cancelRequestedAt
     )
       return "取消中";
+    if (status === "waiting_input")
+      return view.resumeAccepted ? "补充已接收，等待继续" : "等待你补充信息";
+    if (status === "resume_pending") return "补充已接收，等待继续";
     if (view.projection.messageStatus !== "pending") return "正在确认执行结果";
     if (view.projection.tools.some((t) => t.status === "running"))
       return "正在调用工具";
@@ -689,7 +793,7 @@ export const useChatStore = defineStore("chat", () => {
         message.role !== "assistant" ||
         !projection ||
         projection.cursor === 0 ||
-        message.status !== "pending"
+        !["pending", "waiting_input"].includes(message.status)
       )
         return message;
       return {
@@ -721,6 +825,7 @@ export const useChatStore = defineStore("chat", () => {
     submit,
     discardPending,
     cancel,
+    resumeRun,
     synchronizeRun,
     retryRun,
     loadAnswer,

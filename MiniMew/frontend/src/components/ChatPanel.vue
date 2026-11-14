@@ -122,6 +122,57 @@ function enter(event: KeyboardEvent) {
             :failure="chat.failureInfo(message.run_id)"
             :run-id="message.run_id"
           />
+          <form
+            v-if="
+              chat.runs[message.run_id]?.projection.runStatus ===
+                'waiting_input' && !chat.runs[message.run_id]!.resumeAccepted
+            "
+            class="hitl-form"
+            @submit.prevent="chat.resumeRun(message.run_id)"
+          >
+            <label :for="`clarification-${message.run_id}`">{{
+              chat.runs[message.run_id]!.projection.waiting?.prompt
+            }}</label>
+            <p class="hitl-help">
+              补充后继续这次回答。等待期间可以离开或刷新页面，最迟请在
+              {{
+                new Date(
+                  chat.runs[message.run_id]!.projection.waiting!.expiresAt,
+                ).toLocaleTimeString()
+              }}
+              前提交。
+            </p>
+            <textarea
+              :id="`clarification-${message.run_id}`"
+              v-model="chat.runs[message.run_id]!.resumeDraft"
+              maxlength="1024"
+              rows="2"
+              required
+              :readonly="
+                chat.runs[message.run_id]!.resumeBusy ||
+                chat.runs[message.run_id]!.resumePending
+              "
+            />
+            <button
+              type="submit"
+              :disabled="chat.runs[message.run_id]!.resumeBusy"
+            >
+              {{
+                chat.runs[message.run_id]!.resumeBusy
+                  ? "正在提交补充…"
+                  : chat.runs[message.run_id]!.resumePending
+                    ? "重试原补充"
+                    : "补充并继续"
+              }}
+            </button>
+            <p
+              v-if="chat.runs[message.run_id]!.resumeError"
+              class="error"
+              role="alert"
+            >
+              {{ chat.runs[message.run_id]!.resumeError }}
+            </p>
+          </form>
           <ToolActivity
             v-if="chat.runs[message.run_id]"
             :tools="chat.runs[message.run_id]!.projection.tools"

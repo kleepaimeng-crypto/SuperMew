@@ -7,6 +7,7 @@ import {
   body,
   cancelled,
   eventResponse,
+  event,
   ids,
   messages,
   run,
@@ -35,6 +36,67 @@ beforeEach(() => {
 afterEach(() => {
   chat.close();
   vi.unstubAllGlobals();
+});
+
+it("刷新后从Journal恢复等待，补充提交不确定时复用原凭据和幂等输入", async () => {
+  const checkpoint = ids.run;
+  const waitingEvents = [
+    ...started,
+    event("hitl.required", 3, {
+      checkpoint_id: checkpoint,
+      prompt: "国内还是海外？",
+      expires_at: time,
+    }),
+  ];
+  let credentials = 0;
+  const posted: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.endsWith("/resume-credential")) {
+        credentials++;
+        return json({
+          checkpoint_id: checkpoint,
+          prompt: "国内还是海外？",
+          expires_at: time,
+          token: "x".repeat(43),
+        });
+      }
+      if (path.endsWith("/resume")) {
+        posted.push(JSON.parse(String(init?.body)));
+        if (posted.length === 1) return json({}, 503);
+        return json({ ...run, status: "resume_pending" }, 202);
+      }
+      if (path.includes("/messages"))
+        return json({
+          items: messages.map((m) =>
+            m.role === "assistant" ? { ...m, status: "waiting_input" } : m,
+          ),
+          previous_cursor: null,
+        });
+      if (path.includes("/events/stream"))
+        return eventResponse(waitingEvents, init?.signal ?? undefined, true);
+      return json({ ...run, status: "waiting_input" });
+    }),
+  );
+  await chat.open(ids.thread);
+  await vi.waitFor(() =>
+    expect(chat.runs[ids.run]?.projection.runStatus).toBe("waiting_input"),
+  );
+  expect(chat.statusLabel(ids.run)).toBe("等待你补充信息");
+  const view = chat.runs[ids.run]!;
+  view.resumeDraft = "国内";
+  await chat.resumeRun(ids.run);
+  expect(view.resumeError).toContain("尚未确认");
+  expect(view.resumePending).toBe(true);
+  await chat.resumeRun(ids.run);
+  expect(credentials).toBe(1);
+  expect(posted).toHaveLength(2);
+  expect(posted[0]).toEqual(posted[1]);
+  expect(view.resumeAccepted).toBe(true);
+  expect(view.projection.runStatus).toBe("waiting_input");
+  expect(view.projection).not.toHaveProperty("token");
+  expect(sessionStorage.setItem).not.toHaveBeenCalled();
 });
 
 it("刷新失败历史无需重放工具即可显示持久错误原因，读取故障不覆盖它", async () => {

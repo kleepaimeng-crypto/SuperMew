@@ -108,6 +108,47 @@ LangGraph 的 `thread_id` 拟绑定业务 **Run ID**，避免同一业务 Thread
 
 源码：[检查点编码与缓冲](../src/minimew/hitl/checkpoint.py)、[原子发布/接收](../src/minimew/hitl/store.py)、[API](../src/minimew/api/runs.py)、[执行器](../src/minimew/execution/service.py)、[领取/取消](../src/minimew/execution/repository.py)、[图](../src/minimew/rag/workflow.py)、[知识工具](../src/minimew/knowledge.py)。持久等待由应用拥有，图不直接写 Run；API 接收不在 HTTP 请求里执行模型。当前支持已提交等待/待恢复状态的续接，未知外部调用结果仍不自动重放；B 包心跳/更复杂故障边界未开始。
 
+## 7.3 实施记录（2026-11-14）
+
+前端等待与恢复沿用原 Event reducer/Pinia/ChatPanel。hitl.required 投影提示和截止时间，hitl.accepted 进入待恢复，run.resumed 回到运行；等待不投影为完成。刷新后的消息历史和 Journal 重放仍能重建表单。补充输入和忙碌/失败状态由当前页面管理，一次性凭据及重试意图仅在 store 闭包保留，不写 sessionStorage、公开 projection 或日志；提交结果不确定时复用原正文/凭据/幂等键，拒绝后查询同一任务。取消提示仍优先于等待，成功提交不能提前宣布完成。
+
+新增 3 项 reducer 行为检查、1 项 store 刷新/不确定提交检查；更新原精确初始投影断言，增加 waiting=null，没有删弱已有断言。浏览器新增 390/1280 两场景，覆盖刷新等待、补充后续接、没有新 Run/业务 Message，并检查截图。AnswerBody 正确说明等待补充，避免把等待显示成没有正文的已结束回答。
+
+真实本地链由 scripts/check_hitl.py 和受控 API 子进程验收：正式文档上传/独立 Index Worker 发布 → 第一 API 真实检索后暂停 → 第一进程完全退出 → 第二 API 从 PG 读回等待/凭据并恢复 → 原 assistant/ToolCall 完成、原文引用仍指向原 Document Version。两个进程分别实际记录 answer/grade 和 grade/answer，共 4 次模型尝试；9 条 Journal、1 条引用，自有 scope 精确删除与临时库清理。模型回复/歧义判断受控，Embedding/Base/Milvus/PG/HTTP 和进程边界真实；不当作 DeepSeek 澄清准确率或语义质量证明。
+
+### A 包当前代码职责
+
+| 模块 | 当前职责与上下游 | 状态归属 |
+| --- | --- | --- |
+| hitl/policy.py、model_control.py | 创建工作时冻结 v5 一次澄清/900 秒；旧版本保持 | Run 模型快照 |
+| rag/workflow.py | 健康歧义路由、无副作用 interrupt 节点、补充后检索/评判；只导出缓冲 | 原知识工具内部图 |
+| hitl/checkpoint.py | 白名单 JSON/版本校验、异步 saver、最新检查点及 pending writes | 当前 Run 的临时缓冲；提交后 PG 为事实 |
+| hitl/store.py | 原子暂停发布、凭据摘要、恢复幂等接收、等待过期 | 同一 PG 事务中的 Run/Message/Checkpoint/Journal |
+| execution/service.py、repository.py | 外层续接、原工具结果/预算恢复、新 owner 领取、取消与唯一终态 | 既有正式 Run 执行器 |
+| api/runs.py | 原 Run 的认证子资源入口，只接收/查询，不在 HTTP 中跑恢复模型 | 复用身份与 Thread 所有权 |
+| frontend/src/events、stores/chat.ts、components | Journal 投影、页面补充表单、不确定输入重试与历史刷新 | 服务端事实的页面投影，不另存执行状态 |
+
+没有引入新服务进程类型、ProviderLoopBridge、依赖包或平行聊天 route；图和外层执行的衔接保留在原正式入口。独立 Index Worker 与 API 的既有进程职责不变。完整第七章框架/总结仍待 B 结束后补齐。
+
+### A 包集中验收（2026-11-14）
+
+本包修改持久状态、事务、认证恢复和公开 Event，故覆盖相关真实 PG、并发屏障、迁移与前端消费者；未将整库测试当作每小节固定流程。按 node ID 汇总，**322 个不同 pytest 实际通过（24 新、298 既有，含 112 个不同 PG）**；分节提交、测试复跑或收集统计不增加通过数。另有 4 项历史 HTTP/Redis/独立进程场景在离线命令中收集后跳过，未计通过；本次没有另外运行这 4 项，恢复 HTTP/进程边界由新真实链及相关 PG/调度检查覆盖，不能将其标成已运行。
+
+实际运行记录：
+
+- 离线主批次：`uv run --no-sync pytest -q tests/test_hitl.py tests/test_migrations.py tests/test_model_control.py tests/test_execution.py tests/test_execution_retry.py tests/test_model_messages.py tests/test_agent.py tests/test_reasoning.py tests/test_reasoning_graph.py tests/test_answer_repairs.py tests/test_knowledge.py tests/test_evidence.py tests/test_cancellation.py tests/test_cancellation_http.py tests/test_execution_diagnostics.py`：当时 208 passed/4 skipped。工具结果补充字段与联合检索接线后，对 hitl/reasoning_graph/knowledge/agent/answer_repairs 的 79 项定向复验通过；再补空白提示与并行聚合后暂停，并将策略测试独立分文件，最终 `tests/test_hitl.py tests/test_hitl_policy.py` 9 项通过。离线有效覆盖合计 210，复验不相加。
+- PG 第一批：`uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_hitl_pg.py tests/test_hitl_migration.py tests/test_execution_pg.py tests/test_events_pg.py tests/test_runtime_pg.py`：当时 65 passed。
+- PG 第二批：同入口运行 `tests/test_hitl_pg.py tests/test_hitl_migration.py tests/test_agent_pg.py tests/test_reasoning_pg.py tests/test_repair_pg.py tests/test_cancellation_pg.py`：57 passed，包含新增数据库缺检查点拒绝和最终预算/补充传递断言。
+- 0016 收紧 NULL 约束后，仅复验受影响的 `tests/test_hitl_pg.py tests/test_hitl_migration.py`：15 passed（14 行为/1 迁移）。三批去重共 112 个 PG，有效结果按修改影响复用，没有把重复项相加。
+- `uv run --env-file .env --no-sync python scripts/check_hitl.py`：两个独立 API 进程的真实 CPU/Embedding/Base/Milvus/PG 链通过，收费 0。该真实模型链当时 schema 为 0015；0016 仅补 SQL 非空约束，正常恢复结构已用上述最新 PG 全链复验，不为此重复加载未改变的模型/向量路径。报告最终只有全部断言、子进程退出和资源清理完成后才标 passed。
+- `uv run --no-sync ruff check src tests scripts migrations`、`ruff format --check src tests scripts migrations`、Event 生成器 `--check`、正式 OpenAPI 导出与 `npm run contracts` 同步检查通过；没有手改生成物。新增迁移为单头 0016，升级与 alembic check 通过，设备库升级/运行快照只在设备文档记录。
+- 前端 `npm run typecheck`、`npm run test`：154 passed（4 新、150 既有）；`npm run build` 通过。定向 Prettier 检查本包全部文件通过；全量 `npm run format:check` 有 39 个未改文件的既有告警，未计通过、未批量格式化。
+- `MINIMEW_TEST_BROWSER_CHANNEL=msedge` 下 `npm run test:e2e -- tests/hitl.spec.ts`：最终 2 passed；再次执行因补充等待正文提示与修正测试 Thread 列表接线，原结果不相加。屏幕尺寸与截图仅在设备/临时产物保存。
+
+开发中发生并修正：asyncpg 不接受一次 execute 多条独立 DDL；旧 FakeClaim 没有新恢复字段；新增测试曾误用 facts 返回结构与过短的等待窗口。真实模型链先被 Worker 的旧 head 检查和验收脚本启动阻塞拦截；前者随正式 head 同步，后者将 Windows stdin 控制线程延后到依赖初始化结束，并让本地测试 HTTP 不继承代理、模型仅离线读取。失败运行不计通过，不删除旧断言或放宽生产 15 分钟/模型预算。
+
+未运行：收费 DeepSeek 的歧义判别/澄清质量、整个 MiniMew 全量业务或上级 SuperMew 门禁、B 包心跳/任意运行中节点恢复及外部副作用重放；范围分别属于真实质量评测、未受本包影响模块或尚未授权的后续工作。第六章固定案例/观察 fingerprint 和旧快照不改，不借此重做质量 baseline。新 Event 与 API 消费者、迁移、README 和模块指南已同步。
+
 ## 结章文字总结（完成后填写）
 
 待本章结束后填写实际实现、概念取舍、完整流程、验证与限制，以及与评测章节的衔接。A 包实施与验证见上方记录；本节待 B 包结束后按整章实际结果填写，不把 A 包通过当作整章结章。

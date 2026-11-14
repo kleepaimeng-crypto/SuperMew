@@ -124,9 +124,85 @@ it("创建投影从事件起点开始，不持有共享可变状态", () => {
     cancelRequestedAt: null,
     errorCode: null,
     tools: [],
+    waiting: null,
   });
   expect(first).toEqual(second);
   expect(first).not.toBe(second);
+});
+
+it("等待、接收补充和恢复只投影持久事实，保留同一工具调用", () => {
+  let state = apply(
+    running(),
+    event("tool.started", 3, {
+      tool_call_id: "call1",
+      tool_name: "knowledge_search",
+    }),
+  );
+  state = apply(
+    state,
+    event("hitl.required", 4, {
+      checkpoint_id: binding.runId,
+      prompt: "国内还是海外？",
+      expires_at: timestamp,
+    }),
+  );
+  expect(state.runStatus).toBe("waiting_input");
+  expect(state.messageStatus).toBe("waiting_input");
+  expect(state.tools[0]?.status).toBe("running");
+  expect(reduceRunEvent(state, delta(5)).kind).toBe("invalid");
+  expect(
+    reduceRunEvent(state, event("run.resumed", 5, { status: "running" })).kind,
+  ).toBe("invalid");
+  expect(
+    reduceRunEvent(
+      state,
+      event("hitl.accepted", 5, { checkpoint_id: other.runId }),
+    ).kind,
+  ).toBe("invalid");
+  state = apply(
+    state,
+    event("hitl.accepted", 5, { checkpoint_id: binding.runId }),
+  );
+  expect(state.runStatus).toBe("resume_pending");
+  state = apply(state, event("run.resumed", 6, { status: "running" }));
+  state = apply(
+    state,
+    event("tool.completed", 7, {
+      tool_call_id: "call1",
+      tool_name: "knowledge_search",
+    }),
+  );
+  expect(state.tools).toHaveLength(1);
+  state = apply(state, messageCompleted(8));
+  state = apply(state, event("run.completed", 9, { status: "succeeded" }));
+  expect(state.runStatus).toBe("succeeded");
+});
+
+it.each(["cancel", "expire"])("等待期间 %s 仍需权威消息和终态事件", (mode) => {
+  let state = apply(
+    running(),
+    event("hitl.required", 3, {
+      checkpoint_id: binding.runId,
+      prompt: "国内还是海外？",
+      expires_at: timestamp,
+    }),
+  );
+  if (mode === "cancel") {
+    state = apply(
+      state,
+      event("run.cancel_requested", 4, { cancel_requested_at: timestamp }),
+    );
+    state = apply(state, messageCompleted(5, "cancelled"));
+    state = apply(state, event("run.cancelled", 6, { status: "cancelled" }));
+    expect(state.runStatus).toBe("cancelled");
+  } else {
+    state = apply(state, messageCompleted(4, "failed"));
+    state = apply(
+      state,
+      event("run.failed", 5, { status: "failed", error_code: "HITL_EXPIRED" }),
+    );
+    expect(state.runStatus).toBe("failed");
+  }
 });
 
 it("逐批追加并用完整正文替换，消息完成后仍等 Run 终态", () => {

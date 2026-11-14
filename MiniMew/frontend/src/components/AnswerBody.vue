@@ -70,13 +70,15 @@ watch(
     <div v-else class="message-body">
       {{
         message.content ||
-        (message.status === "pending"
-          ? "正在等待回复…"
-          : message.status === "failed"
-            ? "本次执行失败，未生成正文。具体原因见下方提示。"
-            : message.status === "cancelled"
-              ? "本次已取消，未生成正文。"
-              : "本次没有可展示的正文。")
+        (message.status === "waiting_input"
+          ? "需要你补充信息后继续。"
+          : message.status === "pending"
+            ? "正在等待回复…"
+            : message.status === "failed"
+              ? "本次执行失败，未生成正文。具体原因见下方提示。"
+              : message.status === "cancelled"
+                ? "本次已取消，未生成正文。"
+                : "本次没有可展示的正文。")
       }}
     </div>
     <div

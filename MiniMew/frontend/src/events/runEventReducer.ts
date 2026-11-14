@@ -19,6 +19,11 @@ export interface RunProjection extends RunBinding {
   readonly cancelRequestedAt: string | null;
   readonly errorCode: ErrorCode | null;
   readonly tools: readonly ToolProjection[];
+  readonly waiting: {
+    readonly checkpointId: string;
+    readonly prompt: string;
+    readonly expiresAt: string;
+  } | null;
 }
 
 export interface ToolProjection {
@@ -62,6 +67,7 @@ export function createRunProjection(binding: RunBinding): RunProjection {
     cancelRequestedAt: null,
     errorCode: null,
     tools: [],
+    waiting: null,
   };
 }
 
@@ -108,9 +114,34 @@ function transition(
   const pending = state.runStatus === "pending";
   const running = state.runStatus === "running";
   const messagePending = state.messageStatus === "pending";
+  const waiting = state.runStatus === "waiting_input";
+  const queuedResume = state.runStatus === "resume_pending";
   const cancelling = state.cancelRequestedAt !== null;
 
   switch (event.type) {
+    case "hitl.required":
+      return running && messagePending && !cancelling && state.waiting === null
+        ? {
+            ...state,
+            runStatus: "waiting_input",
+            messageStatus: "waiting_input",
+            waiting: {
+              checkpointId: event.data.checkpoint_id,
+              prompt: event.data.prompt,
+              expiresAt: event.data.expires_at,
+            },
+          }
+        : null;
+    case "hitl.accepted":
+      return waiting &&
+        !cancelling &&
+        state.waiting?.checkpointId === event.data.checkpoint_id
+        ? { ...state, runStatus: "resume_pending", messageStatus: "pending" }
+        : null;
+    case "run.resumed":
+      return queuedResume && messagePending && !cancelling
+        ? { ...state, runStatus: "running" }
+        : null;
     case "tool.started": {
       if (
         !running ||
@@ -171,11 +202,13 @@ function transition(
         ? { ...state, content: state.content + event.data.content }
         : null;
     case "message.completed": {
-      if (!messagePending) return null;
+      if (!messagePending && !waiting) return null;
       const allowed =
         event.data.status === "cancelled"
-          ? cancelling && (pending || running)
-          : running && !cancelling;
+          ? cancelling && (pending || running || waiting || queuedResume)
+          : !cancelling &&
+            (running ||
+              ((waiting || queuedResume) && event.data.status === "failed"));
       return allowed
         ? {
             ...state,
@@ -192,7 +225,9 @@ function transition(
         ? { ...state, runStatus: "succeeded" }
         : null;
     case "run.failed":
-      return running && state.messageStatus === "failed" && !cancelling
+      return (running || waiting || queuedResume) &&
+        state.messageStatus === "failed" &&
+        !cancelling
         ? {
             ...state,
             runStatus: "failed",
@@ -201,7 +236,9 @@ function transition(
           }
         : null;
     case "run.cancel_requested":
-      return (pending || running) && messagePending && !cancelling
+      return (pending || running || waiting || queuedResume) &&
+        (messagePending || waiting) &&
+        !cancelling
         ? { ...state, cancelRequestedAt: event.data.cancel_requested_at }
         : null;
     case "run.cancelled":

@@ -1033,6 +1033,27 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 
 章节计划、结章文字总结与源码职责梳理仍保留；工程提速不减少必要功能或验证，也不要求逐个补答旧基础题。
 
+
+## 持久澄清与原任务恢复
+
+开启知识工具且本地 Embedding、Base、Milvus 就绪时，新 Run 默认冻结 v5 HITL 策略。健康材料评判为 ambiguous 且有可补充缺口时，页面显示补充表单；刷新后从持久 Journal 重建，提交后继续原任务，不另发原问题。是否触发由实际评判决定，受控验收不代表真实模型一定能正确识别歧义。
+
+每 Run 最多澄清一次，等待最多 15 分钟，还须满足原检索 scope 的剩余有效期。等待不占执行槽，同一 Thread 后续 Run 继续排队，可用原取消入口结束等待。恢复保留模型快照、资料版本和已用预算，仅重建剩余活动时限；不支持跨天等待、自动切换新资料或任意工具副作用重放。Checkpoint 最多 8 MiB，超限明确失败，不截断；恢复所需的原服务资源须就绪。
+
+`MINIMEW_HITL_ENABLED=false` 仅让之后新 Run 回到 v4，且 v5 要求 reasoning/repairs 均开启；已创建 Run 按自身快照执行。升级到 0016 并配套更新 API、Worker 和前端，重放新增的 hitl.required/hitl.accepted/run.resumed；旧客户端不能忽略未知事件推进游标。`.env.example` 已列开关，已有 `.env` 无需覆盖。
+
+恢复接口均位于原 `/v1/threads/{thread_id}/runs/{run_id}`：POST `/resume-credential` 认证后轮换一次性凭据，POST `/resume` 接收 checkpoint_id/token/idempotency_key/answer。凭据只保存在当前页面内存，DB 只保存摘要；提交结果不确定时重试原输入与幂等键，202 表示已接收，完成仍等待持久终态。等待过期公开 HITL_EXPIRED，恢复状态非法公开 HITL_CHECKPOINT_INVALID。
+
+定向验收入口（临时数据库和自有向量 scope，不使用收费模型）：
+
+```powershell
+uv run --no-sync pytest -q tests/test_hitl.py tests/test_hitl_policy.py
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_hitl_pg.py tests/test_hitl_migration.py
+uv run --env-file .env --no-sync python scripts/check_hitl.py
+```
+
+最后一条会启动两个独立、随机端口的受控 API 进程，分别暂停/续接同一 Run，读取已缓存的真实 CPU 模型与本机 Milvus，并清理自有资源。章节设计、源码框架与完整限制见[第七章](chapters/07-HITL与故障恢复.md)；当前学习进度与授权仍只见[交接](AGENT_HANDOFF.md#当前检查点)。
+
 ## 当前进度
 
 阶段、已通过的理解检查、待答问题与编码授权统一记录在 [Agent 交接文档](AGENT_HANDOFF.md#当前检查点)，继续学习前先读取。换设备流程也在该文档中。
