@@ -233,6 +233,30 @@ Run 新增 nullable `execution_deadline_at`。claim 只给准备租约；request
 
 实际新离线用例 5 项、新 PG 协议 14 项、迁移 2 项均通过；执行/事件/答案 53 项、取消/Agent/Dispatcher 接线 46 项、SSE/读取/Outbox 18 项相关 PG 回归通过。218 项离线集成范围与其他包末结果在 7.6 按节点去重记录；复跑不累加。源码格式/静态检查与 Event 生成漂移通过，OpenAPI 语义相同，ModelSnapshot v1–v5/Checkpoint v1/公开 Event 未改，无新依赖或质量资产重算。提交拆分不触发重复回归。
 
+## 7.5 实施与故障验证（2026-11-14）
+
+故障验证落在同一正式 Repository/Executor/API 上。7.4 的 PG 用例控制激活、续租、活动截止、取消及终态保存顺序；本小节补充 [HITL 事务不确定性](../tests/test_hitl_pg.py)、[独立进程握手](../tests/lease_process.py) 与 [HTTP 崩溃/迟到保存](../tests/test_leases_http.py)，没有新增生产测试 route、内存事实镜像或自动重放入口。
+
+| 故障/交错 | 实际裁决与验证 |
+| --- | --- |
+| 两个 claimant 同时领取 | 同一 Run 只一个 owner，另一方不执行；错误 owner 写入拒绝 |
+| 健康任务超过最初短租期 | 心跳延长提交资格，活动 deadline 不变、模型仅调用一次，监控最终清理 |
+| 心跳与取消竞争 | Thread→Run 锁和最终条件决定顺序；取消持久后不能再续租，唯一取消终态 |
+| 活动到期但仍有提交租期 | 新 delta/工具观测拒绝，心跳不延长；允许原终态事务有界收尾 |
+| 心跳故障，含已提交但回包丢失 | 停止 Provider，保存受控 EXECUTION_STORAGE_UNAVAILABLE；不按本地资格继续 |
+| 激活已提交但回包丢失 | Provider 未启动；Run 保留已登记期限，失联后仅过期终结，不重领/退预算 |
+| 暂停事务回滚/已提交但回包丢失 | 前者没有残留 Checkpoint/等待事件；后者 PG 保持等待，不能再次领取运行 |
+| 接收事务回滚/已提交但 HTTP 报错 | 原凭据/幂等输入可重试；分别仍 waiting_input 或已 resume_pending，最终只有一次 accepted |
+| 终态已提交但回包丢失 | 再次执行只读到不可领取，原 Message/唯一 completed 保持，没有第二次模型请求 |
+| API 被硬退出 | 真实心跳停止后租约到期，由第二 API 明确失败；原前缀和消息保留，下一排队 Run 正常执行 |
+| Provider 已完成、旧 API 迟到保存 | 第一次保存前握手阻塞；第二 API 过期终结后释放旧事务，旧结果拒写，不覆盖前缀/终态 |
+
+竞争由 asyncio.Barrier 或独立进程 ready/finish/release 文件控制；等待到业务截止时仍查询真实 PG 时钟，不把固定 sleep 当作并发证明。测试子进程握手包含 nonce、实际 server PID 和随机端口，Windows venv launcher 与真实进程 PID 区分，硬退出和清理只作用于自有进程；未终止其他项目进程。
+
+`uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_hitl_pg.py tests/test_leases_pg.py` 最终 31 passed（17 HITL、14 租约；7.4 已覆盖部分复用，不相加）。`uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_leases_http.py tests/test_cancellation_http.py` 为 6 passed，其中后者是 A 包曾收集跳过的 4 项旧 HTTP/Redis/独立进程检查，此次实际执行通过；它们是既有用例，不能计作新增。通知故障、跨实例取消、拒绝配合取消的受控 Provider 和进程退出沿用这些检查，无收费模型。
+
+原恢复/取消/快照冻结/越权/过期/同 Message/ToolCall 的 14 项 HITL 断言全部保留，新增 pause_ack/accept_ack/accept_rollback 三项参数。7.4 的激活/心跳/终态回包丢失与此处的暂停/接收共同覆盖不确定提交；事务事实仍以 PG 为准，不要求 Python 返回值和事务回包永不丢失。
+
 ## 结章文字总结（完成后填写）
 
 待本章结束后填写实际实现、概念取舍、完整流程、验证与限制，以及与评测章节的衔接。A 包实施与验证见上方记录；本节待 B 包结束后按整章实际结果填写，不把 A 包通过当作整章结章。

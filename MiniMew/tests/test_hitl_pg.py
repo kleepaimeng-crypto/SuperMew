@@ -65,6 +65,9 @@ pytestmark = pytest.mark.skipif(
         "db_guard",
         "receipt_hash_null",
         "receipt_answer_null",
+        "pause_ack",
+        "accept_ack",
+        "accept_rollback",
     ],
 )
 def test_pause_refresh_and_resume_same_run_tool_message_scope_snapshot_budget(
@@ -192,7 +195,20 @@ def test_pause_refresh_and_resume_same_run_tool_message_scope_snapshot_budget(
                 assert saved["error"] == "KNOWLEDGE_SCOPE_INVALID"
                 assert not any(e.type == "hitl.required" for e in saved["events"])
                 return
-            assert await executor().execute(owner, tid, rid) == "waiting_input"
+            if mode == "pause_ack":
+                original_pause = HitlStore.pause
+
+                async def committed_pause(self, *args, **kwargs):
+                    await original_pause(self, *args, **kwargs)
+                    raise OSError("controlled pause acknowledgement loss")
+
+                with monkeypatch.context() as fault:
+                    fault.setattr(HitlStore, "pause", committed_pause)
+                    with pytest.raises(OSError, match="acknowledgement"):
+                        await executor().execute(owner, tid, rid)
+                assert await executor().execute(owner, tid, rid) == "not_claimed"
+            else:
+                assert await executor().execute(owner, tid, rid) == "waiting_input"
             saved = await facts(repo, rid)
             assert saved["run"].status == "waiting_input"
             assert saved["run"].owner_token is None and saved["run"].lease_until is None
@@ -315,6 +331,35 @@ def test_pause_refresh_and_resume_same_run_tool_message_scope_snapshot_budget(
                     assert sum(e.type == "run.cancelled" for e in saved["events"]) == 1
                     assert await executor().execute(owner, tid, rid) == "not_claimed"
                     return
+            if mode == "accept_ack":
+                original_accept = HitlStore.accept
+
+                async def committed_accept(self, *args, **kwargs):
+                    await original_accept(self, *args, **kwargs)
+                    raise OSError("controlled accept acknowledgement loss")
+
+                with monkeypatch.context() as fault:
+                    fault.setattr(HitlStore, "accept", committed_accept)
+                    assert (
+                        client.post(path + "/resume", headers=headers, json=body).status_code == 503
+                    )
+                assert (await facts(repo, rid))["status"] == "resume_pending"
+            if mode == "accept_rollback":
+                import minimew.hitl.store as store_module
+
+                original_event = store_module.append_event
+
+                async def rolled_back_accept(session, run, kind, data):
+                    await original_event(session, run, kind, data)
+                    if kind == "hitl.accepted":
+                        raise OSError("controlled accept rollback")
+
+                with monkeypatch.context() as fault:
+                    fault.setattr(store_module, "append_event", rolled_back_accept)
+                    assert (
+                        client.post(path + "/resume", headers=headers, json=body).status_code == 503
+                    )
+                assert (await facts(repo, rid))["status"] == "waiting_input"
             if mode != "expire":
                 assert (
                     client.post(path + "/resume", headers=headers, json=body).json()["status"]
