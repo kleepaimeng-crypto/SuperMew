@@ -459,6 +459,14 @@ Base固定`BAAI/bge-reranker-base@2cfc18c9415c912f9d8155881c133215df768a70`，�
 
 
 
+### 6.5 实施记录（2026-11-14）
+
+[workflow.py](../src/minimew/rag/workflow.py)使用真正的`StateGraph`，按`assess → 条件边 → rewrite → assess → END`编排工具内部策略。足够、歧义、冲突直接返回结构化状态；不足才允许一次Step-back。`rewrite_used`属于Run共享预算，多次knowledge_search不能重置次数；仅内部检索式更新，最终评判目标取自原Run用户问题。数字/字母/型号锚点进行程序校验；中文实体、地点及自然语言限制依靠提示和原问题复评，不声称已有完整NER或语义等价证明。
+
+改写候选与原候选按身份去重，新增候选优先进入有限选材，再用同一8000字符草稿规则复评；中间步骤不登记Evidence。所有查询复用第一次工具调用冻结的published scope和用户身份，仍走唯一`RagPipeline`，不新增聊天route。图不配置checkpointer，关闭自动LangSmith追踪；进程退出仍使用原Run过期/失败机制，节点恢复留第七章。
+
+新增LangGraph1.2.22（锁文件含其官方checkpoint/prebuilt/sdk依赖，但未配置持久checkpoint）；通过`uv add`和`uv sync --dev --extra embedding --extra vector --locked`更新独立manifest/锁。`uv lock --check`解析108包，`uv pip check`106个已安装包兼容。直接图测试3项通过：足够、不足后单次改写、禁止丢弃E1024编号；真实Run/取消等集中验证见6.6。三项是本节中间实现复验，不计作包末新增三项。未下载新模型或调用收费Provider。
+
 ## 结章文字总结（完成后填写）
 
 完成后据实记录本章交付、选型、完整数据流、实际对照收益/退化、验证和未完成限制；不预填结果。

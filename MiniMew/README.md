@@ -260,7 +260,7 @@ uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <use
 
 升级更新该用户未来上传的构建目标，经既有候选Version/IndexJob/Worker核验发布；旧current在成功前继续可读，源文件和历史引用不改。存在并发上传时拒绝覆盖；批量可能部分入队，重新执行可继续，不自动清库或重建集合。独立Worker同时识别旧Dense和新Hybrid的显式构建身份。API/Worker需加载最新代码，普通API不执行迁移或索引构建。
 
-## 本地重排与 RAG 策略（6.3）
+## 本地模型与 RAG 策略（6.3–6.6）
 
 ### Run 内材料评判（6.4）
 
@@ -269,6 +269,12 @@ uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <use
 v3最多12次模型尝试（含重试）、外层4次、工具6次、检索8次；内部最多并发2并保留最终回答的一次额度，共用原Profile总期限。Grader/Planner/Rewrite输出上限分别1024/512/256 token且不超过Profile上限。内部JSON和中间文字不进入公开Journal，最终答案继续原引用校验与持久化链。详见[第六章实现记录](chapters/06-完整RAG策略.md#64-实施记录2026-11-14)。
 
 
+
+### 单次改写与图编排（6.5）
+
+知识工具内部使用进程内LangGraph：先评判实际材料，不足时全Run最多一次Step-back补查，再按原用户问题复评。检索式可变，用户Message、固定scope、Run和最终回答目标保持；仅最终材料一次登记Evidence。图无持久checkpointer，不支持节点恢复（第七章范围）。
+
+### 模型缓存与候选策略（6.3）
 
 知识模式现在同时加载已准备的轻量Embedding和Base重排模型。首次换设备需显式准备固定Base缓存（普通启动不下载）：
 

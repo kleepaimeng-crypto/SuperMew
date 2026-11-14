@@ -150,20 +150,29 @@ class KnowledgeService:
             raise ToolFailure("TOOL_PERMISSION_DENIED") from None
         except (SQLAlchemyError, OSError, TimeoutError):
             raise ToolFailure("KNOWLEDGE_RETRIEVAL_FAILED") from None
-        draft, pending = self.prepare(context, result, scope)
         if context.reasoning is not None:
-            from minimew.rag.reasoning import Grade, grade_materials
+            from minimew.rag.workflow import run_workflow
 
-            assessment = (
-                await grade_materials(
-                    context.model_caller, context.question or arguments.query, draft
+            async def retrieve(query):
+                context.run_budget.take_retrieval()
+                return await RagPipeline(
+                    self.sessions, self.runtime, retriever=search_published
+                ).search(
+                    query, scope, context.user_id, context.rag_policy, deadline=context.deadline
                 )
-                if draft.matches
-                else Grade(status="insufficient", supported=(), missing=("未找到相关材料",))
+
+            draft, pending, assessment = await run_workflow(
+                context,
+                context.question or arguments.query,
+                result,
+                retrieve,
+                lambda materials: self.prepare(context, materials, scope),
             )
             draft = draft.model_copy(update={"assessment": assessment})
             if len(draft.model_dump_json()) > 11000:
                 raise ToolFailure("KNOWLEDGE_RESULT_INVALID")
+        else:
+            draft, pending = self.prepare(context, result, scope)
         ledger.commit(pending)
         record = logger.warning if result.trace.fallback else logger.info
         record("rag_completed run_id=%s trace=%s", context.run_id, json.dumps(asdict(result.trace)))
