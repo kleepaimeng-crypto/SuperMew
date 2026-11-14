@@ -22,7 +22,9 @@ from minimew.execution.provider import (
 )
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.model_control import snapshot_for_run
-from minimew.models import AnswerRecord, Message, Run, RunEventRecord
+from minimew.models import AnswerRecord, Message, Run, RunCheckpoint, RunEventRecord
+
+FINALIZE_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -39,7 +41,7 @@ TerminalStatus = Literal["succeeded", "failed", "cancelled"]
 
 
 class ExecutionRepository:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession], *, lease_seconds=330.0):
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], *, lease_seconds=20.0):
         if not 0 < lease_seconds <= 3600:
             raise ValueError("Execution lease must be between 0 and 3600 seconds")
         self.sessions = sessions
@@ -169,6 +171,7 @@ class ExecutionRepository:
                     owner_token=token,
                     started_at=run.started_at if resumed else now,
                     lease_until=deadline,
+                    execution_deadline_at=None,
                 )
             )
             if changed.rowcount != 1:
@@ -218,17 +221,103 @@ class ExecutionRepository:
             return ProviderRequest(claim.run_id, claim.thread_id, snapshot, messages)
 
     async def remaining(self, claim: Claim) -> float:
+        """仅返回已激活的活动预算；短租约不能冒充计算时限。"""
         async with self.sessions() as session:
             duration = await session.scalar(
-                select(Run.lease_until - func.clock_timestamp()).where(
+                select(Run.execution_deadline_at - func.clock_timestamp()).where(
                     Run.id == claim.run_id,
                     Run.user_id == claim.user_id,
                     Run.thread_id == claim.thread_id,
                     Run.status == "running",
                     Run.owner_token == claim.owner_token,
+                    Run.lease_until > func.clock_timestamp(),
                 )
             )
             return duration.total_seconds() if duration is not None else 0.0
+
+    @staticmethod
+    def _require_owner(run, claim, now):
+        if (
+            run.status != "running"
+            or run.owner_token != claim.owner_token
+            or run.lease_until <= now
+        ):
+            raise OwnershipLost
+        if run.cancel_requested_at is not None:
+            raise CancellationRequested
+
+    async def activate(self, claim: Claim, seconds: float) -> float:
+        """调用外部服务之前一次登记活动 deadline；重复调用只读取，不重发预算。"""
+        if not 0 < seconds <= 300:
+            raise ValueError("Invalid activity budget")
+        async with self.sessions() as session, session.begin():
+            run = await self._locked_run(session, claim.user_id, claim.thread_id, claim.run_id)
+            now = await session.scalar(select(func.clock_timestamp()))
+            self._require_owner(run, claim, now)
+            allowed = snapshot_for_run(run).answer.configuration.timeout_seconds
+            cp = await session.scalar(select(RunCheckpoint).where(RunCheckpoint.run_id == run.id))
+            if cp is not None:
+                from minimew.hitl.checkpoint import decode, validate_document
+
+                if cp.accepted_at is None:
+                    raise ValueError("Unaccepted checkpoint")
+                allowed = min(allowed, decode(validate_document(cp.document)["state"])["remaining"])
+            if seconds > allowed:
+                raise ValueError("Activity budget exceeds frozen remainder")
+            if run.execution_deadline_at is None:
+                end = now + timedelta(seconds=seconds)
+                lease = min(
+                    now + timedelta(seconds=self.lease_seconds),
+                    end + timedelta(seconds=FINALIZE_SECONDS),
+                )
+                changed = await session.execute(
+                    update(Run)
+                    .where(
+                        Run.id == run.id,
+                        Run.status == "running",
+                        Run.owner_token == claim.owner_token,
+                        Run.execution_deadline_at.is_(None),
+                        Run.lease_until > func.clock_timestamp(),
+                        Run.cancel_requested_at.is_(None),
+                    )
+                    .values(execution_deadline_at=end, lease_until=lease)
+                )
+                if changed.rowcount != 1:
+                    raise OwnershipLost
+                await session.refresh(run)
+            now = await session.scalar(select(func.clock_timestamp()))
+            return max(0.0, (run.execution_deadline_at - now).total_seconds())
+
+    async def heartbeat(self, claim: Claim):
+        """只允许尚有效的同一 owner 续租；deadline 固定，耗尽后不再延长。"""
+        async with self.sessions() as session, session.begin():
+            run = await self._locked_run(session, claim.user_id, claim.thread_id, claim.run_id)
+            now = await session.scalar(select(func.clock_timestamp()))
+            self._require_owner(run, claim, now)
+            if run.execution_deadline_at is None:
+                raise ValueError("Activity must be activated before heartbeat")
+            if run.execution_deadline_at <= now:
+                return
+            lease = max(
+                run.lease_until,
+                min(
+                    now + timedelta(seconds=self.lease_seconds),
+                    run.execution_deadline_at + timedelta(seconds=FINALIZE_SECONDS),
+                ),
+            )
+            changed = await session.execute(
+                update(Run)
+                .where(
+                    Run.id == run.id,
+                    Run.status == "running",
+                    Run.owner_token == claim.owner_token,
+                    Run.lease_until > func.clock_timestamp(),
+                    Run.cancel_requested_at.is_(None),
+                )
+                .values(lease_until=lease)
+            )
+            if changed.rowcount != 1:
+                raise OwnershipLost
 
     async def append_delta(self, claim: Claim, content: str) -> bool:
         if not valid_text(content, MAX_DELTA_CHARS):
@@ -241,6 +330,8 @@ class ExecutionRepository:
                     run.status != "running"
                     or run.owner_token != claim.owner_token
                     or run.lease_until <= now
+                    or run.execution_deadline_at is None
+                    or run.execution_deadline_at <= now
                 ):
                     return False
                 if run.cancel_requested_at is not None:
@@ -263,6 +354,7 @@ class ExecutionRepository:
                         Run.status == "running",
                         Run.owner_token == claim.owner_token,
                         Run.lease_until > func.clock_timestamp(),
+                        Run.execution_deadline_at > func.clock_timestamp(),
                     )
                     .values(last_event_sequence=run.last_event_sequence)
                 )
@@ -293,6 +385,8 @@ class ExecutionRepository:
                     run.status != "running"
                     or run.owner_token != claim.owner_token
                     or run.lease_until <= now
+                    or run.execution_deadline_at is None
+                    or run.execution_deadline_at <= now
                 ):
                     return False
                 if run.cancel_requested_at is not None:
@@ -329,6 +423,7 @@ class ExecutionRepository:
                         Run.status == "running",
                         Run.owner_token == claim.owner_token,
                         Run.lease_until > func.clock_timestamp(),
+                        Run.execution_deadline_at > func.clock_timestamp(),
                     )
                     .values(last_event_sequence=run.last_event_sequence)
                 )

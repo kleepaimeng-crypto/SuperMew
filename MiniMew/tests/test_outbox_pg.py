@@ -5,7 +5,7 @@ import os
 from unittest.mock import AsyncMock
 
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, repository
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from test_execution_pg import create_run, facts
@@ -80,6 +80,7 @@ def test_database_rejects_new_event_without_outbox_and_pending_delete(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             assert claim is not None
             with pytest.raises(IntegrityError) as error:
                 async with repo.sessions() as session, session.begin():

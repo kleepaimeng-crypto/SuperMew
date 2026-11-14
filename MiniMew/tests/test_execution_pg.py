@@ -7,7 +7,7 @@ from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, lease_remaining, repository
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from test_runs_pg import account, configure_model, submit
@@ -167,6 +167,7 @@ def test_two_simultaneous_claims_have_one_winner(client):
             )
             winners = [claim for claim in claims if claim is not None]
             assert len(winners) == 1
+            await activate_claim(first, winners[0])
             assert await first.finish(winners[0], content="single answer")
             assert len((await facts(first, run_id))["events"]) == 4
 
@@ -331,7 +332,7 @@ def test_expired_owner_recovery_and_duplicate_finish(client):
             assert claim is not None
             # 根据数据库时间等待实际过期，不靠固定 sleep 猜测调度。
             async with asyncio.timeout(5):
-                while await repo.remaining(claim) > 0:
+                while await lease_remaining(repo, claim) > 0:
                     await asyncio.sleep(0)
             results = await asyncio.gather(repo.recover_expired(), repo.recover_expired())
             assert sum(results) == 1
@@ -352,6 +353,7 @@ def test_wrong_owner_token_and_foreign_user_cannot_execute_or_finish(client):
             with pytest.raises(ConversationNotFound):
                 await repo.claim(uuid4(), thread, run_id)
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             assert claim
             assert not await repo.finish(replace(claim, owner_token=uuid4()), content="forged")
             assert (await facts(repo, run_id))["status"] == "running"
@@ -369,6 +371,7 @@ def test_finish_event_write_failure_rolls_back_all_terminal_facts(client, monkey
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             original = persistence.append_event
 
             async def fail_after_event(session, run, event_type, data):
@@ -398,6 +401,7 @@ def test_database_rejects_partial_terminal_commit_and_journal_mutation(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             with pytest.raises(IntegrityError):
                 async with repo.sessions() as session, session.begin():
                     await session.execute(
@@ -430,6 +434,7 @@ def test_failed_turn_is_retained_but_not_used_as_model_history(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, first)
+            await activate_claim(repo, claim)
             assert await repo.finish(claim, error_code="PROVIDER_ERROR")
             fake = FakeProvider()
             assert await RunExecutor(repo, fake).execute(owner, thread, second) == "succeeded"

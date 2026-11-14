@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, lease_remaining, repository
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from test_deepseek import transport as transport
@@ -76,6 +76,7 @@ def test_running_cancel_keeps_prefix_and_overrides_in_memory_completion(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "今天")
             response, pending = await repo.request_cancel(owner, thread, run)
             assert pending and response.status == "running"
@@ -143,6 +144,7 @@ def test_already_terminal_is_immutable_after_cancel(client, error):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             assert await repo.finish(claim, content="answer", error_code=error)
             return await facts(repo, run)
 
@@ -229,10 +231,11 @@ def test_expired_owner_cannot_cancel_but_recovery_honors_request(client):
     async def scenario():
         async with repository(lease_seconds=0.2) as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "prefix")
             await repo.request_cancel(owner, thread, run)
             async with asyncio.timeout(5):
-                while await repo.remaining(claim) > 0:
+                while await lease_remaining(repo, claim) > 0:
                     await asyncio.sleep(0.01)
             assert not await repo.finish(claim, error_code="EXECUTOR_INTERRUPTED")
             results = await asyncio.gather(repo.recover_expired(), repo.recover_expired())
@@ -314,6 +317,7 @@ def test_cancel_finish_race_uses_locked_commit_order(client, monkeypatch, first)
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             locked, release = asyncio.Event(), asyncio.Event()
             original = repo._locked_run
 
@@ -427,6 +431,7 @@ def test_database_guards_cancel_request_event_and_late_delta(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             with pytest.raises(IntegrityError):
                 async with repo.sessions() as session, session.begin():
                     await session.execute(
@@ -472,6 +477,7 @@ def test_database_rejects_cancel_terminal_discarding_committed_prefix(client, mo
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "prefix")
             await repo.request_cancel(owner, thread, run)
             before = await facts(repo, run)

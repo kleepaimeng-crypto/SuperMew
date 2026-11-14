@@ -6,7 +6,7 @@ from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, lease_remaining, repository
 from sqlalchemy.exc import IntegrityError
 from test_execution_pg import create_run, facts
 from test_runs_pg import account, configure_model, submit
@@ -161,6 +161,7 @@ def test_delta_transaction_failure_rolls_back_sequence_and_does_not_publish_text
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "今天")
             original = persistence.append_event
 
@@ -278,6 +279,7 @@ def test_database_rejects_terminal_that_discards_committed_prefix(client, monkey
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "必须保留")
 
             async def broken_partial(session, run):
@@ -340,12 +342,13 @@ def test_expired_or_wrong_owner_cannot_append_and_recovery_retains_prefix(client
     async def scenario():
         async with repository(lease_seconds=0.5) as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "可靠前缀")
             assert not await repo.append_delta(replace(claim, owner_token=uuid4()), "forged")
             with pytest.raises(ConversationNotFound):
                 await repo.append_delta(replace(claim, user_id=uuid4()), "foreign")
             async with asyncio.timeout(5):
-                while await repo.remaining(claim) > 0:
+                while await lease_remaining(repo, claim) > 0:
                     await asyncio.sleep(0)
             assert not await repo.append_delta(claim, "late")
             assert await repo.recover_expired() == 1
@@ -364,6 +367,7 @@ def test_simultaneous_deltas_are_serial_and_failure_uses_journal_order(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             assert await asyncio.gather(
                 repo.append_delta(claim, "甲"), repo.append_delta(claim, "乙")
             ) == [True, True]
@@ -416,6 +420,7 @@ def test_lease_expiring_inside_delta_transaction_rolls_back_entire_batch(client,
     async def scenario():
         async with repository(lease_seconds=0.5) as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "此前已提交")
             original = persistence.append_event
 
@@ -423,7 +428,7 @@ def test_lease_expiring_inside_delta_transaction_rolls_back_entire_batch(client,
                 result = await original(session, run, event_type, data)
                 await session.flush()
                 async with asyncio.timeout(5):
-                    while await repo.remaining(claim) > 0:
+                    while await lease_remaining(repo, claim) > 0:
                         await asyncio.sleep(0)
                 return result
 

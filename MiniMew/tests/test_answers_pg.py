@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, repository
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from test_documents_pg import account as document_account
@@ -147,6 +147,7 @@ def test_materials_message_events_outbox_rollback_then_same_claim_retries_save(c
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, tid, rid)
+            await activate_claim(repo, claim)
             original = storage.append_event
 
             async def fail(session, run, kind, data):
@@ -183,6 +184,8 @@ def test_cancel_or_owner_fencing_never_commits_success_materials(client, monkeyp
     async def scenario():
         async with repository(lease_seconds=0.03 if mode == "expired" else 330) as repo:
             claim = await repo.claim(owner, tid, rid)
+            if mode != "expired":
+                await activate_claim(repo, claim)
             if mode == "cancel":
                 await repo.request_cancel(owner, tid, rid)
             elif mode == "expired":
@@ -218,6 +221,7 @@ def test_two_runs_keep_distinct_e1_and_cross_run_message_fk(client):
             async def complete(identity, text):
                 _, owner, tid, rid = identity
                 claim = await repo.claim(owner, tid, rid)
+                await activate_claim(repo, claim)
                 answer = parse_answer(mixed(text), (evidence(text),))
                 assert (
                     await repo.finish(claim, content=answer.content, materials=answer.materials)

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     execution_scan_seconds: float = Field(default=0.5, gt=0, le=30)
     execution_max_active: int = Field(default=2, ge=1, le=32)
     cancellation_poll_seconds: float = Field(default=0.5, gt=0, le=30)
+    execution_lease_seconds: float = Field(default=20, gt=0, le=60)
+    execution_heartbeat_seconds: float = Field(default=5, gt=0, le=30)
     jwt_secret: SecretStr = Field(min_length=32)
     access_token_minutes: int = Field(default=15, ge=1, le=60)
     refresh_token_days: int = Field(default=7, ge=1, le=30)
@@ -52,6 +54,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_cookie_security(self):
+        if self.execution_heartbeat_seconds >= self.execution_lease_seconds:
+            raise ValueError("Heartbeat must be shorter than execution lease")
         if self.environment == "production" and not self.refresh_cookie_secure:
             raise ValueError("Production requires a Secure refresh cookie")
         return self

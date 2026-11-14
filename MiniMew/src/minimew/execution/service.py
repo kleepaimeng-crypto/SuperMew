@@ -95,12 +95,16 @@ class RunExecutor:
         provider: Provider,
         *,
         cancellation_poll=0.5,
+        heartbeat_seconds=5.0,
         registry: ToolRegistry | None = None,
         capabilities: frozenset[str] = frozenset(),
     ):
         self.repository = repository
         self.provider = provider
         self.cancellation_poll = cancellation_poll
+        if heartbeat_seconds <= 0:
+            raise ValueError("Heartbeat interval must be positive")
+        self.heartbeat_seconds = heartbeat_seconds
         self.registry = registry if registry is not None else ToolRegistry()
         self.capabilities = capabilities
 
@@ -135,10 +139,7 @@ class RunExecutor:
                 except ValueError:
                     raise ContextInvalid from None
             await self.repository.check_control(claim)
-            remaining = await self.repository.remaining(claim)
-            if remaining <= 0:
-                await self.repository.expire(claim)
-                return "ownership_lost"
+            remaining = request.snapshot.answer.configuration.timeout_seconds
             loop = asyncio.get_running_loop()
             saved = None
             if request.snapshot.hitl is not None and claim.resumed:
@@ -158,9 +159,10 @@ class RunExecutor:
                 context.evidence.items = saved["evidence"]
                 context.evidence.queried = saved["queried"]
                 remaining = min(remaining, saved["remaining"])
-            deadline = loop.time() + min(
-                remaining, request.snapshot.answer.configuration.timeout_seconds
-            )
+            # 用查询开始前的 monotonic 时间换算，数据库往返不会额外发放执行时间。
+            began = loop.time()
+            remaining = await self.repository.activate(claim, remaining)
+            deadline = began + remaining
             context = replace(context, deadline=deadline, checkpoint=saved)
             try:
                 answer = await self._watched_generate(claim, request, deadline, context)
@@ -259,12 +261,17 @@ class RunExecutor:
             return "ownership_lost"
         return saved
 
-    async def _watch_control(self, claim):
+    async def _watch_control(self, claim, deadline):
+        next_heartbeat = asyncio.get_running_loop().time() + self.heartbeat_seconds
         while True:
             # 调用前已检查过资格，之后按间隔查询，避免重复首轮查询占用模型启动预算。
-            await asyncio.sleep(self.cancellation_poll)
+            await asyncio.sleep(min(self.cancellation_poll, self.heartbeat_seconds))
             try:
                 await self.repository.check_control(claim)
+                now = asyncio.get_running_loop().time()
+                if now < deadline and now >= next_heartbeat:
+                    await self.repository.heartbeat(claim)
+                    next_heartbeat = asyncio.get_running_loop().time() + self.heartbeat_seconds
             except (SQLAlchemyError, TimeoutError, OSError):
                 raise ExecutionStorageUnavailable from None
 
@@ -274,7 +281,7 @@ class RunExecutor:
             name=f"minimew-model-{request.run_id}",
         )
         monitor = asyncio.create_task(
-            self._watch_control(claim),
+            self._watch_control(claim, deadline),
             name=f"minimew-cancel-monitor-{request.run_id}",
         )
         tasks = {model, monitor}
@@ -554,8 +561,7 @@ class RunExecutor:
                 if attempt == 1 or not failure.retryable or progress.body_committed:
                     raise
                 budget.require_model()
-                if await self.repository.remaining(claim) <= 0:
-                    raise OwnershipLost from None
+                await self._check_active(claim, request, deadline)
                 delay = max(0.5, failure.retry_after)
                 if asyncio.get_running_loop().time() + delay >= deadline:
                     raise ProviderFailure("PROVIDER_TIMEOUT") from None
@@ -574,8 +580,7 @@ class RunExecutor:
                         await asyncio.sleep(delay)
                 except TimeoutError:
                     raise ProviderFailure("PROVIDER_TIMEOUT") from None
-                if await self.repository.remaining(claim) <= 0:
-                    raise OwnershipLost from None
+                await self._check_active(claim, request, deadline)
         raise AssertionError("Unreachable retry state")
 
     async def _consume(

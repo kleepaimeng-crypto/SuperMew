@@ -63,6 +63,8 @@ class HitlStore:
             )
             now = await session.scalar(select(func.clock_timestamp()))
             self.active(run, claim, now)
+            if run.execution_deadline_at is None or run.execution_deadline_at <= now:
+                raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
             expires = min(
                 now + timedelta(seconds=context.hitl.wait_seconds),
                 scope.expires_at - timedelta(seconds=remaining + 1),
@@ -96,9 +98,15 @@ class HitlStore:
                     Run.status == "running",
                     Run.owner_token == claim.owner_token,
                     Run.lease_until > func.clock_timestamp(),
+                    Run.execution_deadline_at > func.clock_timestamp(),
                     Run.cancel_requested_at.is_(None),
                 )
-                .values(status="waiting_input", owner_token=None, lease_until=None)
+                .values(
+                    status="waiting_input",
+                    owner_token=None,
+                    lease_until=None,
+                    execution_deadline_at=None,
+                )
             )
             if changed.rowcount != 1:
                 raise OwnershipLost

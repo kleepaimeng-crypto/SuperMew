@@ -47,7 +47,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0016 (head)`。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0017 (head)`。0017新增本段execution_deadline_at并允许有效owner续短租约；升级会拒绝任何旧协议running，必须先用旧版正常排空。旧终态不补造期限，已提交waiting_input/resume_pending保持可续接，不猜测运行进度。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 
@@ -728,13 +728,13 @@ uv run --env-file .env --no-sync python -m minimew.model_cli show-run <run_id>
 
 同 Thread 的较早 pending/running 会阻止后续 Run 领取，不同 Thread 可并行。历史仅选择本次提问之前的成功完整问答；失败或取消轮次保留在业务历史中，不传给后续模型。最多取最近 20 轮、总正文 60000 字符，超限按完整问答裁剪最旧部分，始终保留本次问题；这些是字符/条数预算，不是精确 token 计数。未来消息和当前空 assistant 占位不会作为输入。
 
-默认租约 330 秒，Provider 的绝对调用截止取快照 timeout 与剩余租约的较小值；普通异步 Provider 用 [asyncio timeout](https://docs.python.org/3.12/library/asyncio-task.html#timeouts) 协作取消。吞掉取消后迟到返回的结果也会被截止时间和数据库所有权检查拒绝。租约不证明外部请求已停止，不提供外部调用严格一次保证。当前没有自动续租或重跑；`recover_expired()` 把过期任务记录为 `EXECUTION_EXPIRED`，2.7 调度器定期驱动该入口。
+默认租约 20 秒，每 5 秒由当前 Run 私有监控续租。执行器在任何 Provider/检索调用前先向 PG 一次登记本段 `execution_deadline_at`，额度来自冻结 timeout 或原 Checkpoint 剩余活动时间；重复激活、心跳和模型重试不重发预算。本机 monotonic 截止保守换算 PG 剩余时长；普通异步 Provider 用 [asyncio timeout](https://docs.python.org/3.12/library/asyncio-task.html#timeouts) 协作取消。吞掉取消后迟到返回的结果也会被截止时间和数据库所有权检查拒绝。租约不证明外部请求已停止，不提供外部调用严格一次保证。续租上限为活动截止后 10 秒，仅供清理/终态事务，不能继续模型、工具观测、正文分片或暂停发布。活动到期不再续租；保存资格读取当前 PG owner/lease，不依赖 Claim 的初始租期。`recover_expired()` 把失联过期任务记录为 `EXECUTION_EXPIRED`，已有取消则以取消终结；调度器定期驱动该入口，不重跑 running。暂停前停止监控并释放 owner/lease，等待不续租。
 
 Provider 超时、异常、无效响应分别记录稳定 code，不保存原始异常、地址或密钥。结果库写入故障直接传播，不伪装成 Provider 错误或无知识。执行器协程中断时会尝试记录 `EXECUTOR_INTERRUPTED` 并重新抛出取消；这不等于面向用户的 Run 取消接口，进程崩溃后的清理由过期终结处理。
 
 数据库除了检查状态与同 Thread 唯一 running，还使用延迟到事务末尾的约束触发器，核对 Run、assistant Message、完成事件与事件序号一致。直接只提交 succeeded 而不保存回答和事件会被拒绝。已完成消息、终态 Run 和 Journal 不可改写；Journal 与消息历史不能被直接删除。历史快照 pending 保留原状、不补造 run.created，首次执行可以从 run.started 的 sequence=1 开始。
 
-新 Run 在预留事务内写入 run.created。没有正文分片的成功 Run，最小日志依次是 run.created、run.started、message.completed、run.completed；流式执行在 started 与结束事件之间追加 message.delta，失败时最后一个为 run.failed。Run 的 last_event_sequence 与 Thread 的 Message sequence 是两个不同序列。公开 Run 查询支持 pending/running/succeeded/failed/cancelled、finished_at、cancel_requested_at 与 error_code，不输出 owner token、租约或私有快照；失败的 assistant Message 状态为 failed。同键重发已完成 Run 只返回当前持久结果，不再次调用 Provider。
+新 Run 在预留事务内写入 run.created。没有正文分片的成功 Run，最小日志依次是 run.created、run.started、message.completed、run.completed；流式执行在 started 与结束事件之间追加 message.delta，失败时最后一个为 run.failed。Run 的 last_event_sequence 与 Thread 的 Message sequence 是两个不同序列。公开 Run 查询支持 pending/running/waiting_input/resume_pending/succeeded/failed/cancelled、finished_at、cancel_requested_at 与 error_code，不输出 owner token、租约或私有快照；失败的 assistant Message 状态为 failed。同键重发已完成 Run 只返回当前持久结果，不再次调用 Provider。
 
 事件真源为本目录 [run_event_v1.json](contracts/run_event_v1.json)，生成 Python 的严格 payload/状态/错误类型和 TypeScript 联合类型。需要新增或调整事件时运行：
 
@@ -755,7 +755,7 @@ Provider 只有 `stream(request)` 一个异步流入口。5.1 将内部完成结
 
 执行器要求完成结果之后正常结束迭代；只有分片而没有明确完成、完成后继续输出、空白最终答案或非法分片，都以 `PROVIDER_INVALID_RESPONSE` 终结。`ProviderCompleted` 是内部调用协议，不是直接发送给前端的成功事件，最终结果仍需事务提交。
 
-每批正文最多 4096 字符，累计分片及最终答案各最多 100000 字符。每批追加都检查 Run 为 running、owner token 匹配和租约有效，持有 Thread → Run 锁，提交前再次检查资格。数据库还拒绝 pending/过期执行的分片、错误消息归属、畸形 payload 和超预算正文。每批是可由 Adapter 合并后的文本，不要求每个 token 单独提交；2.7 Adapter 将 SDK 的公开正文切分为受控分片。
+每批正文最多 4096 字符，累计分片及最终答案各最多 100000 字符。每批追加都检查 Run 为 running、owner token 匹配、租约和本段活动期限有效，持有 Thread → Run 锁，提交前再次检查资格。数据库还拒绝 pending/过期执行的分片、错误消息归属、畸形 payload 和超预算正文。每批是可由 Adapter 合并后的文本，不要求每个 token 单独提交；2.7 Adapter 将 SDK 的公开正文切分为受控分片。
 
 流式调用失败时，从同一 Run 的已提交分片按序恢复正文，保存到原 assistant Message，并在同一终结事务写入 failed 消息、message.completed(status=failed) 和 run.failed。过期回收也保留该前缀。分片事务回滚不会推进 sequence，也不会成为可补读正文；数据库故障不会被包装成模型错误。失败正文留在业务历史，但不进入后续模型的成功问答上下文。
 
@@ -819,7 +819,7 @@ message.completed v1保持message_id/status/content，SSE继续重放Journal；5
 
 显式升级到0014并重启API，前后端需一起更新。0014只扩展Journal允许的类型并增加工具事件guard，不改写旧消息/引用/Journal，不为旧Run补造观测。Run Event v1按现有扩展规则增加tool.started/tool.completed/tool.failed，保持旧事件与message.completed形状不变；生成Python/TS、OpenAPI/API TS及浏览器严格解析器同步。旧客户端遇到新事件应更新，不能忽略未知事件推进游标。
 
-执行器在Registry/Guardrail检查后，通过原Repository短事务保存工具开始、结束/失败事件与Outbox。公开payload仅含tool_call_id、tool_name，失败另有受控error_code，不含参数、原始结果或私有推理。按Run/调用ID/事件阶段持久幂等；每次观测保存最多2次尝试、共用原期限，重试不会重新执行handler。数据库guard检查运行/租约/取消与先开始后结束，原Run终态仍由原事务拥有。
+执行器在Registry/Guardrail检查后，通过原Repository短事务保存工具开始、结束/失败事件与Outbox。公开payload仅含tool_call_id、tool_name，失败另有受控error_code，不含参数、原始结果或私有推理。按Run/调用ID/事件阶段持久幂等；每次观测保存最多2次尝试、共用原期限，重试不会重新执行handler。数据库guard检查运行/租约/活动期限/取消与先开始后结束，原Run终态仍由原事务拥有。
 
 聊天页使用[答案解析](frontend/src/answers.ts)校验来源身份、分区和Unicode码点位置，[chat store](frontend/src/stores/chat.ts)按Run合并在途请求并缓存当前用户/Thread的材料；换账号/对话清除状态、拒绝迟到回填。只有校验过的引用可点击，[AnswerBody](frontend/src/components/AnswerBody.vue)显示保存的章节、版本、行号及原文，并区分模型补充。资料读取失败保留正文和已完成状态，可独立重试。
 
@@ -1040,7 +1040,11 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 
 每 Run 最多澄清一次，等待最多 15 分钟，还须满足原检索 scope 的剩余有效期。等待不占执行槽，同一 Thread 后续 Run 继续排队，可用原取消入口结束等待。恢复保留模型快照、资料版本和已用预算，仅重建剩余活动时限；不支持跨天等待、自动切换新资料或任意工具副作用重放。Checkpoint 最多 8 MiB，超限明确失败，不截断；恢复所需的原服务资源须就绪。
 
-`MINIMEW_HITL_ENABLED=false` 仅让之后新 Run 回到 v4，且 v5 要求 reasoning/repairs 均开启；已创建 Run 按自身快照执行。升级到 0016 并配套更新 API、Worker 和前端，重放新增的 hitl.required/hitl.accepted/run.resumed；旧客户端不能忽略未知事件推进游标。`.env.example` 已列开关，已有 `.env` 无需覆盖。
+`MINIMEW_HITL_ENABLED=false` 仅让之后新 Run 回到 v4，且 v5 要求 reasoning/repairs 均开启；已创建 Run 按自身快照执行。升级到 0017 并配套更新 API、Worker 和前端，重放新增的 hitl.required/hitl.accepted/run.resumed；旧客户端不能忽略未知事件推进游标。`.env.example` 已列开关，已有 `.env` 无需覆盖。
+
+升级到 0017 前先停止新请求，让旧版任务正常结束，并查询 `SELECT status, count(*) FROM runs GROUP BY status`；存在 running 时保持旧版处理并排查，不手改状态或猜测剩余预算。停止旧 API/Worker 后执行 `uv run --env-file .env --no-sync alembic upgrade head` 和 `uv run --env-file .env --no-sync alembic check`，再启动新版 API/Worker。0017 为前向迁移，不能混跑旧领取协议；已有 `.env` 不必覆盖，缺少的租约配置采用提交中的 20/5 秒默认值。
+
+已提交等待和未领取的 resume_pending 可以在新进程继续；一旦进入 running 后崩溃，外部请求结果及新增消耗不确定，只按租约终结，不能退回旧暂停 Checkpoint。后者会退还恢复后消耗的预算，还可能重复外部请求。当前 owner_token 隔离 PG 写入，不提供任意外部系统的严格一次执行。
 
 恢复接口均位于原 `/v1/threads/{thread_id}/runs/{run_id}`：POST `/resume-credential` 认证后轮换一次性凭据，POST `/resume` 接收 checkpoint_id/token/idempotency_key/answer。凭据只保存在当前页面内存，DB 只保存摘要；提交结果不确定时重试原输入与幂等键，202 表示已接收，完成仍等待持久终态。等待过期公开 HITL_EXPIRED，恢复状态非法公开 HITL_CHECKPOINT_INVALID。
 

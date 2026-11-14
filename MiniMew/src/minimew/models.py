@@ -92,6 +92,12 @@ class Run(Base):
         ),
         CheckConstraint("last_event_sequence >= 0", name="ck_runs_event_sequence"),
         CheckConstraint(
+            "(status NOT IN ('pending','waiting_input','resume_pending') OR "
+            "execution_deadline_at IS NULL) AND (execution_deadline_at IS NULL OR "
+            "lease_until <= execution_deadline_at + interval '10 seconds')",
+            name="ck_runs_active_deadline",
+        ),
+        CheckConstraint(
             "(status = 'pending' AND owner_token IS NULL AND lease_until IS NULL AND "
             "started_at IS NULL AND finished_at IS NULL AND error_code IS NULL "
             "AND cancel_requested_at IS NULL) OR "
@@ -137,6 +143,7 @@ class Run(Base):
     model_catalog_hash: Mapped[str | None] = mapped_column(String(64))
     owner_token: Mapped[UUID | None] = mapped_column(Uuid)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    execution_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

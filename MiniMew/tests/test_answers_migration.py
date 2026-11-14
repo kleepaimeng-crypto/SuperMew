@@ -6,11 +6,11 @@ import sys
 from pathlib import Path
 
 import pytest
+from historical_runs import reserve_legacy_run
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.conversation_schemas import CreateRunRequest
-from minimew.conversations import reserve_run
 from minimew.database import create_engine
 from minimew.model_control import set_current_model
 from minimew.models import Thread, User
@@ -41,7 +41,7 @@ def test_0012_history_upgrades_unchanged_without_fabricated_materials(model_conf
                 async with sessions() as session:
                     await set_current_model(session, "before-answer-model", model_configuration)
                 async with sessions() as session:
-                    await reserve_run(
+                    await reserve_legacy_run(
                         session,
                         owner.id,
                         thread.id,
@@ -53,7 +53,14 @@ def test_0012_history_upgrades_unchanged_without_fabricated_materials(model_conf
                 async def snapshot():
                     async with engine.connect() as conn:
                         return {
-                            table: (await conn.execute(text(f"SELECT to_jsonb(t) FROM {table} t")))
+                            table: (
+                                await conn.execute(
+                                    text(
+                                        f"SELECT (to_jsonb(t) - 'execution_deadline_at') "
+                                        f"FROM {table} t"
+                                    )
+                                )
+                            )
                             .scalars()
                             .all()
                             for table in tables
@@ -65,7 +72,7 @@ def test_0012_history_upgrades_unchanged_without_fabricated_materials(model_conf
                 assert await snapshot() == before
                 async with engine.connect() as conn:
                     assert (
-                        await conn.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
+                        await conn.scalar(text("SELECT version_num FROM alembic_version")) == "0017"
                     )
                     assert await conn.scalar(text("SELECT count(*) FROM answer_materials")) == 0
             finally:

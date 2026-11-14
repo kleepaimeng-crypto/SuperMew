@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -192,9 +193,12 @@ def test_0009_upgrade_preserves_all_states_snapshots_prefix_and_outbox(model_con
                         table: (await connection.execute(query)).all()
                         for table, query in queries.items()
                     }
-                migrate(database, "upgrade", "head")
-                migrate(database, "upgrade", "head")
-                migrate(database, "check")
+                # 原全状态保真场景包含 running；0017 明确要求先用旧协议排空。
+                # 先保留原 0009→0016 的所有字段断言，再验证拒绝升级不会改写历史。
+                migrate(database, "upgrade", "0016")
+                migrate(database, "upgrade", "0016")
+                with pytest.raises(subprocess.CalledProcessError):
+                    migrate(database, "upgrade", "head")
                 async with engine.connect() as connection:
                     for table, query in queries.items():
                         assert (await connection.execute(query)).all() == before[table]
@@ -207,6 +211,9 @@ def test_0009_upgrade_preserves_all_states_snapshots_prefix_and_outbox(model_con
                     assert (
                         await connection.scalar(text("SELECT version_num FROM alembic_version"))
                         == "0016"
+                    )
+                    assert "execution_deadline_at" not in await connection.run_sync(
+                        lambda c: [x["name"] for x in inspect(c).get_columns("runs")]
                     )
             finally:
                 await engine.dispose()

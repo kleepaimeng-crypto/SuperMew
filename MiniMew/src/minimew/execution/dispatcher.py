@@ -22,6 +22,7 @@ class RunDispatcher:
         scan_seconds=0.5,
         max_active=2,
         cancellation_poll=0.5,
+        heartbeat_seconds=5.0,
         registry=None,
         capabilities=frozenset(),
     ):
@@ -31,6 +32,7 @@ class RunDispatcher:
                 repository,
                 provider,
                 cancellation_poll=cancellation_poll,
+                heartbeat_seconds=heartbeat_seconds,
                 registry=registry,
                 capabilities=capabilities,
             )
@@ -105,11 +107,12 @@ async def execution_lifespan(sessions, settings):
     async with AsyncExitStack() as stack:
         knowledge = await stack.enter_async_context(knowledge_lifespan(sessions, settings))
         dispatcher = RunDispatcher(
-            ExecutionRepository(sessions),
+            ExecutionRepository(sessions, lease_seconds=settings.execution_lease_seconds),
             provider,
             scan_seconds=settings.execution_scan_seconds,
             max_active=settings.execution_max_active,
             cancellation_poll=settings.cancellation_poll_seconds,
+            heartbeat_seconds=settings.execution_heartbeat_seconds,
             registry=ToolRegistry((knowledge.spec(),)) if knowledge is not None else None,
             capabilities=frozenset({CAPABILITY}) if knowledge is not None else frozenset(),
         )

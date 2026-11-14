@@ -9,7 +9,7 @@ from uuid import uuid4
 import httpx
 import jwt
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, repository
 from sqlalchemy.exc import SQLAlchemyError
 from sse_helpers import frames, next_event, next_heartbeat, remaining_events, serve_http
 from test_execution_pg import create_run, facts
@@ -136,6 +136,7 @@ def test_http_terminal_backlog_drains_all_pages_then_returns_204(client, http_se
             httpx.AsyncClient(base_url=http_server.base_url, timeout=6) as browser,
         ):
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             for content in ["一", "二", "三", "四", "五"]:
                 assert await repo.append_delta(claim, content)
             if failed:
@@ -240,6 +241,8 @@ def test_http_two_overlapping_subscriptions_are_isolated_and_disconnect_is_local
                     )
                     first_events.append(await next_event(first_source))
                     second_events.append(await next_event(second_source))
+                    await activate_claim(repo, first_claim)
+                    await activate_claim(repo, second_claim)
                     assert await repo.append_delta(first_claim, "first-only")
                     first_events.append(await next_event(first_source))
                     # 第二个流在第一个 Run 新增 delta 后仍然只有自己的 heartbeat。
@@ -292,6 +295,7 @@ def test_http_verified_access_expiry_closes_subscription_and_keeps_run_running(c
             httpx.AsyncClient(base_url=http_server.base_url, timeout=6) as browser,
         ):
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             before = await facts(repo, run_id)
             assert before["status"] == "running"
             async with browser.stream(
@@ -363,6 +367,7 @@ def test_http_read_failure_after_headers_closes_only_subscriber(client, http_ser
             httpx.AsyncClient(base_url=http_server.base_url, timeout=5) as browser,
         ):
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             before = await facts(repo, run_id)
             async with browser.stream(
                 "GET", url(thread, run_id), params={"after": 2}, headers=headers

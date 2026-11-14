@@ -60,7 +60,7 @@ def test_missing_key_starts_recovery_without_claiming(monkeypatch):
 
         repo.recover_expired.side_effect = recover
         monkeypatch.setattr(
-            "minimew.execution.dispatcher.ExecutionRepository", lambda sessions: repo
+            "minimew.execution.dispatcher.ExecutionRepository", lambda sessions, **kwargs: repo
         )
         settings = Settings(deepseek_api_key=SecretStr(""))
         async with execution_lifespan(None, settings) as dispatcher:

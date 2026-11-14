@@ -7,16 +7,15 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from historical_runs import finish_legacy_answer, reserve_legacy_run
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from test_evidence import evidence, mixed
 
 from minimew.answers import read_answer
 from minimew.conversation_schemas import CreateRunRequest
-from minimew.conversations import reserve_run
 from minimew.database import create_engine
 from minimew.evidence import parse_answer
-from minimew.execution.repository import ExecutionRepository
 from minimew.model_control import set_current_model
 from minimew.models import Thread, User
 from minimew.settings import Settings
@@ -46,26 +45,28 @@ def test_0014_answer_materials_and_journal_survive_0015(model_configuration):
                 async with sessions() as session:
                     await set_current_model(session, "before-tool-model", model_configuration)
                 async with sessions() as session:
-                    created, _ = await reserve_run(
+                    created, _ = await reserve_legacy_run(
                         session,
                         user.id,
                         thread.id,
                         CreateRunRequest(idempotency_key="old", content="旧问题"),
                         credentials_available=True,
                     )
-                repo = ExecutionRepository(sessions)
                 rid = UUID(str(created.id))
-                claim = await repo.claim(user.id, thread.id, rid)
                 answer = parse_answer(mixed(), (evidence(),))
-                assert (
-                    await repo.finish(claim, content=answer.content, materials=answer.materials)
-                    == "succeeded"
-                )
+                await finish_legacy_answer(sessions, rid, answer)
 
                 async def snapshot():
                     async with engine.connect() as conn:
                         return {
-                            table: (await conn.execute(text(f"SELECT to_jsonb(t) FROM {table} t")))
+                            table: (
+                                await conn.execute(
+                                    text(
+                                        f"SELECT (to_jsonb(t) - 'execution_deadline_at') "
+                                        f"FROM {table} t"
+                                    )
+                                )
+                            )
                             .scalars()
                             .all()
                             for table in (

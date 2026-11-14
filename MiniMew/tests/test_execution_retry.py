@@ -20,6 +20,8 @@ class Repository:
         self.claim = AsyncMock(return_value=self.claimed)
         self.request = AsyncMock(return_value=data)
         self.remaining = AsyncMock(return_value=60)
+        self.activate = AsyncMock(side_effect=lambda claim, seconds: seconds)
+        self.heartbeat = AsyncMock(return_value=None)
         self.check_control = AsyncMock(return_value=None)
         self.append_delta = AsyncMock(return_value=True)
         self.record_tool = AsyncMock(return_value=True)
@@ -112,9 +114,19 @@ def test_storage_failure_is_not_model_retry(model_configuration):
 def test_retry_requires_original_lease(model_configuration):
     async def scenario():
         repo = Repository(request(model_configuration))
-        repo.remaining.side_effect = [60, 0]
+        lost = False
+
+        async def control(claim):
+            if lost:
+                from minimew.execution.repository import OwnershipLost
+
+                raise OwnershipLost
+
+        repo.check_control.side_effect = control
 
         async def answer(data):
+            nonlocal lost
+            lost = True
             raise ProviderFailure(retryable=True)
             yield
 

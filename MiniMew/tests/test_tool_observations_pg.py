@@ -6,7 +6,7 @@ from dataclasses import replace
 from uuid import uuid4
 
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, repository
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from test_agent import completed, executor
@@ -86,6 +86,7 @@ def test_tool_events_idempotent_transition_and_owner_checks(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, tid, rid)
+            await activate_claim(repo, claim)
             assert await repo.record_tool(claim, "tool.started", data)
             assert await repo.record_tool(claim, "tool.started", data)
             with pytest.raises(ValueError):
@@ -130,7 +131,8 @@ def test_database_rejects_end_without_start_and_rolls_back_cursor(client, kind, 
 
     async def scenario():
         async with repository() as repo:
-            await repo.claim(owner, tid, rid)
+            claim = await repo.claim(owner, tid, rid)
+            await activate_claim(repo, claim)
             with pytest.raises(IntegrityError):
                 async with repo.sessions() as session, session.begin():
                     row = await session.get(Run, rid)

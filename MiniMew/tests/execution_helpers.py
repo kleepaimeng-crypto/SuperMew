@@ -2,13 +2,32 @@
 
 from contextlib import aclosing, asynccontextmanager
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.database import create_engine
 from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted
 from minimew.execution.repository import ExecutionRepository
+from minimew.models import Run
 from minimew.settings import Settings
+
+
+async def activate_claim(repo, claim):
+    """直接驱动存储的测试也遵守正式的 claim → activate 协议。"""
+    request = await repo.request(claim)
+    await repo.activate(claim, request.snapshot.answer.configuration.timeout_seconds)
+
+
+async def lease_remaining(repo, claim):
+    """资格过期测试等 PG 租约；remaining() 现在专指活动预算。"""
+    async with repo.sessions() as session:
+        duration = await session.scalar(
+            select(Run.lease_until - func.clock_timestamp()).where(
+                Run.id == claim.run_id, Run.owner_token == claim.owner_token
+            )
+        )
+        return duration.total_seconds() if duration else 0
 
 
 class FakeProvider:

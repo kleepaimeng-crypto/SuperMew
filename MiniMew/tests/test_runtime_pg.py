@@ -8,7 +8,7 @@ from uuid import UUID
 
 import httpx
 import pytest
-from execution_helpers import FakeProvider, repository
+from execution_helpers import FakeProvider, activate_claim, lease_remaining, repository
 from notification_helpers import OwnedRedis
 from pydantic import SecretStr
 from sqlalchemy import select
@@ -208,6 +208,7 @@ def test_restart_keeps_valid_running_and_resumes_pending(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, running)
+            await activate_claim(repo, claim)
             provider = FakeProvider()
             # 模拟重启后新的本进程任务集合为空；仍由数据库资格决定。
             async with drive(RunDispatcher(repo, provider, scan_seconds=0.01)):
@@ -225,8 +226,9 @@ def test_missing_key_still_recovers_expired_prefix_without_model_call(client):
     async def scenario():
         async with repository(lease_seconds=0.2) as repo:
             claim = await repo.claim(owner, thread, run)
+            await activate_claim(repo, claim)
             assert await repo.append_delta(claim, "今天")
-            while await repo.remaining(claim) > 0:
+            while await lease_remaining(repo, claim) > 0:
                 await asyncio.sleep(0.01)
             async with drive(RunDispatcher(repo, None, scan_seconds=0.01)):
                 result = await completed(repo, run)
@@ -246,6 +248,7 @@ def test_blocked_thread_does_not_starve_other_candidates(client):
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, blocked, first)
+            await activate_claim(repo, claim)
             candidates = await repo.candidates(limit=100)
             assert other in [row[2] for row in candidates]
             assert all(row[1] != blocked for row in candidates)

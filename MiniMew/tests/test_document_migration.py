@@ -6,11 +6,11 @@ import sys
 from pathlib import Path
 
 import pytest
+from historical_runs import reserve_legacy_run
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.conversation_schemas import CreateRunRequest
-from minimew.conversations import reserve_run
 from minimew.database import create_engine
 from minimew.model_control import set_current_model
 from minimew.models import Thread, User
@@ -51,7 +51,7 @@ def test_0010_upgrade_preserves_conversation_and_has_no_schema_drift(model_confi
                         session.add(thread)
                         await session.flush()
                     await set_current_model(session, "fixture", model_configuration)
-                    await reserve_run(
+                    await reserve_legacy_run(
                         session,
                         user.id,
                         thread.id,
@@ -60,7 +60,11 @@ def test_0010_upgrade_preserves_conversation_and_has_no_schema_drift(model_confi
                 async with engine.connect() as connection:
                     before = {
                         table: (
-                            await connection.execute(text(f"SELECT to_jsonb(t) FROM {table} t"))
+                            await connection.execute(
+                                text(
+                                    f"SELECT (to_jsonb(t) - 'execution_deadline_at') FROM {table} t"
+                                )
+                            )
                         )
                         .scalars()
                         .all()
@@ -72,14 +76,21 @@ def test_0010_upgrade_preserves_conversation_and_has_no_schema_drift(model_confi
                 async with engine.connect() as connection:
                     for table in tables:
                         after = (
-                            (await connection.execute(text(f"SELECT to_jsonb(t) FROM {table} t")))
+                            (
+                                await connection.execute(
+                                    text(
+                                        f"SELECT (to_jsonb(t) - 'execution_deadline_at') "
+                                        f"FROM {table} t"
+                                    )
+                                )
+                            )
                             .scalars()
                             .all()
                         )
                         assert after == before[table], table
                     assert (
                         await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                        == "0016"
+                        == "0017"
                     )
                     actual = await connection.run_sync(lambda c: inspect(c).get_table_names())
                     assert {

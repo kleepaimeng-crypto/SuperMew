@@ -4,7 +4,7 @@ import asyncio
 import os
 
 import pytest
-from execution_helpers import repository
+from execution_helpers import activate_claim, repository
 from test_execution_pg import create_run
 from test_runs_pg import client as client
 
@@ -22,6 +22,7 @@ def test_read_bounds_page_to_same_run_snapshot_during_concurrent_append(client, 
     async def scenario():
         async with repository() as repo:
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             async with repo.sessions() as session:
                 original = session.scalar
 
@@ -53,6 +54,7 @@ def test_read_refreshes_retained_orm_identity_and_exposes_true_terminal_tail(cli
                 cached = await session.get(Run, run_id)
                 assert cached.status == "pending"
             claim = await repo.claim(owner, thread, run_id)
+            await activate_claim(repo, claim)
             assert await repo.finish(claim, content="answer")
             result = await events_after(session, owner, thread, run_id, limit=1)
             assert cached.status == "succeeded"
