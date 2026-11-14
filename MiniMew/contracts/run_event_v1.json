@@ -48,7 +48,10 @@
         "run.cancelled",
         "tool.started",
         "tool.completed",
-        "tool.failed"
+        "tool.failed",
+        "hitl.required",
+        "hitl.accepted",
+        "run.resumed"
       ]
     },
     "timestamp": {
@@ -67,7 +70,9 @@
         "running",
         "succeeded",
         "failed",
-        "cancelled"
+        "cancelled",
+        "waiting_input",
+        "resume_pending"
       ]
     },
     "MessageStatus": {
@@ -76,7 +81,8 @@
         "pending",
         "completed",
         "failed",
-        "cancelled"
+        "cancelled",
+        "waiting_input"
       ]
     },
     "ErrorCode": {
@@ -102,7 +108,9 @@
         "KNOWLEDGE_RETRIEVAL_FAILED",
         "KNOWLEDGE_SCOPE_INVALID",
         "KNOWLEDGE_RESULT_INVALID",
-        "KNOWLEDGE_QUERY_TOO_LONG"
+        "KNOWLEDGE_QUERY_TOO_LONG",
+        "HITL_EXPIRED",
+        "HITL_CHECKPOINT_INVALID"
       ]
     },
     "RunCreatedData": {
@@ -304,6 +312,43 @@
           "$ref": "#/$defs/ErrorCode"
         }
       }
+    },
+    "HitlRequiredData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpoint_id",
+        "prompt",
+        "expires_at"
+      ],
+      "properties": {
+        "checkpoint_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "HitlAcceptedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpoint_id"
+      ],
+      "properties": {
+        "checkpoint_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
     }
   },
   "oneOf": [
@@ -414,6 +459,36 @@
         },
         "data": {
           "$ref": "#/$defs/ToolFailedData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "hitl.required"
+        },
+        "data": {
+          "$ref": "#/$defs/HitlRequiredData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "hitl.accepted"
+        },
+        "data": {
+          "$ref": "#/$defs/HitlAcceptedData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "run.resumed"
+        },
+        "data": {
+          "$ref": "#/$defs/RunStartedData"
         }
       }
     }

@@ -11,6 +11,7 @@ def test_jwt_settings(monkeypatch):
     monkeypatch.setenv("MINIMEW_KNOWLEDGE_ENABLED", "false")
     monkeypatch.setenv("MINIMEW_REASONING_ENABLED", "false")  # legacy v2 regression fixtures
     monkeypatch.setenv("MINIMEW_REPAIRS_ENABLED", "false")  # v1-v3 behavior remains explicit
+    monkeypatch.setenv("MINIMEW_HITL_ENABLED", "false")  # HITL tests explicitly freeze v5
     # Existing document fixtures are frozen Dense v1; Hybrid tests opt into the new layout.
     monkeypatch.setenv("MINIMEW_DOCUMENT_INDEX_LAYOUT", "dense-cosine-v1")
 

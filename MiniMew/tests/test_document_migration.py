@@ -79,7 +79,7 @@ def test_0010_upgrade_preserves_conversation_and_has_no_schema_drift(model_confi
                         assert after == before[table], table
                     assert (
                         await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                        == "0014"
+                        == "0015"
                     )
                     actual = await connection.run_sync(lambda c: inspect(c).get_table_names())
                     assert {

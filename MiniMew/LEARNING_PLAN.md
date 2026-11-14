@@ -206,11 +206,13 @@
 
 ## 7. HITL 与故障恢复
 
+子项与架构方案见[第七章计划](chapters/07-HITL与故障恢复.md)：A 包 7.1–7.3 跑通原任务暂停/恢复与最小界面，B 包 7.4–7.6 补齐租约/故障竞态与结章。实际进度及编码授权只见[当前检查点](AGENT_HANDOFF.md#当前检查点)。
+
 ### 首次引入的技术与概念
 
 - LangGraph interrupt、Command(resume=...)、PostgreSQL checkpointer：图暂停、恢复与持久检查点。
 - lease、heartbeat、fencing token、一次性 HITL token、恢复幂等：在阶段 2 基础上补齐完整恢复与并发协议。
-- 同步图与异步 Provider 的桥接是线程/loop 边界设计；是否对齐参考项目的 ProviderLoopBridge，在理解运行模型后确认。
+- MiniMew 已是异步图与异步 Provider，方案沿用全异步链；参考项目的 ProviderLoopBridge 解决其同步图边界，本章不机械引入。持久适配器须与现有依赖核对，并协调业务等待事务。
 
 ### 建议小步
 
@@ -222,7 +224,7 @@
 
 验收：刷新/进程重启后可恢复受支持的暂停状态；重复 resume 不重复执行；旧 owner 不能追加；只有一个权威终态。
 
-理解题：用户补充信息为什么不能创建新 Run？旧 Worker 网络恢复后如何证明它无权继续写？Checkpoint 是否等于整台进程的内存快照？
+架构走读重点：图状态与 Run 生命周期各自由谁拥有；恢复如何接回原 ToolCall/assistant Message；owner 如何隔离；哪些持久边界支持跨进程续接。按最新教学约定讲模块关系，不将上述内容作为逐题学习门槛。
 
 参考：[Checkpoint Runner](../backend/rag/checkpoint_runner.py)、[Resume](../backend/runs/resume.py)、[Run Repository](../backend/runs/repository.py)。
 

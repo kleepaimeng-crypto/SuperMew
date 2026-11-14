@@ -86,7 +86,8 @@ class Run(Base):
         UniqueConstraint("thread_id", "idempotency_key", name="uq_runs_thread_key"),
         UniqueConstraint("id", "thread_id", name="uq_runs_id_thread"),
         CheckConstraint(
-            "status IN ('pending','running','succeeded','failed','cancelled')",
+            "status IN ('pending','running','waiting_input','resume_pending',"
+            "'succeeded','failed','cancelled')",
             name="ck_runs_status",
         ),
         CheckConstraint("last_event_sequence >= 0", name="ck_runs_event_sequence"),
@@ -96,13 +97,18 @@ class Run(Base):
             "AND cancel_requested_at IS NULL) OR "
             "(status = 'running' AND owner_token IS NOT NULL AND lease_until IS NOT NULL AND "
             "started_at IS NOT NULL AND finished_at IS NULL AND error_code IS NULL) OR "
-            "(status IN ('succeeded','failed') AND owner_token IS NOT NULL AND "
-            "lease_until IS NOT NULL AND started_at IS NOT NULL AND finished_at IS NOT NULL AND "
+            "(status IN ('waiting_input','resume_pending') AND owner_token IS NULL AND "
+            "lease_until IS NULL AND started_at IS NOT NULL AND finished_at IS NULL AND "
+            "error_code IS NULL AND cancel_requested_at IS NULL) OR "
+            "(status IN ('succeeded','failed') AND "
+            "((owner_token IS NOT NULL AND lease_until IS NOT NULL) OR "
+            "(owner_token IS NULL AND lease_until IS NULL)) AND "
+            "started_at IS NOT NULL AND finished_at IS NOT NULL AND "
             "((status = 'succeeded' AND error_code IS NULL AND cancel_requested_at IS NULL) OR "
             "(status = 'failed' AND error_code IS NOT NULL AND cancel_requested_at IS NULL))) OR "
             "(status='cancelled' AND cancel_requested_at IS NOT NULL AND finished_at IS NOT NULL "
             "AND error_code IS NULL AND ((owner_token IS NULL AND lease_until IS NULL "
-            "AND started_at IS NULL) OR (owner_token IS NOT NULL AND lease_until IS NOT NULL "
+            ") OR (owner_token IS NOT NULL AND lease_until IS NOT NULL "
             "AND started_at IS NOT NULL)))",
             name="ck_runs_execution_state",
         ),
@@ -154,7 +160,8 @@ class Message(Base):
         CheckConstraint("sequence > 0", name="ck_messages_sequence"),
         CheckConstraint(
             "(role = 'user' AND status = 'completed') OR "
-            "(role = 'assistant' AND status IN ('pending','completed','failed','cancelled'))",
+            "(role = 'assistant' AND status IN "
+            "('pending','waiting_input','completed','failed','cancelled'))",
             name="ck_messages_role_status",
         ),
     )
@@ -239,7 +246,7 @@ class RunEventRecord(Base):
         CheckConstraint(
             "type IN ('run.created','run.started','message.delta','message.completed',"
             "'run.completed','run.failed','run.cancel_requested','run.cancelled',"
-            "'tool.started','tool.completed','tool.failed')",
+            "'tool.started','tool.completed','tool.failed','hitl.required','hitl.accepted','run.resumed')",
             name="ck_run_events_type",
         ),
         Index(
@@ -269,6 +276,42 @@ class RunEventRecord(Base):
     type: Mapped[str] = mapped_column(String(32))
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     data: Mapped[dict] = mapped_column(JSONB)
+
+
+class RunCheckpoint(Base):
+    """一次澄清的检查点及恢复接收记录；不存明文凭据，不属于公开 Run 字段。"""
+
+    __tablename__ = "run_checkpoints"
+    __table_args__ = (
+        CheckConstraint(
+            "jsonb_typeof(document) = 'object' AND octet_length(document::text) <= 8388608",
+            name="ck_checkpoint_document",
+        ),
+        CheckConstraint("char_length(prompt) BETWEEN 1 AND 1024", name="ck_checkpoint_prompt"),
+        CheckConstraint(
+            "token_hash IS NULL OR token_hash ~ '^[0-9a-f]{64}$'", name="ck_checkpoint_token"
+        ),
+        CheckConstraint(
+            "(accepted_at IS NULL AND resume_key IS NULL "
+            "AND input_hash IS NULL AND answer IS NULL) OR "
+            "(accepted_at IS NOT NULL AND resume_key IS NOT NULL AND "
+            "input_hash ~ '^[0-9a-f]{64}$' AND char_length(answer) BETWEEN 1 AND 1024 "
+            "AND token_hash IS NULL)",
+            name="ck_checkpoint_receipt",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    run_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("runs.id", ondelete="RESTRICT"), unique=True
+    )
+    document: Mapped[dict] = mapped_column(JSONB)
+    prompt: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64))
+    resume_key: Mapped[str | None] = mapped_column(String(128))
+    input_hash: Mapped[str | None] = mapped_column(String(64))
+    answer: Mapped[str | None] = mapped_column(Text)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class EventOutbox(Base):

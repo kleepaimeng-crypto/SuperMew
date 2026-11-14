@@ -1,7 +1,14 @@
 // Generated from contracts/run_event_v1.json. Do not edit.
 export type RunStatus =
-  "pending" | "running" | "succeeded" | "failed" | "cancelled";
-export type MessageStatus = "pending" | "completed" | "failed" | "cancelled";
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "waiting_input"
+  | "resume_pending";
+export type MessageStatus =
+  "pending" | "completed" | "failed" | "cancelled" | "waiting_input";
 export type ErrorCode =
   | "PROVIDER_ERROR"
   | "PROVIDER_TIMEOUT"
@@ -23,7 +30,9 @@ export type ErrorCode =
   | "KNOWLEDGE_RETRIEVAL_FAILED"
   | "KNOWLEDGE_SCOPE_INVALID"
   | "KNOWLEDGE_RESULT_INVALID"
-  | "KNOWLEDGE_QUERY_TOO_LONG";
+  | "KNOWLEDGE_QUERY_TOO_LONG"
+  | "HITL_EXPIRED"
+  | "HITL_CHECKPOINT_INVALID";
 export interface RunCreatedData {
   status: "pending";
   assistant_message_id: string;
@@ -65,6 +74,14 @@ export interface ToolFailedData {
   tool_call_id: string;
   tool_name: string;
   error_code: ErrorCode;
+}
+export interface HitlRequiredData {
+  checkpoint_id: string;
+  prompt: string;
+  expires_at: string;
+}
+export interface HitlAcceptedData {
+  checkpoint_id: string;
 }
 export interface RunEventBase {
   schema_version: 1;
@@ -118,6 +135,18 @@ export interface ToolFailedEvent extends RunEventBase {
   type: "tool.failed";
   data: ToolFailedData;
 }
+export interface HitlRequiredEvent extends RunEventBase {
+  type: "hitl.required";
+  data: HitlRequiredData;
+}
+export interface HitlAcceptedEvent extends RunEventBase {
+  type: "hitl.accepted";
+  data: HitlAcceptedData;
+}
+export interface RunResumedEvent extends RunEventBase {
+  type: "run.resumed";
+  data: RunStartedData;
+}
 export type RunEvent =
   | RunCreatedEvent
   | RunStartedEvent
@@ -129,4 +158,7 @@ export type RunEvent =
   | RunCancelledEvent
   | ToolStartedEvent
   | ToolCompletedEvent
-  | ToolFailedEvent;
+  | ToolFailedEvent
+  | HitlRequiredEvent
+  | HitlAcceptedEvent
+  | RunResumedEvent;

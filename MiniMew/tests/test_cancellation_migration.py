@@ -206,7 +206,7 @@ def test_0009_upgrade_preserves_all_states_snapshots_prefix_and_outbox(model_con
                     )
                     assert (
                         await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                        == "0014"
+                        == "0015"
                     )
             finally:
                 await engine.dispose()

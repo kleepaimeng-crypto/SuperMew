@@ -26,6 +26,8 @@ const reasons: Record<ErrorCode, string> = {
   KNOWLEDGE_RESULT_INVALID:
     "检索资料的来源或结构未通过校验，无法安全用于回答。",
   KNOWLEDGE_QUERY_TOO_LONG: "检索问题超过当前编码模型的输入长度限制。",
+  HITL_EXPIRED: "补充信息的等待期限已结束，原任务无法继续。",
+  HITL_CHECKPOINT_INVALID: "原任务的恢复状态未通过校验，无法安全继续。",
 };
 
 export function errorPresentation(code: unknown) {

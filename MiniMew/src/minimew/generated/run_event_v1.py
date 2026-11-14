@@ -9,9 +9,11 @@ class ContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True, hide_input_in_errors=True)
 
 
-RunStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
+RunStatus = Literal[
+    "pending", "running", "succeeded", "failed", "cancelled", "waiting_input", "resume_pending"
+]
 
-MessageStatus = Literal["pending", "completed", "failed", "cancelled"]
+MessageStatus = Literal["pending", "completed", "failed", "cancelled", "waiting_input"]
 
 ErrorCode = Literal[
     "PROVIDER_ERROR",
@@ -35,6 +37,8 @@ ErrorCode = Literal[
     "KNOWLEDGE_SCOPE_INVALID",
     "KNOWLEDGE_RESULT_INVALID",
     "KNOWLEDGE_QUERY_TOO_LONG",
+    "HITL_EXPIRED",
+    "HITL_CHECKPOINT_INVALID",
 ]
 
 
@@ -89,6 +93,16 @@ class ToolFailedData(ContractModel):
     tool_call_id: str = Field(min_length=1, max_length=128)
     tool_name: str = Field(min_length=1, max_length=64, pattern="^[a-zA-Z0-9_-]{1,64}$")
     error_code: ErrorCode
+
+
+class HitlRequiredData(ContractModel):
+    checkpoint_id: UUID
+    prompt: str = Field(min_length=1, max_length=1024)
+    expires_at: AwareDatetime
+
+
+class HitlAcceptedData(ContractModel):
+    checkpoint_id: UUID
 
 
 class RunEventBase(ContractModel):
@@ -162,6 +176,21 @@ class ToolFailedEvent(RunEventBase):
     data: ToolFailedData
 
 
+class HitlRequiredEvent(RunEventBase):
+    type: Literal["hitl.required"]
+    data: HitlRequiredData
+
+
+class HitlAcceptedEvent(RunEventBase):
+    type: Literal["hitl.accepted"]
+    data: HitlAcceptedData
+
+
+class RunResumedEvent(RunEventBase):
+    type: Literal["run.resumed"]
+    data: RunStartedData
+
+
 RunEvent = Annotated[
     RunCreatedEvent
     | RunStartedEvent
@@ -173,7 +202,10 @@ RunEvent = Annotated[
     | RunCancelledEvent
     | ToolStartedEvent
     | ToolCompletedEvent
-    | ToolFailedEvent,
+    | ToolFailedEvent
+    | HitlRequiredEvent
+    | HitlAcceptedEvent
+    | RunResumedEvent,
     Field(discriminator="type"),
 ]
 EVENT_ADAPTER = TypeAdapter(RunEvent)
