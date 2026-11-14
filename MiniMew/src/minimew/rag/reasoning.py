@@ -23,6 +23,17 @@ class ReasoningPolicy(BaseModel):
     rewrite_tokens: Literal[256] = 256
 
 
+class RepairSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MINIMEW_REPAIRS_")
+    enabled: bool = True
+
+
+class RepairPolicy(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+    answer_repair_limit: Literal[1] = 1
+    aggregation: Literal["representatives-v1"] = "representatives-v1"
+
+
 class Grade(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
     status: Literal["sufficient", "insufficient", "ambiguous", "conflicting"]

@@ -215,3 +215,9 @@ Milvus命中payload包含chunk原文、编码文本、来源身份和节信息�
 核对日期：2026-11-14。[归一化边界](src/minimew/execution/tools.py)保留私有[Diagnostic](src/minimew/execution/diagnostics.py)，[执行器](src/minimew/execution/service.py)负责记录可关联日志并沿原事务处理Run；公开协议仍只给稳定错误码，前端[映射](frontend/src/runErrors.ts)按实时Event/持久Run显示原因。服务端诊断和公开错误展示承担不同职责，Diagnostic不进入Journal或浏览器。
 
 日志中的文件/函数/行号可定位问题，异常文本、源码行、局部变量和模型正文被排除。失败处理日志不代替终结事务：存储不可用时可能无法保存终态，日志会标记写入失败；取消仍由原事务裁定。前端也不从断流、资料读取失败或空正文推出业务失败，因此刷新与实时界面能遵循同一事实来源。
+
+## 16. v4：格式纠正与材料代表保留
+
+核对日期：2026-11-14。新Run冻结[RepairPolicy](src/minimew/rag/reasoning.py)，执行器在已知格式错误且有剩余额度时最多一次私有纠正。纠正复用原Provider/Model Snapshot/总期限，不是新Run或HITL；禁用工具、私有收集分片，正文字符保护后再用原parse_answer校验，最后原终结事务提交。
+
+[选材器](src/minimew/rag/selection.py)只负责原问题与各子问题的代表来源/组和有限余量，[Workflow](src/minimew/rag/workflow.py)在KnowledgeService.prepare之后再核对代表来源是否幸存；缺口不能由模型报“足够”抹去。原v3 C观察保留，新v4的同案例覆盖3/3；结构性保留和字符检查都不是语义正确证明。旧v1–v3不回写，策略开关只影响之后创建的Run。完整结果与代码导航见[修复记录](chapters/06-完整RAG策略.md#回答格式与聚合覆盖修复实施2026-11-14)。

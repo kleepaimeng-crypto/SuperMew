@@ -44,6 +44,21 @@ def test_saved_observation_matches_the_current_case_and_source_fingerprint():
     assert saved["reasoning_mode"] == "controlled_fixture" and not saved["model_quality_evaluated"]
 
 
+def test_repair_observation_preserves_original_failure_evidence_and_case_expectations():
+    root = Path(__file__).resolve().parents[1] / "examples/rag"
+    old = json.loads((root / "chapter06-observation.json").read_text(encoding="utf-8"))
+    new = json.loads((root / "chapter06-repair-observation.json").read_text(encoding="utf-8"))
+    assert old["suite_fingerprint"] == new["suite_fingerprint"] == load_cases()[2]
+    assert old["source_sha256"] == new["source_sha256"]
+    before = next(r for r in old["runs"] if r["case"] == "cross")
+    after = next(r for r in new["runs"] if r["case"] == "cross")
+    assert before["coverage"]["coverage"] == 2 / 3
+    assert after["coverage"]["coverage"] == 1 and after["coverage"]["missing"] == []
+    assert before["model_attempts"] == after["model_attempts"] == 7
+    assert new["run_policies"]["cross"]["schema_version"] == 4
+    assert not new["model_quality_evaluated"]
+
+
 @pytest.mark.parametrize("mode", ["duplicate", "empty", "query", "rewrite"])
 def test_invalid_expectations_and_controlled_route_inputs_are_rejected(mode):
     suite, _, _ = load_cases()
@@ -217,6 +232,7 @@ def test_portable_export_keeps_gaps_and_excludes_private_or_device_fields():
             {
                 "case": "c",
                 "sufficient_with_missing_anchors": True,
+                "frozen_policy": {},
                 "secret": "do-not-export",
                 "controlled_end_to_end_seconds": 999,
             }

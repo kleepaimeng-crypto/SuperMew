@@ -191,6 +191,8 @@ async def exercise_runs(client, headers, owner, sessions, runtime, suite, source
             entry["frozen_policy"] = {
                 k: run.model_snapshot_json[k] for k in ("schema_version", "rag", "reasoning")
             }
+            if run.model_snapshot_json.get("repairs") is not None:
+                entry["frozen_policy"]["repairs"] = run.model_snapshot_json["repairs"]
         if expected_error:
             assert context.evidence.items == ()
             assert model.tool_result is None
@@ -231,7 +233,7 @@ async def exercise_runs(client, headers, owner, sessions, runtime, suite, source
     return observations
 
 
-async def main(samples, write_observation=False):
+async def main(samples, write_observation=False, write_repair_observation=False):
     suite, source, suite_hash = load_cases()
     report = {
         "mode": "chapter06_published_comparison_controlled_reasoning",
@@ -365,11 +367,28 @@ async def main(samples, write_observation=False):
         destination.write_text(
             json.dumps(report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
         )
-    if write_observation:
-        (ROOT / "examples/rag/chapter06-observation.json").write_text(
-            json.dumps(portable_observation(report), ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+    for enabled, name in (
+        (write_observation, "chapter06-observation.json"),
+        (write_repair_observation, "chapter06-repair-observation.json"),
+    ):
+        if enabled:
+            (ROOT / "examples/rag" / name).write_text(
+                json.dumps(
+                    portable_observation(
+                        report,
+                        "scripts/check_rag_suite.py "
+                        + (
+                            "--write-repair-observation"
+                            if name == "chapter06-repair-observation.json"
+                            else "--write-observation"
+                        ),
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
     print(
         json.dumps(
             {
@@ -391,5 +410,10 @@ if __name__ == "__main__":
         action="store_true",
         help="显式更新不含设备时延/身份的共同观察资产（不是质量baseline）",
     )
+    parser.add_argument(
+        "--write-repair-observation",
+        action="store_true",
+        help="将修复后观察写入独立资产，保留原C包观察",
+    )
     args = parser.parse_args()
-    asyncio.run(main(args.samples, args.write_observation))
+    asyncio.run(main(args.samples, args.write_observation, args.write_repair_observation))

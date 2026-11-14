@@ -1,5 +1,6 @@
 """临时PG + 真实轻量CPU/本机Milvus + 受控回答Provider；不产生收费调用。"""
 
+import argparse
 import asyncio
 import json
 import os
@@ -38,12 +39,25 @@ REPORT = ROOT / ".artifacts/knowledge-check.json"
 class ControlledAnswer:
     """只替换模型决策；知识Tool、编码、检索、Run/Journal均走正式实现。"""
 
-    def __init__(self):
+    def __init__(self, malformed_first=False):
         self.requests = 0
         self.tool_result = None
         self.internal_requests = 0
+        self.malformed_first = malformed_first
+        self.repair_requests = 0
 
     async def stream(self, request):
+        if request.purpose == "repair":
+            assert request.private_output and not request.tools and self.tool_result
+            self.repair_requests += 1
+            match = self.tool_result["matches"][0]
+            intro = "根据资料，以下为说明。" if self.malformed_first else ""
+            yield ProviderCompleted(
+                ModelTurn(
+                    "text", f"## 文档依据\n{intro}检索原文：{match['text']}[{match['citation_id']}]"
+                )
+            )
+            return
         if request.purpose == "grade":
             self.internal_requests += 1
             data = json.loads(request.messages[-1].content)
@@ -80,8 +94,11 @@ class ControlledAnswer:
             self.tool_result = json.loads(request.messages[-1].content)
             assert self.tool_result["status"] == "ok"
             match = self.tool_result["matches"][0]
+            intro = "根据资料，以下为说明。\n\n" if self.malformed_first else ""
             yield ProviderCompleted(
-                ModelTurn("text", f"## 文档依据\n检索原文：{match['text']}[{match['citation_id']}]")
+                ModelTurn(
+                    "text", f"## 文档依据\n{intro}检索原文：{match['text']}[{match['citation_id']}]"
+                )
             )
 
 
@@ -104,7 +121,7 @@ def build_once():
         raise AssertionError(f"Owned indexing Worker failed: exit {result.returncode}")
 
 
-async def main():
+async def main(malformed_first=False):
     report = {"mode": "real_cpu_milvus_controlled_answer", "paid_model_calls": 0, "passed": False}
     names = (
         "MINIMEW_DB_NAME",
@@ -119,7 +136,7 @@ async def main():
         answer_module.DeepSeekProvider,
         app_module.notification_lifespan,
     )
-    controlled = ControlledAnswer()
+    controlled = ControlledAnswer(malformed_first)
     answer_module.DeepSeekProvider = lambda key: controlled
     app_module.notification_lifespan = offline_notifications
     try:
@@ -229,11 +246,15 @@ async def main():
                         assert materials["citations"][0]["citation_id"] == "E1"
                         assert answer.json()["message_id"] == events[-2]["data"]["message_id"]
                         assert controlled.requests == 2
+                        assert controlled.repair_requests == int(malformed_first)
                         report.update(
                             passed=True,
                             model_requests=controlled.requests,
                             internal_model_requests=controlled.internal_requests,
-                            total_model_requests=controlled.requests + controlled.internal_requests,
+                            repair_model_requests=controlled.repair_requests,
+                            total_model_requests=controlled.requests
+                            + controlled.internal_requests
+                            + controlled.repair_requests,
                             version_id=version,
                             top_chunk_id=result["matches"][0]["chunk_id"],
                             top_score=result["matches"][0]["score"],
@@ -281,4 +302,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--malformed-first-answer", action="store_true")
+    asyncio.run(main(parser.parse_args().malformed_first_answer))

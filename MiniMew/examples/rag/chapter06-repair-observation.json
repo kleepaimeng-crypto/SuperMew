@@ -1,0 +1,2392 @@
+{
+  "generated_by": "scripts/check_rag_suite.py --write-repair-observation",
+  "suite_fingerprint": "48a768f6148590086560d8f9ab4665abcf5d5f53a1b78accf60be49f9dcdbda4",
+  "source_sha256": "f2b82eb085c9383923b7b5eb1a3bd5b13516e3dc8b392fc29686541cb1095e14",
+  "embedding": {
+    "id": "bge-small-zh-v1.5",
+    "model_id": "BAAI/bge-small-zh-v1.5",
+    "revision": "7999e1d3359715c523056ef9478215996d62a620",
+    "dimension": 512,
+    "normalize": true,
+    "pooling": "cls",
+    "query_prefix": "为这个句子生成表示以用于检索相关文章：",
+    "document_prefix": "",
+    "max_input_tokens": 512
+  },
+  "reranker": {
+    "model": "BAAI/bge-reranker-base",
+    "revision": "2cfc18c9415c912f9d8155881c133215df768a70"
+  },
+  "policies": {
+    "dense": {
+      "strategy": "dense",
+      "recall_k": 10,
+      "rrf_k": 60,
+      "fused_k": 12,
+      "candidate_limit": 18,
+      "group_limit": 6,
+      "final_k": 6,
+      "merge": false,
+      "rerank": false,
+      "reranker": "BAAI/bge-reranker-base",
+      "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+      "window": 512,
+      "batch_size": 1,
+      "dtype": "float32"
+    },
+    "hybrid": {
+      "strategy": "hybrid",
+      "recall_k": 10,
+      "rrf_k": 60,
+      "fused_k": 12,
+      "candidate_limit": 18,
+      "group_limit": 6,
+      "final_k": 6,
+      "merge": false,
+      "rerank": false,
+      "reranker": "BAAI/bge-reranker-base",
+      "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+      "window": 512,
+      "batch_size": 1,
+      "dtype": "float32"
+    },
+    "completion": {
+      "strategy": "hybrid",
+      "recall_k": 10,
+      "rrf_k": 60,
+      "fused_k": 12,
+      "candidate_limit": 18,
+      "group_limit": 6,
+      "final_k": 6,
+      "merge": true,
+      "rerank": false,
+      "reranker": "BAAI/bge-reranker-base",
+      "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+      "window": 512,
+      "batch_size": 1,
+      "dtype": "float32"
+    },
+    "reranked": {
+      "strategy": "hybrid",
+      "recall_k": 10,
+      "rrf_k": 60,
+      "fused_k": 12,
+      "candidate_limit": 18,
+      "group_limit": 6,
+      "final_k": 6,
+      "merge": true,
+      "rerank": true,
+      "reranker": "BAAI/bge-reranker-base",
+      "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+      "window": 512,
+      "batch_size": 1,
+      "dtype": "float32"
+    }
+  },
+  "retrieval_mode": "real_local_cpu_milvus",
+  "reasoning_mode": "controlled_fixture",
+  "scope_note": "Owned scope; BM25 statistics also depend on the shared collection corpus",
+  "model_quality_evaluated": false,
+  "retrieval": [
+    {
+      "case": "identifier",
+      "route": "dense",
+      "coverage": {
+        "covered": [
+          "设备型号 AB-123 的故障代码 X17 表示电源模块异常"
+        ],
+        "missing": [
+          "条款编号 E1024"
+        ],
+        "coverage": 0.5,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": false,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 949,
+          "end": 1018,
+          "content_sha256": "ea3f96fdc8de71ccdacf3f52d8b8d5b3606d7f5d5843236818cf99684233af29"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        }
+      ]
+    },
+    {
+      "case": "identifier",
+      "route": "hybrid",
+      "coverage": {
+        "covered": [
+          "条款编号 E1024",
+          "设备型号 AB-123 的故障代码 X17 表示电源模块异常"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 949,
+          "end": 1018,
+          "content_sha256": "ea3f96fdc8de71ccdacf3f52d8b8d5b3606d7f5d5843236818cf99684233af29"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        }
+      ]
+    },
+    {
+      "case": "identifier",
+      "route": "completion",
+      "coverage": {
+        "covered": [
+          "条款编号 E1024",
+          "设备型号 AB-123 的故障代码 X17 表示电源模块异常"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 949,
+          "end": 1018,
+          "content_sha256": "ea3f96fdc8de71ccdacf3f52d8b8d5b3606d7f5d5843236818cf99684233af29"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        }
+      ]
+    },
+    {
+      "case": "identifier",
+      "route": "reranked",
+      "coverage": {
+        "covered": [
+          "条款编号 E1024",
+          "设备型号 AB-123 的故障代码 X17 表示电源模块异常"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 949,
+          "end": 1018,
+          "content_sha256": "ea3f96fdc8de71ccdacf3f52d8b8d5b3606d7f5d5843236818cf99684233af29"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        }
+      ]
+    },
+    {
+      "case": "meal",
+      "route": "dense",
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "不能将额度理解为自动发放的补贴"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": false,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        }
+      ]
+    },
+    {
+      "case": "meal",
+      "route": "hybrid",
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "不能将额度理解为自动发放的补贴"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        },
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        }
+      ]
+    },
+    {
+      "case": "meal",
+      "route": "completion",
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "不能将额度理解为自动发放的补贴"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        },
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        }
+      ]
+    },
+    {
+      "case": "meal",
+      "route": "reranked",
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "不能将额度理解为自动发放的补贴"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        }
+      ]
+    },
+    {
+      "case": "exception",
+      "route": "dense",
+      "coverage": {
+        "covered": [
+          "公司或接待方已提供的餐食不得重复报销",
+          "不能据此推出该自然日的所有其他实际餐饮一律不得申报"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": false,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        }
+      ]
+    },
+    {
+      "case": "exception",
+      "route": "hybrid",
+      "coverage": {
+        "covered": [
+          "公司或接待方已提供的餐食不得重复报销",
+          "不能据此推出该自然日的所有其他实际餐饮一律不得申报"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        }
+      ]
+    },
+    {
+      "case": "exception",
+      "route": "completion",
+      "coverage": {
+        "covered": [
+          "公司或接待方已提供的餐食不得重复报销",
+          "不能据此推出该自然日的所有其他实际餐饮一律不得申报"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        }
+      ]
+    },
+    {
+      "case": "exception",
+      "route": "reranked",
+      "coverage": {
+        "covered": [
+          "公司或接待方已提供的餐食不得重复报销",
+          "不能据此推出该自然日的所有其他实际餐饮一律不得申报"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        }
+      ]
+    },
+    {
+      "case": "cross",
+      "route": "dense",
+      "coverage": {
+        "covered": [
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [
+          "每人每天餐费报销上限150元"
+        ],
+        "coverage": 0.6666666666666666,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": false,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        }
+      ]
+    },
+    {
+      "case": "cross",
+      "route": "hybrid",
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        }
+      ]
+    },
+    {
+      "case": "cross",
+      "route": "completion",
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        }
+      ]
+    },
+    {
+      "case": "cross",
+      "route": "reranked",
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 877,
+          "end": 938,
+          "content_sha256": "7bb0354ecdbabf311649c4fe71ad06a1d51627727bbc8a482d39368ca758d896"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        }
+      ]
+    },
+    {
+      "case": "unknown",
+      "route": "dense",
+      "coverage": {
+        "covered": [],
+        "missing": [],
+        "coverage": null,
+        "unsupported_claims": [
+          "火星基地每日补贴200元"
+        ],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": false,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        }
+      ]
+    },
+    {
+      "case": "unknown",
+      "route": "hybrid",
+      "coverage": {
+        "covered": [],
+        "missing": [],
+        "coverage": null,
+        "unsupported_claims": [
+          "火星基地每日补贴200元"
+        ],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        }
+      ]
+    },
+    {
+      "case": "unknown",
+      "route": "completion",
+      "coverage": {
+        "covered": [],
+        "missing": [],
+        "coverage": null,
+        "unsupported_claims": [
+          "火星基地每日补贴200元"
+        ],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        }
+      ]
+    },
+    {
+      "case": "unknown",
+      "route": "reranked",
+      "coverage": {
+        "covered": [],
+        "missing": [],
+        "coverage": null,
+        "unsupported_claims": [
+          "火星基地每日补贴200元"
+        ],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        }
+      ]
+    },
+    {
+      "case": "ambiguous",
+      "route": "dense",
+      "coverage": {
+        "covered": [
+          "本资料没有规定海外培训餐费或海外培训每日补贴标准"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": false,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        }
+      ]
+    },
+    {
+      "case": "ambiguous",
+      "route": "hybrid",
+      "coverage": {
+        "covered": [
+          "本资料没有规定海外培训餐费或海外培训每日补贴标准"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        }
+      ]
+    },
+    {
+      "case": "ambiguous",
+      "route": "completion",
+      "coverage": {
+        "covered": [
+          "本资料没有规定海外培训餐费或海外培训每日补贴标准"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 15,
+          "end": 74,
+          "content_sha256": "83e86fd152a6eb70b13ac502a32b16151ef1a55cb0ea21a7bbc1dd8d9dcf4cca"
+        }
+      ]
+    },
+    {
+      "case": "ambiguous",
+      "route": "reranked",
+      "coverage": {
+        "covered": [
+          "本资料没有规定海外培训餐费或海外培训每日补贴标准"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        }
+      ]
+    },
+    {
+      "case": "conflict",
+      "route": "dense",
+      "coverage": {
+        "covered": [
+          "项目甲通知一规定交通报销上限80元",
+          "项目甲通知二规定交通报销上限100元",
+          "本资料无法唯一确定项目甲交通报销上限"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": false,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        }
+      ]
+    },
+    {
+      "case": "conflict",
+      "route": "hybrid",
+      "coverage": {
+        "covered": [
+          "项目甲通知一规定交通报销上限80元",
+          "项目甲通知二规定交通报销上限100元",
+          "本资料无法唯一确定项目甲交通报销上限"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        }
+      ]
+    },
+    {
+      "case": "conflict",
+      "route": "completion",
+      "coverage": {
+        "covered": [
+          "项目甲通知一规定交通报销上限80元",
+          "项目甲通知二规定交通报销上限100元",
+          "本资料无法唯一确定项目甲交通报销上限"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        }
+      ]
+    },
+    {
+      "case": "conflict",
+      "route": "reranked",
+      "coverage": {
+        "covered": [
+          "项目甲通知一规定交通报销上限80元",
+          "项目甲通知二规定交通报销上限100元",
+          "本资料无法唯一确定项目甲交通报销上限"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "selection_stable": null,
+      "fallback": null,
+      "materials": [
+        {
+          "start": 1094,
+          "end": 1187,
+          "content_sha256": "3f7df1084a67d0ef13995548b8a324422f6e21000c9026cd5de5e3a91109ab49"
+        },
+        {
+          "start": 90,
+          "end": 397,
+          "content_sha256": "49906c8c2a38cea30b942ccd061ae92f089c6f2561de079d91255617421ba931"
+        },
+        {
+          "start": 349,
+          "end": 710,
+          "content_sha256": "0e7ecf3e911b66c8c2a06813dbcdd7d3abcabea87cfbcf8d38ffd35f233d2981"
+        },
+        {
+          "start": 662,
+          "end": 796,
+          "content_sha256": "f1d001aee017ec39105273fb2564c2e85e8e1b25a4d73cfc74e34b926abc39cd"
+        },
+        {
+          "start": 807,
+          "end": 866,
+          "content_sha256": "cd160407567557792b7a01a3b35de1e50589161d23f826d0c844074b4018a0a0"
+        },
+        {
+          "start": 1031,
+          "end": 1077,
+          "content_sha256": "4a9cd4ed86e2d76746b57b35a13018f7e4f409380c8bacc77dea3c3a0bb23c08"
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "case": "identifier",
+      "mode": "direct",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 3,
+      "roles": {
+        "answer": 2,
+        "grade": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 1,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "sufficient",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "条款编号 E1024",
+          "设备型号 AB-123 的故障代码 X17 表示电源模块异常"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "条款编号 E1024",
+          "设备型号 AB-123 的故障代码 X17 表示电源模块异常"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "条款编号 E1024",
+          "设备型号 AB-123 的故障代码 X17 表示电源模块异常"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "meal",
+      "mode": "direct",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 3,
+      "roles": {
+        "answer": 2,
+        "grade": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 1,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "sufficient",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "不能将额度理解为自动发放的补贴"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "不能将额度理解为自动发放的补贴"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "不能将额度理解为自动发放的补贴"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "exception",
+      "mode": "rewrite",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 5,
+      "roles": {
+        "answer": 2,
+        "grade": 2,
+        "rewrite": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 2,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "sufficient",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "公司或接待方已提供的餐食不得重复报销",
+          "不能据此推出该自然日的所有其他实际餐饮一律不得申报"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "公司或接待方已提供的餐食不得重复报销",
+          "不能据此推出该自然日的所有其他实际餐饮一律不得申报"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "公司或接待方已提供的餐食不得重复报销",
+          "不能据此推出该自然日的所有其他实际餐饮一律不得申报"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "cross",
+      "mode": "plan",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 7,
+      "roles": {
+        "answer": 2,
+        "grade": 4,
+        "plan": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 3,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "sufficient",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "unknown",
+      "mode": "insufficient",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 5,
+      "roles": {
+        "answer": 2,
+        "grade": 2,
+        "rewrite": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 2,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "insufficient",
+        "supported": [],
+        "missing": [
+          "预置的资料缺口或适用范围待澄清"
+        ],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [],
+        "missing": [],
+        "coverage": null,
+        "unsupported_claims": [
+          "火星基地每日补贴200元"
+        ],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [],
+        "missing": [],
+        "coverage": null,
+        "unsupported_claims": [
+          "火星基地每日补贴200元"
+        ],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [],
+        "missing": [],
+        "coverage": null,
+        "unsupported_claims": [
+          "火星基地每日补贴200元"
+        ],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "ambiguous",
+      "mode": "ambiguous",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 3,
+      "roles": {
+        "answer": 2,
+        "grade": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 1,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "ambiguous",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [
+          "预置的资料缺口或适用范围待澄清"
+        ],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "本资料没有规定海外培训餐费或海外培训每日补贴标准"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "本资料没有规定海外培训餐费或海外培训每日补贴标准"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "本资料没有规定海外培训餐费或海外培训每日补贴标准"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "conflict",
+      "mode": "conflicting",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 3,
+      "roles": {
+        "answer": 2,
+        "grade": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 1,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "conflicting",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [
+          "预置的资料缺口或适用范围待澄清"
+        ],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "项目甲通知一规定交通报销上限80元",
+          "项目甲通知二规定交通报销上限100元",
+          "本资料无法唯一确定项目甲交通报销上限"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "项目甲通知一规定交通报销上限80元",
+          "项目甲通知二规定交通报销上限100元",
+          "本资料无法唯一确定项目甲交通报销上限"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "项目甲通知一规定交通报销上限80元",
+          "项目甲通知二规定交通报销上限100元",
+          "本资料无法唯一确定项目甲交通报销上限"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "partial",
+      "mode": "partial",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 9,
+      "roles": {
+        "answer": 2,
+        "grade": 5,
+        "plan": 1,
+        "rewrite": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 4,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "insufficient",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [
+          "子问题2处理失败：PROVIDER_ERROR"
+        ],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "每人每天餐费报销上限150元",
+          "每人每晚上限350元",
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "failure",
+      "mode": "failure",
+      "terminal": "failed",
+      "error": "TOOL_EXECUTION_FAILED",
+      "model_attempts": 5,
+      "roles": {
+        "answer": 1,
+        "grade": 3,
+        "plan": 1
+      },
+      "retry_failures": 0,
+      "retrieval_queries": 3,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.failed",
+        "message.completed",
+        "run.failed"
+      ]
+    },
+    {
+      "case": "retry",
+      "mode": "retry",
+      "terminal": "succeeded",
+      "error": null,
+      "model_attempts": 4,
+      "roles": {
+        "answer": 2,
+        "grade": 2
+      },
+      "retry_failures": 1,
+      "retrieval_queries": 1,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.completed",
+        "message.completed",
+        "run.completed"
+      ],
+      "assessment": {
+        "status": "sufficient",
+        "supported": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "missing": [],
+        "decompose": false
+      },
+      "coverage": {
+        "covered": [
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "limited": true,
+      "persisted_citations": 6,
+      "last_draft_coverage": {
+        "covered": [
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "initial_draft_coverage": {
+        "covered": [
+          "返程后5个工作日内提交"
+        ],
+        "missing": [],
+        "coverage": 1.0,
+        "unsupported_claims": [],
+        "note": "Literal source-span coverage only; not answer correctness or Grader accuracy"
+      },
+      "sufficient_with_missing_anchors": false
+    },
+    {
+      "case": "budget",
+      "mode": "budget",
+      "terminal": "failed",
+      "error": "AGENT_BUDGET_EXCEEDED",
+      "model_attempts": 11,
+      "roles": {
+        "answer": 1,
+        "grade": 9,
+        "plan": 1
+      },
+      "retry_failures": 5,
+      "retrieval_queries": 5,
+      "tool_calls": 1,
+      "journal_types": [
+        "run.created",
+        "run.started",
+        "tool.started",
+        "tool.failed",
+        "message.completed",
+        "run.failed"
+      ]
+    }
+  ],
+  "run_policies": {
+    "identifier": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "meal": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "exception": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "cross": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "unknown": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "ambiguous": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "conflict": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "partial": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "failure": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "retry": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    },
+    "budget": {
+      "schema_version": 4,
+      "rag": {
+        "dtype": "float32",
+        "merge": true,
+        "rrf_k": 60,
+        "rerank": true,
+        "window": 512,
+        "final_k": 6,
+        "fused_k": 12,
+        "recall_k": 10,
+        "reranker": "BAAI/bge-reranker-base",
+        "revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "strategy": "hybrid",
+        "batch_size": 1,
+        "group_limit": 6,
+        "candidate_limit": 18
+      },
+      "reasoning": {
+        "tool_limit": 6,
+        "concurrency": 2,
+        "model_limit": 12,
+        "outer_limit": 4,
+        "plan_tokens": 512,
+        "grade_tokens": 1024,
+        "rewrite_tokens": 256,
+        "retrieval_limit": 8
+      },
+      "repairs": {
+        "aggregation": "representatives-v1",
+        "answer_repair_limit": 1
+      }
+    }
+  }
+}

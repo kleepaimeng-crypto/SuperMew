@@ -23,9 +23,17 @@ class ProviderRequest:
     messages: tuple[InputMessage, ...]
     tools: tuple[ToolDefinition, ...] = ()
     instructions: str = ""
-    purpose: Literal["answer", "grade", "plan", "rewrite"] = "answer"
+    purpose: Literal["answer", "grade", "plan", "rewrite", "repair"] = "answer"
+    private_output: bool = False
 
     def __post_init__(self):
+        if (
+            type(self.private_output) is not bool
+            or (self.purpose == "repair") != self.private_output
+        ):
+            raise ValueError("Repair requests require private output")
+        if self.purpose == "repair" and self.tools:
+            raise ValueError("Repair requests cannot expose tools")
         validate_messages(self.messages, self.tools, self.instructions)
 
 

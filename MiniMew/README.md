@@ -264,7 +264,7 @@ uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <use
 
 ### Run 内材料评判（6.4）
 
-新Run默认冻结v3策略：同一Provider承担回答与内部材料评判，先对实际有预算草稿评判，再原子登记Evidence。`MINIMEW_REASONING_ENABLED=false`只让之后新Run冻结v2；历史Run继续自身快照。该开关不代替`MINIMEW_KNOWLEDGE_ENABLED`，不下载模型。
+新Run默认冻结v4策略（沿用v3共享推理额度）：同一Provider承担回答与内部材料评判，先对实际有预算草稿评判，再原子登记Evidence。`MINIMEW_REASONING_ENABLED=false`只让之后新Run冻结v2；历史Run继续自身快照。该开关不代替`MINIMEW_KNOWLEDGE_ENABLED`，不下载模型。
 
 v3最多12次模型尝试（含重试）、外层4次、工具6次、检索8次；内部最多并发2并保留最终回答的一次额度，共用原Profile总期限。Grader/Planner/Rewrite输出上限分别1024/512/256 token且不超过Profile上限。内部JSON和中间文字不进入公开Journal，最终答案继续原引用校验与持久化链。详见[第六章实现记录](chapters/06-完整RAG策略.md#64-实施记录2026-11-14)。
 
@@ -284,7 +284,7 @@ v3最多12次模型尝试（含重试）、外层4次、工具6次、检索8次�
 uv run --no-sync pytest -q tests/test_rag_cases.py
 uv run --env-file .env --no-sync python scripts/check_rag_suite.py
 # 显式更新共同观察资产；默认只写忽略的完整报告
-uv run --env-file .env --no-sync python scripts/check_rag_suite.py --write-observation
+uv run --env-file .env --no-sync python scripts/check_rag_suite.py --write-repair-observation
 ```
 
 使用[固定资料](examples/rag/chapter06-policy.md)/[案例](examples/rag/chapter06-cases.json)，临时PG、独立Worker发布及自有Milvus scope，比较实际预算后材料，并沿原Run验收受控评分/改写/拆解/失败/额度与引用。默认每路线3样本，`--samples 1`只做单次检查；不报告可靠p95。共享[观察资产](examples/rag/chapter06-observation.json)不含设备时延/身份，不是生产质量Gate；真实DeepSeek质量与线上时延未测，收费0。
@@ -298,6 +298,21 @@ uv run --env-file .env --no-sync python scripts/check_rag_suite.py --write-obser
 服务端`execution_diagnostic`记录Run、阶段、稳定reason和安全堆栈（文件/函数/行号），不记录异常文本、源码行、locals、原始凭据或模型正文。`execution_failure_handled`表示失败已处理，持久终态以原Run/Event为准；终态写入失败会另有`execution_terminal_write_failed`。例如未引用导语可定位为`answer_validation/document_paragraph_missing_citation`，公开码仍为PROVIDER_INVALID_RESPONSE；本专项不放宽引用校验。
 
 定向入口：`tests/test_execution_diagnostics.py`、`check_runtime.py tests/test_diagnostics_pg.py`及前端`src/runErrors.spec.ts`。浏览器按既有Playwright命令执行，已安装Edge的设备可显式设置`MINIMEW_TEST_BROWSER_CHANNEL=msedge`；省略时沿用默认测试浏览器。详见[实施记录](chapters/06-完整RAG策略.md#章后专项异常反馈实施记录2026-11-14)。
+
+### 回答格式与材料保留修复（v4）
+
+新Run默认冻结v4：在原次数/期限内允许最多一次私有格式纠正，纠正请求无工具，最终仍走原引用校验与持久终结事务；剔除约定分区标题/引用/空白后正文字符须保持，不能改金额、删事实或新增内容。未知引用或再次非法仍失败。聚合先按原问题/子问题保留代表组，再补余量；最终预算丢失代表来源时明确不足。
+
+`MINIMEW_REPAIRS_ENABLED=false`只让之后新Run冻结v3；`MINIMEW_REASONING_ENABLED=false`仍使之后新Run使用v2。已有v1–v3摘要/行为与已保存结果保持；刷新不会重跑旧失败任务，重新提问才创建新Run。
+
+```powershell
+uv run --no-sync pytest -q tests/test_answer_repairs.py tests/test_balanced_selection.py
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_repair_pg.py
+uv run --env-file .env --no-sync python scripts/check_knowledge.py --malformed-first-answer
+uv run --env-file .env --no-sync python scripts/check_rag_suite.py --samples 1 --write-repair-observation
+```
+
+原[观察](examples/rag/chapter06-observation.json)与[修复观察](examples/rag/chapter06-repair-observation.json)并存；同案例跨章节必要原文覆盖2/3→3/3，调用数未增加。受控模型只验证协议/编排，真实DeepSeek质量尚未收费评测。详见[修复记录](chapters/06-完整RAG策略.md#回答格式与聚合覆盖修复实施2026-11-14)。
 
 ### 模型缓存与候选策略（6.3）
 

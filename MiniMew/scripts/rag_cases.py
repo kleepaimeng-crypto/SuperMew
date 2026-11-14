@@ -210,7 +210,7 @@ class ScriptedModel:
         yield ProviderCompleted(ModelTurn("text", json.dumps(output, ensure_ascii=False)))
 
 
-def portable_observation(report):
+def portable_observation(report, command="scripts/check_rag_suite.py --write-observation"):
     """明确白名单导出：设备时延、身份、地址、Secret及模型原始消息不入共同资产。"""
     retrieval = []
     for entry in report["retrieval"]:
@@ -225,7 +225,7 @@ def portable_observation(report):
             }
         )
     return {
-        "generated_by": "scripts/check_rag_suite.py --write-observation",
+        "generated_by": command,
         "suite_fingerprint": report["suite_fingerprint"],
         "source_sha256": report["source_sha256"],
         "embedding": report["embedding"],
@@ -263,4 +263,5 @@ def portable_observation(report):
             }
             for entry in report["runs"]
         ],
+        "run_policies": {entry["case"]: entry["frozen_policy"] for entry in report["runs"]},
     }

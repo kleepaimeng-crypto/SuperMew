@@ -71,6 +71,7 @@ class ToolContext:
     rag_policy: RagPolicy = field(default_factory=RagPolicy)
     deadline: float | None = None
     reasoning: object | None = None
+    repairs: object | None = None
     model_caller: object | None = None
     run_budget: object | None = None
     question: str = ""
