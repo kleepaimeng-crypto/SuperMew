@@ -65,7 +65,7 @@ def test_0012_history_upgrades_unchanged_without_fabricated_materials(model_conf
                 assert await snapshot() == before
                 async with engine.connect() as conn:
                     assert (
-                        await conn.scalar(text("SELECT version_num FROM alembic_version")) == "0015"
+                        await conn.scalar(text("SELECT version_num FROM alembic_version")) == "0016"
                     )
                     assert await conn.scalar(text("SELECT count(*) FROM answer_materials")) == 0
             finally:

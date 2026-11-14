@@ -19,6 +19,7 @@ from minimew.execution.diagnostics import Diagnostic, capture
 from minimew.execution.messages import ToolCall, ToolDefinition, valid_text
 from minimew.execution.provider import ProviderFailure
 from minimew.generated.run_event_v1 import ErrorCode
+from minimew.hitl.policy import PauseRequested
 from minimew.rag.protocol import RagPolicy
 
 MAX_TOOL_RESULT_CHARS = 12000
@@ -36,6 +37,8 @@ TOOL_ERROR_CODES = frozenset(
         "KNOWLEDGE_SCOPE_INVALID",
         "KNOWLEDGE_RESULT_INVALID",
         "KNOWLEDGE_QUERY_TOO_LONG",
+        "HITL_EXPIRED",
+        "HITL_CHECKPOINT_INVALID",
     }
 )
 
@@ -75,6 +78,8 @@ class ToolContext:
     model_caller: object | None = None
     run_budget: object | None = None
     question: str = ""
+    hitl: object | None = None
+    checkpoint: dict | None = None
 
     def __post_init__(self):
         if self.evidence is None:
@@ -219,7 +224,13 @@ class ToolRegistry:
         Guardrail.check(context, prepared.spec, prepared.arguments)
         try:
             result = await prepared.spec.handler(context, prepared.arguments)
-        except (ToolFailure, CancellationRequested, OwnershipLost, ExecutionStorageUnavailable):
+        except (
+            ToolFailure,
+            CancellationRequested,
+            OwnershipLost,
+            ExecutionStorageUnavailable,
+            PauseRequested,
+        ):
             raise
         except Exception as error:
             detail = error.diagnostic if isinstance(error, ProviderFailure) else None

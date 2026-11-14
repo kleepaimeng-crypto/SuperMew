@@ -141,6 +141,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/threads/{thread_id}/runs/{run_id}/resume-credential": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume Credential */
+    post: operations["resume_credential_v1_threads__thread_id__runs__run_id__resume_credential_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/threads/{thread_id}/runs/{run_id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume Run */
+    post: operations["resume_run_v1_threads__thread_id__runs__run_id__resume_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/threads/{thread_id}/runs/{run_id}/cancel": {
     parameters: {
       query?: never;
@@ -375,7 +409,14 @@ export interface components {
        * Status
        * @enum {string}
        */
-      status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+      status:
+        | "pending"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "waiting_input"
+        | "resume_pending";
       materials: components["schemas"]["AnswerMaterials"] | null;
     };
     /** AnswerSection */
@@ -575,6 +616,101 @@ export interface components {
     HTTPValidationError: {
       /** Detail */
       detail?: components["schemas"]["ValidationError"][];
+    };
+    /** HitlAcceptedData */
+    HitlAcceptedData: {
+      /**
+       * Checkpoint Id
+       * Format: uuid
+       */
+      checkpoint_id: string;
+    };
+    /** HitlAcceptedEvent */
+    HitlAcceptedEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "hitl.accepted";
+      data: components["schemas"]["HitlAcceptedData"];
+    };
+    /** HitlRequiredData */
+    HitlRequiredData: {
+      /**
+       * Checkpoint Id
+       * Format: uuid
+       */
+      checkpoint_id: string;
+      /** Prompt */
+      prompt: string;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+    };
+    /** HitlRequiredEvent */
+    HitlRequiredEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "hitl.required";
+      data: components["schemas"]["HitlRequiredData"];
     };
     /** IndexJobResponse */
     IndexJobResponse: {
@@ -776,7 +912,8 @@ export interface components {
        * Status
        * @enum {string}
        */
-      status: "pending" | "completed" | "failed" | "cancelled";
+      status:
+        "pending" | "completed" | "failed" | "cancelled" | "waiting_input";
       /** Content */
       content: string;
       /**
@@ -794,6 +931,37 @@ export interface components {
        * Format: password
        */
       password: string;
+    };
+    /** ResumeCredential */
+    ResumeCredential: {
+      /**
+       * Checkpoint Id
+       * Format: uuid
+       */
+      checkpoint_id: string;
+      /** Prompt */
+      prompt: string;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /** Token */
+      token: string;
+    };
+    /** ResumeInput */
+    ResumeInput: {
+      /**
+       * Checkpoint Id
+       * Format: uuid
+       */
+      checkpoint_id: string;
+      /** Token */
+      token: string;
+      /** Idempotency Key */
+      idempotency_key: string;
+      /** Answer */
+      answer: string;
     };
     /** RunCancelRequestedData */
     RunCancelRequestedData: {
@@ -991,6 +1159,9 @@ export interface components {
         | components["schemas"]["ToolStartedEvent"]
         | components["schemas"]["ToolCompletedEvent"]
         | components["schemas"]["ToolFailedEvent"]
+        | components["schemas"]["HitlRequiredEvent"]
+        | components["schemas"]["HitlAcceptedEvent"]
+        | components["schemas"]["RunResumedEvent"]
       )[];
       /** Next Cursor */
       next_cursor: number;
@@ -1029,7 +1200,9 @@ export interface components {
         | "KNOWLEDGE_RETRIEVAL_FAILED"
         | "KNOWLEDGE_SCOPE_INVALID"
         | "KNOWLEDGE_RESULT_INVALID"
-        | "KNOWLEDGE_QUERY_TOO_LONG";
+        | "KNOWLEDGE_QUERY_TOO_LONG"
+        | "HITL_EXPIRED"
+        | "HITL_CHECKPOINT_INVALID";
     };
     /** RunFailedEvent */
     RunFailedEvent: {
@@ -1083,7 +1256,14 @@ export interface components {
        * Status
        * @enum {string}
        */
-      status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+      status:
+        | "pending"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "waiting_input"
+        | "resume_pending";
       /**
        * User Message Id
        * Format: uuid
@@ -1127,8 +1307,46 @@ export interface components {
             | "KNOWLEDGE_SCOPE_INVALID"
             | "KNOWLEDGE_RESULT_INVALID"
             | "KNOWLEDGE_QUERY_TOO_LONG"
+            | "HITL_EXPIRED"
+            | "HITL_CHECKPOINT_INVALID"
           )
         | null;
+    };
+    /** RunResumedEvent */
+    RunResumedEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "run.resumed";
+      data: components["schemas"]["RunStartedData"];
     };
     /** RunStartedData */
     RunStartedData: {
@@ -1283,7 +1501,9 @@ export interface components {
         | "KNOWLEDGE_RETRIEVAL_FAILED"
         | "KNOWLEDGE_SCOPE_INVALID"
         | "KNOWLEDGE_RESULT_INVALID"
-        | "KNOWLEDGE_QUERY_TOO_LONG";
+        | "KNOWLEDGE_QUERY_TOO_LONG"
+        | "HITL_EXPIRED"
+        | "HITL_CHECKPOINT_INVALID";
     };
     /** ToolFailedEvent */
     ToolFailedEvent: {
@@ -1687,6 +1907,74 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ThreadResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  resume_credential_v1_threads__thread_id__runs__run_id__resume_credential_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        thread_id: string;
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResumeCredential"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  resume_run_v1_threads__thread_id__runs__run_id__resume_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        thread_id: string;
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ResumeInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RunResponse"];
         };
       };
       /** @description Validation Error */

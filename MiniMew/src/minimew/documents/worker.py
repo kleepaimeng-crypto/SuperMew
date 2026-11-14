@@ -321,7 +321,7 @@ async def main(args):
     backend = worker = None
     try:
         async with engine.connect() as connection:
-            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0015":
+            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0016":
                 raise SystemExit("Run MiniMew alembic upgrade head before starting the worker")
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         if args.requeue_cleanup:

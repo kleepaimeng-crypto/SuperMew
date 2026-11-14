@@ -60,6 +60,9 @@ class KnowledgeResult(ToolModel):
     matches: tuple[CitedMatch, ...] = ()
     limited: bool = False
     assessment: Grade | None = Field(default=None, exclude_if=lambda v: v is None)
+    clarification: str | None = Field(
+        default=None, min_length=1, max_length=1024, exclude_if=lambda v: v is None
+    )
 
 
 @dataclass
@@ -121,17 +124,22 @@ class KnowledgeService:
                 raise ToolFailure("TOOL_PERMISSION_DENIED")
             if not scope.targets:
                 return KnowledgeResult(status="no_documents")
-            if context.reasoning is not None:
+            if context.reasoning is not None and context.checkpoint is None:
                 context.run_budget.take_retrieval()
-            result = await RagPipeline(
-                self.sessions, self.runtime, retriever=search_published
-            ).search(
-                arguments.query,
-                scope,
-                context.user_id,
-                context.rag_policy,
-                deadline=context.deadline,
-            )
+            if context.checkpoint is not None:
+                from minimew.hitl.checkpoint import BufferedSaver
+
+                result = BufferedSaver(context.checkpoint["graph"]).state()["result"]
+            else:
+                result = await RagPipeline(
+                    self.sessions, self.runtime, retriever=search_published
+                ).search(
+                    arguments.query,
+                    scope,
+                    context.user_id,
+                    context.rag_policy,
+                    deadline=context.deadline,
+                )
             session.last_trace = result.trace
         except EmbeddingError as error:
             code = (
@@ -200,8 +208,14 @@ class KnowledgeService:
                 result,
                 retrieve,
                 lambda materials: self.prepare(context, materials, scope),
+                initial_query=arguments.query,
             )
-            draft = draft.model_copy(update={"assessment": assessment})
+            draft = draft.model_copy(
+                update={
+                    "assessment": assessment,
+                    "clarification": context.checkpoint["answer"] if context.checkpoint else None,
+                }
+            )
             if len(draft.model_dump_json()) > 11000:
                 raise ToolFailure("KNOWLEDGE_RESULT_INVALID")
         else:

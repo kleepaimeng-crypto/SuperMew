@@ -40,9 +40,13 @@ from minimew.execution.repository import (
 )
 from minimew.execution.tools import ToolContext, ToolFailure, ToolRegistry
 from minimew.generated.run_event_v1 import ErrorCode
+from minimew.hitl.policy import CheckpointExpired, PauseRequested
+from minimew.hitl.store import HitlStore
 from minimew.model_control import ModelSnapshotUnavailable
 
-ExecutionOutcome = Literal["succeeded", "failed", "cancelled", "not_claimed", "ownership_lost"]
+ExecutionOutcome = Literal[
+    "succeeded", "failed", "cancelled", "not_claimed", "ownership_lost", "waiting_input"
+]
 logger = logging.getLogger(__name__)
 
 
@@ -60,6 +64,7 @@ class RunBudget:
     planner_used: bool = False
     rewrite_used: bool = False
     reasoning: bool = False
+    clarification_used: bool = False
 
     def require_model(self):
         if self.model_requests >= 4 or (
@@ -119,6 +124,8 @@ class RunExecutor:
                     **({"rag_policy": request.snapshot.rag} if request.snapshot.rag else {}),
                     reasoning=request.snapshot.reasoning,
                     repairs=request.snapshot.repairs,
+                    hitl=request.snapshot.hitl,
+                    question=request.messages[-1].content,
                 )
             )
             tools = self.registry.visible(context)
@@ -133,11 +140,44 @@ class RunExecutor:
                 await self.repository.expire(claim)
                 return "ownership_lost"
             loop = asyncio.get_running_loop()
+            saved = None
+            if request.snapshot.hitl is not None and claim.resumed:
+                try:
+                    saved = await HitlStore(self.repository).load(claim, request.snapshot)
+                    if saved is None:
+                        raise ValueError("Missing resume checkpoint")
+                except CheckpointExpired:
+                    raise ToolFailure("HITL_EXPIRED") from None
+                except (ValueError, KeyError, TypeError):
+                    raise ToolFailure("HITL_CHECKPOINT_INVALID") from None
+                from minimew.knowledge import NAME
+
+                if NAME not in context.tool_sessions:
+                    raise ToolFailure("TOOL_NOT_AVAILABLE")
+                context.tool_sessions[NAME].scope = saved["scope"]
+                context.evidence.items = saved["evidence"]
+                context.evidence.queried = saved["queried"]
+                remaining = min(remaining, saved["remaining"])
             deadline = loop.time() + min(
                 remaining, request.snapshot.answer.configuration.timeout_seconds
             )
-            context = replace(context, deadline=deadline)
-            answer = await self._watched_generate(claim, request, deadline, context)
+            context = replace(context, deadline=deadline, checkpoint=saved)
+            try:
+                answer = await self._watched_generate(claim, request, deadline, context)
+            except PauseRequested as pause:
+                try:
+                    await HitlStore(self.repository).pause(
+                        claim,
+                        pause.request,
+                        pause.context,
+                        pause,
+                        pause.outer,
+                        pause.budget,
+                        deadline,
+                    )
+                except (ValueError, KeyError, TypeError):
+                    raise ToolFailure("HITL_CHECKPOINT_INVALID") from None
+                return "waiting_input"
             content, materials = answer.content, answer.materials
         except ModelSnapshotUnavailable as failure:
             error = failure.code
@@ -287,7 +327,18 @@ class RunExecutor:
             raise ProviderFailure("PROVIDER_TIMEOUT")
 
     async def _generate(self, claim, request, deadline, context) -> AnswerResult:
-        budget = RunBudget(reasoning=context.reasoning is not None)
+        resume = context.checkpoint
+        budget = (
+            RunBudget(**resume["budget"])
+            if resume
+            else RunBudget(reasoning=context.reasoning is not None)
+        )
+        if resume:
+            request = replace(
+                request,
+                messages=resume["outer"]["messages"],
+                instructions=resume["outer"]["instructions"],
+            )
         if context.reasoning is not None:
             from minimew.execution.reasoning import RunModelCaller
 
@@ -303,11 +354,15 @@ class RunExecutor:
                 context,
                 model_caller=caller,
                 run_budget=budget,
-                question=request.messages[-1].content,
+                question=context.question or request.messages[-1].content,
             )
-        progress = AttemptProgress()
+        progress = AttemptProgress(resume["outer"]["body_committed"] if resume else False)
         while True:
-            turn = await self._model_turn(claim, request, deadline, progress, budget)
+            if resume:
+                previous = resume["outer"]["assistant"]
+                turn = ModelTurn("tool_calls", previous.content, previous.tool_calls)
+            else:
+                turn = await self._model_turn(claim, request, deadline, progress, budget)
             if turn.kind == "text":
                 if context.evidence.queried:
                     return await self._grounded_answer(
@@ -322,16 +377,30 @@ class RunExecutor:
                 InputMessage("tool", "{}", tool_call_id=call.id) for call in turn.tool_calls
             )
             self._with_messages(request, (*request.messages, assistant, *placeholders))
-            budget.require_tools(len(prepared))
-            results = []
-            for call in prepared:
+            if not resume:
+                budget.require_tools(len(prepared))
+            results = list(resume["outer"]["results"]) if resume else []
+            for index, call in enumerate(prepared):
+                if index < len(results):
+                    continue
                 await self._check_active(claim, request, deadline)
-                budget.tool_calls += 1
                 observation = {"tool_call_id": call.call.id, "tool_name": call.call.name}
-                await self._record_tool(claim, request, deadline, "tool.started", observation)
+                if not resume:
+                    budget.tool_calls += 1
+                    await self._record_tool(claim, request, deadline, "tool.started", observation)
                 try:
                     async with asyncio.timeout_at(deadline) as timeout:
                         content = await self.registry.invoke(call, context)
+                except PauseRequested as pause:
+                    pause.outer = {
+                        "messages": request.messages,
+                        "instructions": request.instructions,
+                        "assistant": assistant,
+                        "results": tuple(results),
+                        "body_committed": progress.body_committed,
+                    }
+                    pause.context, pause.request, pause.budget = context, request, budget
+                    raise
                 except TimeoutError:
                     raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
                 except ToolFailure as failure:
@@ -349,6 +418,9 @@ class RunExecutor:
                 await self._check_active(claim, request, deadline)
                 await self._record_tool(claim, request, deadline, "tool.completed", observation)
                 results.append(InputMessage("tool", content, tool_call_id=call.call.id))
+                if resume:
+                    resume = None
+                    context = replace(context, checkpoint=None)
             try:
                 request = replace(
                     request,

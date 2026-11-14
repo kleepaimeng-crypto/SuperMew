@@ -32,6 +32,7 @@ class Claim:
     run_id: UUID
     owner_token: UUID
     lease_until: datetime
+    resumed: bool = False
 
 
 TerminalStatus = Literal["succeeded", "failed", "cancelled"]
@@ -62,7 +63,10 @@ class ExecutionRepository:
     async def request_cancel(self, user_id: UUID, thread_id: UUID, run_id: UUID):
         async with self.sessions() as session, session.begin():
             run = await self._locked_run(session, user_id, thread_id, run_id)
-            if run.status in {"pending", "running"} and run.cancel_requested_at is None:
+            if (
+                run.status in {"pending", "running", "waiting_input", "resume_pending"}
+                and run.cancel_requested_at is None
+            ):
                 now = await session.scalar(select(func.clock_timestamp()))
                 # pending 的时间和终态由最后同一条 UPDATE 保存，不产生中间取消状态。
                 if run.status == "running":
@@ -70,14 +74,14 @@ class ExecutionRepository:
                 await append_event(
                     session, run, "run.cancel_requested", {"cancel_requested_at": now}
                 )
-                if run.status == "pending":
+                if run.status != "running":
                     await self._write_terminal(
                         session,
                         run,
                         content="",
                         error_code=None,
                         state="cancelled",
-                        conditions=[Run.status == "pending"],
+                        conditions=[Run.status == run.status],
                         cancel_time=now,
                     )
                     # 显式读取数据库生成的 finished_at，禁止隐式异步 I/O。
@@ -108,14 +112,14 @@ class ExecutionRepository:
                 raise CancellationRequested
 
     async def candidates(self, *, limit: int) -> list[tuple[UUID, UUID, UUID]]:
-        """只返回各 Thread 最早的可执行 pending；查询不是领取。"""
+        """返回各 Thread 最早的 pending/resume_pending；查询不是领取。"""
         earlier, earlier_message, current = aliased(Run), aliased(Message), aliased(Message)
         blocked = (
             select(earlier.id)
             .join(earlier_message, earlier_message.run_id == earlier.id)
             .where(
                 earlier.thread_id == Run.thread_id,
-                earlier.status.in_(["pending", "running"]),
+                earlier.status.in_(["pending", "running", "waiting_input", "resume_pending"]),
                 earlier_message.role == "user",
                 earlier_message.sequence < current.sequence,
             )
@@ -126,7 +130,9 @@ class ExecutionRepository:
             rows = await session.execute(
                 select(Run.user_id, Run.thread_id, Run.id)
                 .join(current, current.run_id == Run.id)
-                .where(Run.status == "pending", current.role == "user", ~blocked)
+                .where(
+                    Run.status.in_(["pending", "resume_pending"]), current.role == "user", ~blocked
+                )
                 .order_by(Run.created_at, Run.id)
                 .limit(limit)
             )
@@ -135,15 +141,17 @@ class ExecutionRepository:
     async def claim(self, user_id: UUID, thread_id: UUID, run_id: UUID) -> Claim | None:
         async with self.sessions() as session, session.begin():
             run = await self._locked_run(session, user_id, thread_id, run_id)
-            if run.status != "pending":
+            if run.status not in {"pending", "resume_pending"}:
                 return None
+            resumed = run.status == "resume_pending"
+            previous = run.status
             messages = await run_messages(session, run)
             earlier = await session.scalar(
                 select(Run.id)
                 .join(Message, Message.run_id == Run.id)
                 .where(
                     Run.thread_id == thread_id,
-                    Run.status.in_(["pending", "running"]),
+                    Run.status.in_(["pending", "running", "waiting_input", "resume_pending"]),
                     Message.role == "user",
                     Message.sequence < messages[0].sequence,
                 )
@@ -155,13 +163,20 @@ class ExecutionRepository:
             token, deadline = uuid4(), now + timedelta(seconds=self.lease_seconds)
             changed = await session.execute(
                 update(Run)
-                .where(Run.id == run_id, Run.status == "pending")
-                .values(status="running", owner_token=token, started_at=now, lease_until=deadline)
+                .where(Run.id == run_id, Run.status == previous)
+                .values(
+                    status="running",
+                    owner_token=token,
+                    started_at=run.started_at if resumed else now,
+                    lease_until=deadline,
+                )
             )
             if changed.rowcount != 1:
                 return None
-            await append_event(session, run, "run.started", {"status": "running"})
-            claim = Claim(user_id, thread_id, run_id, token, deadline)
+            await append_event(
+                session, run, "run.resumed" if resumed else "run.started", {"status": "running"}
+            )
+            claim = Claim(user_id, thread_id, run_id, token, deadline, resumed)
         return claim  # 领取事务已经提交，才允许调用模型。
 
     async def request(self, claim: Claim) -> ProviderRequest:
@@ -471,7 +486,9 @@ class ExecutionRepository:
             claims = [
                 Claim(r.user_id, r.thread_id, r.id, r.owner_token, r.lease_until) for r in rows
             ]
-        count = 0
+        from minimew.hitl.store import HitlStore
+
+        count = await HitlStore(self).expire_waiting(limit)
         for claim in claims:
             count += await self.expire(claim)
         return count

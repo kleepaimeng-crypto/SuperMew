@@ -116,7 +116,7 @@ def test_0011_upload_survives_0012_upgrade_with_original_job_and_source(tmp_path
                 async with engine.connect() as connection:
                     assert (
                         await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                        == "0015"
+                        == "0016"
                     )
                     for table in tables:
                         expression = (

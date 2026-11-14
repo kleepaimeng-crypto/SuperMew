@@ -20,12 +20,44 @@ from minimew.database import SessionDependency
 from minimew.execution.queries import EventCursorAhead, events_after
 from minimew.execution.repository import ExecutionRepository
 from minimew.execution.streaming import EventReadUnavailable, EventStreamResponse, EventSubscription
+from minimew.hitl.schemas import ResumeConflict, ResumeCredential, ResumeInput
+from minimew.hitl.store import HitlStore
 from minimew.model_control import ModelConfigurationUnavailable
 from minimew.settings import SettingsDependency
 
 router = APIRouter(
     prefix="/v1/threads/{thread_id}/runs", tags=["runs"], dependencies=[Depends(no_store)]
 )
+
+
+@router.post("/{run_id}/resume-credential", response_model=ResumeCredential)
+async def resume_credential(thread_id: UUID, run_id: UUID, user: CurrentUser, request: Request):
+    try:
+        return await HitlStore(ExecutionRepository(request.app.state.session_factory)).credential(
+            user.id, thread_id, run_id
+        )
+    except ConversationNotFound:
+        raise HTTPException(404, "Conversation not found") from None
+    except ResumeConflict:
+        raise HTTPException(409, detail={"code": "HITL_RESUME_CONFLICT"}) from None
+    except (SQLAlchemyError, TimeoutError, OSError):
+        raise HTTPException(503, detail={"code": "HITL_RESUME_UNAVAILABLE"}) from None
+
+
+@router.post("/{run_id}/resume", response_model=RunResponse, status_code=202)
+async def resume_run(
+    thread_id: UUID, run_id: UUID, data: ResumeInput, user: CurrentUser, request: Request
+):
+    try:
+        return await HitlStore(ExecutionRepository(request.app.state.session_factory)).accept(
+            user.id, thread_id, run_id, data
+        )
+    except ConversationNotFound:
+        raise HTTPException(404, "Conversation not found") from None
+    except ResumeConflict:
+        raise HTTPException(409, detail={"code": "HITL_RESUME_CONFLICT"}) from None
+    except (SQLAlchemyError, TimeoutError, OSError):
+        raise HTTPException(503, detail={"code": "HITL_RESUME_UNAVAILABLE"}) from None
 
 
 async def cancel_access(

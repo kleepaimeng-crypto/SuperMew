@@ -1,4 +1,4 @@
-"""Run内有界StateGraph；不配置checkpointer、不提交Evidence或Run终态。"""
+"""Run内有界StateGraph；可导出私有检查点缓冲，不写持久事实或Run终态。"""
 
 import asyncio
 import logging
@@ -7,7 +7,7 @@ import re
 from typing import Annotated, TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Send
+from langgraph.types import Command, Send, interrupt
 
 from minimew.embeddings.errors import EmbeddingError
 from minimew.execution.diagnostics import capture, emit
@@ -33,9 +33,10 @@ class State(TypedDict, total=False):
     aspects: tuple
     representatives: tuple
     supported: frozenset
+    clarification: str
 
 
-async def run_workflow(context, question, initial, retrieve, prepare):
+async def run_workflow(context, question, initial, retrieve, prepare, *, initial_query=None):
     budget = context.run_budget
     slots = asyncio.Semaphore(context.reasoning.concurrency)
 
@@ -79,6 +80,13 @@ async def run_workflow(context, question, initial, retrieve, prepare):
 
     def route(state):
         grade = state["grade"]
+        if (
+            grade.status == "ambiguous"
+            and any(item.strip() for item in grade.missing)
+            and context.hitl is not None
+            and not budget.clarification_used
+        ):
+            return "clarify"
         if grade.status != "insufficient":
             return "finish"
         if grade.decompose and state["phase"] == "initial" and not budget.planner_used:
@@ -228,25 +236,67 @@ async def run_workflow(context, question, initial, retrieve, prepare):
             "phase": "rewritten",
         }
 
+    def clarify(state):
+        # 此节点在 Command(resume) 时重跑；interrupt 之前没有外部调用或预算扣减。
+        prompt = "请补充：" + "；".join(state["grade"].missing)
+        answer = interrupt({"prompt": prompt[:1024]})
+        return {"clarification": answer}
+
+    async def clarified_search(state):
+        budget.clarification_used = True
+        # 保留原问题和补充的身份；只改变本次检索式，不改原用户 Message。
+        query = f"{initial_query or question}\n用户补充：{state['clarification']}"
+        if len(query) > 1024:
+            # 超长原问题仍可澄清，但不能静默截断检索输入。
+            from minimew.execution.tools import ToolFailure
+
+            raise ToolFailure("KNOWLEDGE_QUERY_TOO_LONG")
+        result = await retrieve(query)
+        return {
+            "result": result,
+            "phase": "clarified",
+            "failed": (),
+            "aspects": ({"question": question, "clarification": state["clarification"]},),
+            "representatives": (),
+        }
+
     graph = StateGraph(State)
     graph.add_node("assess", assess)
     graph.add_node("plan", plan)
     graph.add_node("child", child)
     graph.add_node("aggregate", aggregate)
     graph.add_node("rewrite", rewrite)
+    graph.add_node("clarify", clarify)
+    graph.add_node("clarified_search", clarified_search)
     graph.add_edge(START, "assess")
     graph.add_conditional_edges(
-        "assess", route, {"finish": END, "plan": "plan", "rewrite": "rewrite"}
+        "assess", route, {"finish": END, "plan": "plan", "rewrite": "rewrite", "clarify": "clarify"}
     )
     graph.add_conditional_edges("plan", dispatch, ["child"])
     graph.add_edge("child", "aggregate")
     graph.add_edge("aggregate", "assess")
     graph.add_edge("rewrite", "assess")
+    graph.add_edge("clarify", "clarified_search")
+    graph.add_edge("clarified_search", "assess")
     from langsmith import tracing_context
 
+    from minimew.hitl.checkpoint import BufferedSaver
+    from minimew.hitl.policy import PauseRequested
+
+    saved = context.checkpoint
+    saver = BufferedSaver(saved["graph"] if saved else None) if context.hitl else None
+    config = {"recursion_limit": 24 if context.hitl else 16, "callbacks": []}
+    if saver:
+        config["configurable"] = {"thread_id": str(context.run_id)}
+
     with tracing_context(enabled=False):
-        result = await graph.compile().ainvoke(
-            {"result": initial, "phase": "initial", "pieces": ()},
-            config={"recursion_limit": 16, "callbacks": []},
+        result = await graph.compile(checkpointer=saver).ainvoke(
+            Command(resume=saved["answer"])
+            if saved
+            else {"result": initial, "phase": "initial", "pieces": ()},
+            config=config,
         )
+    if result.get("__interrupt__"):
+        budget.clarification_used = True
+        raise PauseRequested(result["__interrupt__"][0].value["prompt"], saver.document())
     return result["draft"], result["pending"], result["grade"]

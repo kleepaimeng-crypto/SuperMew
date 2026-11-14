@@ -92,9 +92,25 @@ LangGraph 的 `thread_id` 拟绑定业务 **Run ID**，避免同一业务 Thread
 
 新增策略/历史摘要检查与 0014→0015 旧数据迁移检查；后者核对 Run、Message、模型快照、答案依据、Journal/Outbox 原样保留并执行 alembic check。检查实际通过，完整命令与包内去重统计在 A 包集中验收记录汇总；未新增生产依赖或修改上级项目。源码见 [模型](../src/minimew/models.py)、[快照](../src/minimew/model_control.py)、[策略](../src/minimew/hitl/policy.py)、[迁移](../migrations/versions/0015_hitl_checkpoints.py) 与 [契约](../contracts/run_event_v1.json)。
 
+## 7.2 实施记录（2026-11-14）
+
+暂停链为“RAG 结构化歧义 → interrupt → Run 私有 saver 导出 → 执行器捕获 → PG 原子发布”。BufferedSaver 实现已安装 LangGraph 的异步检查点接口；暂停之前只有 Run 私有短期缓冲，只有 PG 提交后的等待才是持久事实。保存最新 channel values 和 pending writes，白名单编码已知材料/评判/消息/集合/时间，不使用 pickle 或任意类导入；config 只保留 Run ID 对应的图身份键，排除框架 Runtime 等活对象。整个应用续接文档版本为 1、最多 8 MiB，超限明确失败而非截断。
+
+只在健康 ambiguous 且有非空缺口时澄清，Provider 故障、普通无资料和空提示不触发等待。补充后按原工具查询与补充联合检索，将原问题与补充交给材料评判；过长检索式明确 KNOWLEDGE_QUERY_TOO_LONG。补充也随原工具结果交给外层回答模型，不新增业务 User Message。无论首次还是聚合后暂停，均恢复原图，Planner/Rewrite 不重置，最终 Evidence 仍由原知识工具一次提交。
+
+续接信封保存原模型内部消息、待完成 assistant ToolCall、已经完成的兄弟工具结果、Evidence、原 scope 和全局预算。恢复跳过原模型选工具及已完成工具，不再次扣同一 ToolCall 的次数或追加 tool.started；重新校验当前服务端 Guardrail 后继续待完成调用。用户等待不消耗活动执行时间，恢复时只重建剩余额度对应的 deadline；原 scope 的有效期仍是硬上限。
+
+后端接收接口与调度一起完成，避免另外建立恢复执行链：POST 原 Run 下的 resume-credential 经认证轮换凭据；POST resume 校验用户、Checkpoint、期限、摘要与输入幂等，返回 202 表示已接收。相同幂等键/输入复用接收结果，冲突拒绝；明文凭据不进入 Checkpoint、Journal 或公开 Run 字段。接收事务写 hitl.accepted、恢复记录、原 assistant pending 及 resume_pending；Dispatcher 领取新 owner 后写 run.resumed 并续接。等待或待恢复可立即取消，运行中的恢复沿用既有取消监控；过期等待由既有扫描入口写 HITL_EXPIRED。
+
+审查补充前向迁移 0016：0015 的恢复记录 CHECK 对 nullable 字段存在 SQL NULL 放行缺口；新增显式非空条件，不重写已执行 0015。新增两项受控原始 SQL 回归，分别验证 NULL input_hash/answer 被 ck_checkpoint_receipt 拒绝。此前正常记录/流程继续有效。
+
+实际验证包含：纯 JSON 跨 saver/graph 复原、非白名单拒绝、初次及 Planner/Send 聚合后暂停、未提前登记 Evidence；真实 PG 原子回滚、同 Run/Message/ToolCall/快照/预算、重启执行器、轮换凭据/越权/重复输入、屏障控制的重复恢复与恢复/取消竞争、旧 owner 拒写、Thread 队列、等待与接收后过期、scope 时间不足、控制面变更不改旧任务、数据库缺检查点拒绝及不可改写保护。最终本模块 14 项 PG 行为 + 1 项迁移通过；既有模块与包内去重数字在集中验收列明。
+
+源码：[检查点编码与缓冲](../src/minimew/hitl/checkpoint.py)、[原子发布/接收](../src/minimew/hitl/store.py)、[API](../src/minimew/api/runs.py)、[执行器](../src/minimew/execution/service.py)、[领取/取消](../src/minimew/execution/repository.py)、[图](../src/minimew/rag/workflow.py)、[知识工具](../src/minimew/knowledge.py)。持久等待由应用拥有，图不直接写 Run；API 接收不在 HTTP 请求里执行模型。当前支持已提交等待/待恢复状态的续接，未知外部调用结果仍不自动重放；B 包心跳/更复杂故障边界未开始。
+
 ## 结章文字总结（完成后填写）
 
-待本章结束后填写实际实现、概念取舍、完整流程、验证与限制，以及与评测章节的衔接。当前没有本章应用变更或运行验收，不预填完成结论。
+待本章结束后填写实际实现、概念取舍、完整流程、验证与限制，以及与评测章节的衔接。A 包实施与验证见上方记录；本节待 B 包结束后按整章实际结果填写，不把 A 包通过当作整章结章。
 
 ## 本章结束时的代码框架（完成后填写）
 
@@ -104,4 +120,4 @@ LangGraph 的 `thread_id` 拟绑定业务 **Run ID**，避免同一业务 Thread
 - [RAG 图](../src/minimew/rag/workflow.py)、[评判与冻结策略](../src/minimew/rag/reasoning.py)。
 - [Run API](../src/minimew/api/runs.py)、[数据库模型](../src/minimew/models.py)、[Event 真源](../contracts/run_event_v1.json)。
 
-这些入口目前不具备本章拟议的持久 HITL 链；最终框架与任何结构整理在实际完成后记录。
+A 包已在上述正式入口扩展持久暂停/续接，当前职责见实施记录；完整结章框架与结构整理在 B 包结束后记录。

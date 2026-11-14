@@ -360,6 +360,128 @@
         }
       }
     },
+    "/v1/threads/{thread_id}/runs/{run_id}/resume-credential": {
+      "post": {
+        "tags": ["runs"],
+        "summary": "Resume Credential",
+        "operationId": "resume_credential_v1_threads__thread_id__runs__run_id__resume_credential_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeCredential"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{thread_id}/runs/{run_id}/resume": {
+      "post": {
+        "tags": ["runs"],
+        "summary": "Resume Run",
+        "operationId": "resume_run_v1_threads__thread_id__runs__run_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/threads/{thread_id}/runs/{run_id}/cancel": {
       "post": {
         "tags": ["runs"],
@@ -1179,7 +1301,15 @@
           },
           "status": {
             "type": "string",
-            "enum": ["pending", "running", "succeeded", "failed", "cancelled"],
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "waiting_input",
+              "resume_pending"
+            ],
             "title": "Status"
           },
           "materials": {
@@ -1624,6 +1754,153 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HitlAcceptedData": {
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Checkpoint Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["checkpoint_id"],
+        "title": "HitlAcceptedData"
+      },
+      "HitlAcceptedEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "hitl.accepted",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HitlAcceptedData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "HitlAcceptedEvent"
+      },
+      "HitlRequiredData": {
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Checkpoint Id"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["checkpoint_id", "prompt", "expires_at"],
+        "title": "HitlRequiredData"
+      },
+      "HitlRequiredEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "hitl.required",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HitlRequiredData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "HitlRequiredEvent"
+      },
       "IndexJobResponse": {
         "properties": {
           "id": {
@@ -1960,7 +2237,13 @@
           },
           "status": {
             "type": "string",
-            "enum": ["pending", "completed", "failed", "cancelled"],
+            "enum": [
+              "pending",
+              "completed",
+              "failed",
+              "cancelled",
+              "waiting_input"
+            ],
             "title": "Status"
           },
           "content": {
@@ -2008,6 +2291,63 @@
         "type": "object",
         "required": ["username", "password"],
         "title": "RegisterRequest"
+      },
+      "ResumeCredential": {
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Checkpoint Id"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": ["checkpoint_id", "prompt", "expires_at", "token"],
+        "title": "ResumeCredential"
+      },
+      "ResumeInput": {
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Checkpoint Id"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Token"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key"
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Answer"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["checkpoint_id", "token", "idempotency_key", "answer"],
+        "title": "ResumeInput"
       },
       "RunCancelRequestedData": {
         "properties": {
@@ -2323,11 +2663,22 @@
                 },
                 {
                   "$ref": "#/components/schemas/ToolFailedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/HitlRequiredEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/HitlAcceptedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/RunResumedEvent"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
+                  "hitl.accepted": "#/components/schemas/HitlAcceptedEvent",
+                  "hitl.required": "#/components/schemas/HitlRequiredEvent",
                   "message.completed": "#/components/schemas/MessageCompletedEvent",
                   "message.delta": "#/components/schemas/MessageDeltaEvent",
                   "run.cancel_requested": "#/components/schemas/RunCancel_RequestedEvent",
@@ -2335,6 +2686,7 @@
                   "run.completed": "#/components/schemas/RunCompletedEvent",
                   "run.created": "#/components/schemas/RunCreatedEvent",
                   "run.failed": "#/components/schemas/RunFailedEvent",
+                  "run.resumed": "#/components/schemas/RunResumedEvent",
                   "run.started": "#/components/schemas/RunStartedEvent",
                   "tool.completed": "#/components/schemas/ToolCompletedEvent",
                   "tool.failed": "#/components/schemas/ToolFailedEvent",
@@ -2389,7 +2741,9 @@
               "KNOWLEDGE_RETRIEVAL_FAILED",
               "KNOWLEDGE_SCOPE_INVALID",
               "KNOWLEDGE_RESULT_INVALID",
-              "KNOWLEDGE_QUERY_TOO_LONG"
+              "KNOWLEDGE_QUERY_TOO_LONG",
+              "HITL_EXPIRED",
+              "HITL_CHECKPOINT_INVALID"
             ],
             "title": "Error Code"
           }
@@ -2468,7 +2822,15 @@
           },
           "status": {
             "type": "string",
-            "enum": ["pending", "running", "succeeded", "failed", "cancelled"],
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "waiting_input",
+              "resume_pending"
+            ],
             "title": "Status"
           },
           "user_message_id": {
@@ -2535,7 +2897,9 @@
                   "KNOWLEDGE_RETRIEVAL_FAILED",
                   "KNOWLEDGE_SCOPE_INVALID",
                   "KNOWLEDGE_RESULT_INVALID",
-                  "KNOWLEDGE_QUERY_TOO_LONG"
+                  "KNOWLEDGE_QUERY_TOO_LONG",
+                  "HITL_EXPIRED",
+                  "HITL_CHECKPOINT_INVALID"
                 ]
               },
               {
@@ -2555,6 +2919,61 @@
           "created_at"
         ],
         "title": "RunResponse"
+      },
+      "RunResumedEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "run.resumed",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RunStartedData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "RunResumedEvent"
       },
       "RunStartedData": {
         "properties": {
@@ -2805,7 +3224,9 @@
               "KNOWLEDGE_RETRIEVAL_FAILED",
               "KNOWLEDGE_SCOPE_INVALID",
               "KNOWLEDGE_RESULT_INVALID",
-              "KNOWLEDGE_QUERY_TOO_LONG"
+              "KNOWLEDGE_QUERY_TOO_LONG",
+              "HITL_EXPIRED",
+              "HITL_CHECKPOINT_INVALID"
             ],
             "title": "Error Code"
           }
