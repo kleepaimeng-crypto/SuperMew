@@ -274,6 +274,10 @@ v3最多12次模型尝试（含重试）、外层4次、工具6次、检索8次�
 
 知识工具内部使用进程内LangGraph：先评判实际材料，不足时全Run最多一次Step-back补查，再按原用户问题复评。检索式可变，用户Message、固定scope、Run和最终回答目标保持；仅最终材料一次登记Evidence。图无持久checkpointer，不支持节点恢复（第七章范围）。
 
+### 有限拆解与聚合（6.6）
+
+材料不足且存在多方面缺口时，Planner全Run最多一次拆成2–4子问题，并发2复用固定scope与共享期限/额度；按计划顺序去重选材，再按原用户问题评判实际保留材料。部分失败明确返回不足/稳定失败码，全部子任务失败则工具失败。子任务不会创建业务Message或独立答案；原Run仍只在持久终结事务宣布完成。离线/真实PG入口分别为`tests/test_reasoning*.py`和`check_runtime.py tests/test_reasoning_pg.py`，真实CPU/Milvus受控链用`scripts/check_knowledge.py`；不代表收费模型质量或节点恢复能力。
+
 ### 模型缓存与候选策略（6.3）
 
 知识模式现在同时加载已准备的轻量Embedding和Base重排模型。首次换设备需显式准备固定Base缓存（普通启动不下载）：

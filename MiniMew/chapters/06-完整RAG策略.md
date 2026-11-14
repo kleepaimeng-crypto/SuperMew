@@ -467,6 +467,50 @@ Base固定`BAAI/bge-reranker-base@2cfc18c9415c912f9d8155881c133215df768a70`，�
 
 新增LangGraph1.2.22（锁文件含其官方checkpoint/prebuilt/sdk依赖，但未配置持久checkpoint）；通过`uv add`和`uv sync --dev --extra embedding --extra vector --locked`更新独立manifest/锁。`uv lock --check`解析108包，`uv pip check`106个已安装包兼容。直接图测试3项通过：足够、不足后单次改写、禁止丢弃E1024编号；真实Run/取消等集中验证见6.6。三项是本节中间实现复验，不计作包末新增三项。未下载新模型或调用收费Provider。
 
+### 6.6 实施与B包集中验收（2026-11-14）
+
+#### 整体位置与数据流
+
+原Run只拥有一个用户Message、一个assistant Message和一条持久执行链；本包新增的是知识工具内部的决策层：
+
+```text
+RunExecutor（冻结配置、总期限、取消/owner、Journal、终结事务）
+  → ToolRegistry / Guardrail
+  → KnowledgeService（第一次固定published scope、最终Evidence提交）
+    → RagPipeline（Dense/Hybrid、RRF、有限补全、Base）
+    → 有预算材料草稿 → Grader
+      ├─ 足够/歧义/冲突 → 返回该状态与材料
+      └─ 不足 → Planner一次 → 2–4子问题（并发2）
+           → 各自Pipeline/草稿/Grader → 按计划顺序去重选材
+           → 按原用户问题复评
+           → 仍不足且额度允许 → 全Run一次Step-back补查/复评
+    → 最终草稿与assessment整体预算检查 → 一次Evidence提交
+  → 原模型回答 → 原引用解析 → 原持久终结事务
+```
+
+图节点和Send分支不是独立进程或业务Run。状态、信号量、Planner/Rewrite标志和预算由当前Run持有；子任务只读scope/试算Evidence，不并发修改ledger。无持久checkpointer，不能从节点恢复；这仍是第七章边界。Graph API使用LangGraph1.2.22，最终依赖由独立uv.lock锁定。
+
+#### 聚合、覆盖与失败处理
+
+Planner只返回2–4个非空、去重、长度受限的检索问题；每个检索在派发前占共享8次额度，每次模型真实尝试在调用前占12次额度。超过额度明确停止，不保证60秒内走完所有路线。子问题按计划索引排序，候选按身份去重，保持完整材料组及总选材预算；完成先后不改变最终顺序。聚合Grader同时看到各方面的支持/缺口状态及实际最终草稿，再评判原用户问题；子问题曾足够不能代替聚合后的覆盖结论。
+
+受控Provider/Embedding/Vector子任务失败保留稳定码；部分成功继续汇总，最终assessment明确不足及失败方面；所有子任务失败则工具失败，不能变成无知识。取消、执行资格丢失、存储故障和总预算耗尽不当作普通子任务失败吞掉。一次Planner/Rewrite标志跨本Run多次工具调用共享，重试也计模型总额度。中文实体语义保持依靠提示与原问题复评，程序只严格校验数字/字母/型号锚点，不声称形式化语义保证。
+
+新增源码：[workflow.py](../src/minimew/rag/workflow.py)负责节点/条件边/Send和聚合，[reasoning.py](../src/minimew/rag/reasoning.py)负责严格角色结果，[RunModelCaller](../src/minimew/execution/reasoning.py)负责私有调用；[KnowledgeService](../src/minimew/knowledge.py)仍拥有范围和Evidence，[RunExecutor](../src/minimew/execution/service.py)仍拥有生命周期。[test_reasoning_graph.py](../tests/test_reasoning_graph.py)覆盖共享标志、乱序汇总和部分/全部失败；[test_reasoning_pg.py](../tests/test_reasoning_pg.py)覆盖真实PG中的原问题、原快照、原Message、私有输出与取消终态。Grader与最终回答复用原冻结DeepSeek配置，关闭思考；没有新增模型缓存或收费调用。
+
+#### 实际执行与结果
+
+- 离线集中：`uv run --no-sync pytest -q tests/test_reasoning.py tests/test_reasoning_graph.py tests/test_agent.py tests/test_knowledge.py tests/test_rag_materials.py tests/test_model_control.py tests/test_deepseek.py tests/test_execution_retry.py tests/test_evidence.py tests/test_model_messages.py`当时169通过；SDK畸形响应注入产生1条预期Pydantic序列化警告。
+- 补充8项reasoning测试后12项通过；最终caller校验/失败码改变后，定向`tests/test_reasoning.py tests/test_reasoning_graph.py tests/test_tools.py`44通过（18重复、26个既有工具测试本包首次执行）。6.6再补跨调用共享、乱序去重及材料组seed去重3项，最终图9项全部通过；末次图/材料组定向18项通过（9图+9既有材料组，重复不叠加）。最终有效离线覆盖206个不同用例（21新增、185既有），不是把复跑总数相加。
+- 真实PG：`uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_reasoning_pg.py tests/test_agent_pg.py tests/test_knowledge_pg.py tests/test_runs_pg.py tests/test_answers_pg.py`46通过（4新增、42既有）；caller最终校验修改后，仅重复4项B包PG，全部通过。覆盖v3评分、改写、分解、等待内部模型时取消，以及已有scope隔离、持久答案/快照与原Run行为。自有临时库均清理，不写开发历史。
+- 6.4/6.5为审阅边界分别执行38项共享基础/旧知识工具、3项图路线，均通过；它们是中间代码检查，计数包含在最终有效覆盖中，不计新增。合计252个不同pytest用例（25新增、227既有），所选0 skipped。
+- `uv run --env-file .env --no-sync python scripts/check_knowledge.py`真实CPU/Milvus/独立Worker发布/正式API与Run/引用链多次通过；末次覆盖最终代码，2次受控外层模型+1次内部Grader=3次总请求，6条公开事件、1条持久引用，内部模型正文未出端。临时库、自有scope精确清理；收费模型0。这是接线证明，不是真实DeepSeek质量评测。
+- 定向Ruff check/format通过；`uv lock --check`、`uv pip check`通过。正式路由OpenAPI导出、`npm run contracts`后无生成差异，`npm run typecheck`通过；Event真源未变；首次字节检查因Windows检出CRLF失败，从真源生成LF后漂移检查通过，并为两份Event生成物增加Git的LF检出约束（生成物本身无Git语义差异）。无新DDL/迁移、HTTP/Event版本、页面行为或RAG评测资产变更。
+
+本包先因本机Docker未启动出现PG/真实链ConnectionRefused，不能计通过；修复环境后重跑取得上述有效结果。本机修复与部署只记录设备文件。新乱序测试首次将底层retriever入参误当原查询，1失败/7通过；按真实接口改为通过受控编码标记识别查询，保持顺序/去重断言后8通过。最终审查又新增seed回退回归并真实复现重复片段：成员去重后未过滤旧seeds，预算回退可重新选入重复命中；修复为同步过滤seeds，图与材料组18项通过。未放宽旧业务断言。
+
+未运行：整个MiniMew/上级全量回归、全量浏览器、收费DeepSeek质量、完整RAG评测平台、GPU/M3、Checkpoint恢复。原因分别为影响范围局限工具内部/共享预算，前端行为未改，以及后续章节/未授权收费边界。A包的全候选本机benchmark未重复，因为索引、编码、补全及Base源码未变。第六章尚未结章，6.7与既有未引用导语缺陷、章后完整异常反馈仍待后续范围，不标记已修复。
+
 ## 结章文字总结（完成后填写）
 
 完成后据实记录本章交付、选型、完整数据流、实际对照收益/退化、验证和未完成限制；不预填结果。
