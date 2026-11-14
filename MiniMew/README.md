@@ -1051,12 +1051,13 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 定向验收入口（临时数据库和自有向量 scope，不使用收费模型）：
 
 ```powershell
-uv run --no-sync pytest -q tests/test_hitl.py tests/test_hitl_policy.py
-uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_hitl_pg.py tests/test_hitl_migration.py
+uv run --no-sync pytest -q tests/test_hitl.py tests/test_hitl_policy.py tests/test_leases.py
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_hitl_pg.py tests/test_hitl_migration.py tests/test_leases_pg.py tests/test_leases_migration.py
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_leases_http.py tests/test_cancellation_http.py
 uv run --env-file .env --no-sync python scripts/check_hitl.py
 ```
 
-最后一条会启动两个独立、随机端口的受控 API 进程，分别暂停/续接同一 Run，读取已缓存的真实 CPU 模型与本机 Milvus，并清理自有资源。章节设计、源码框架与完整限制见[第七章](chapters/07-HITL与故障恢复.md)；当前学习进度与授权仍只见[交接](AGENT_HANDOFF.md#当前检查点)。
+最后一条会依次启动三个独立、随机端口的受控 API 进程，分别暂停、接收补充但不领取、续接同一 Run，读取已缓存的真实 CPU 模型与本机 Milvus，并清理自有资源。章节设计、源码框架与完整限制见[第七章](chapters/07-HITL与故障恢复.md)；当前学习进度与授权仍只见[交接](AGENT_HANDOFF.md#当前检查点)。
 
 ## 当前进度
 

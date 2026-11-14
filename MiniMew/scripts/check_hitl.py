@@ -1,4 +1,4 @@
-"""真实 CPU/Milvus/PG + API 进程重启恢复；所有模型回答受控，收费为 0。"""
+"""真实 CPU/Milvus/PG + 暂停/接收/恢复三个 API 进程；模型回答受控，收费 0。"""
 
 import asyncio
 import json
@@ -42,6 +42,7 @@ async def api_process(directory, phase):
         stdout=log,
         stderr=subprocess.STDOUT,
         text=True,
+        env=dict(os.environ, MINIMEW_KNOWLEDGE_ENABLED="false" if phase == "accept" else "true"),
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     try:
@@ -97,7 +98,7 @@ async def main():
     report = {
         "passed": False,
         "paid_model_calls": 0,
-        "mode": "real_pg_cpu_milvus_two_api_processes",
+        "mode": "real_pg_cpu_milvus_pause_accept_resume_processes",
     }
     names = [
         "MINIMEW_DB_NAME",
@@ -200,8 +201,8 @@ async def main():
                             await client.get(path + "/events", headers=headers)
                         ).json()["items"]
                         assert before_events[-1]["type"] == "hitl.required"
-                    # 第一进程已彻底退出。新进程重新载入本地模型与 PG 检查点，不共享闭包/客户端。
-                    async with api_process(directory, "resume") as client:
+                    # 第一进程已退出；接收进程只读 PG 等待事实，不领取或加载知识资源。
+                    async with api_process(directory, "accept") as client:
                         assert (await client.get(path, headers=headers)).json()[
                             "status"
                         ] == "waiting_input"
@@ -219,6 +220,11 @@ async def main():
                             },
                         )
                         assert resume.status_code == 202
+                        assert (await client.get(path, headers=headers)).json()[
+                            "status"
+                        ] == "resume_pending"
+                    # 接收进程没有 Provider/知识运行资源，不能提前领取；退出后由第三进程领取。
+                    async with api_process(directory, "resume") as client:
                         await wait_status(client, path, headers, "succeeded")
                         events = (await client.get(path + "/events", headers=headers)).json()[
                             "items"
@@ -240,14 +246,14 @@ async def main():
                         assert "150" in events[-2]["data"]["content"]
                         report.update(
                             journal_events=len(events),
-                            api_processes=2,
+                            api_processes=3,
                             evidence_citations=len(answer["materials"]["citations"]),
                         )
                     measured = [
                         json.loads((Path(directory) / (phase + ".calls.json")).read_text())
-                        for phase in ("pause", "resume")
+                        for phase in ("pause", "accept", "resume")
                     ]
-                    assert measured == [["answer", "grade"], ["grade", "answer"]]
+                    assert measured == [["answer", "grade"], [], ["grade", "answer"]]
                     report["model_attempts"] = sum(len(calls) for calls in measured)
                 finally:
                     cleanup = KnowledgeRuntime()

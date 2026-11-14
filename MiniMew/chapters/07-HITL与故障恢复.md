@@ -1,6 +1,6 @@
 # 第 7 章：HITL 与故障恢复
 
-当前学习进度、真实反馈和编码授权只见 [交接记录](../AGENT_HANDOFF.md#当前检查点)。开章计划保留设计口径，实际实现与验证见下方实施记录；完整结章总结待本章结束后填写。
+当前学习进度、真实反馈和编码授权只见 [交接记录](../AGENT_HANDOFF.md#当前检查点)。开章计划保留设计口径，实际实现与验证见下方实施记录；本章总结和实际源码框架见文末，开章/B 包待开始文字保留为历史。
 
 ## 开章计划
 
@@ -257,16 +257,129 @@ Run 新增 nullable `execution_deadline_at`。claim 只给准备租约；request
 
 原恢复/取消/快照冻结/越权/过期/同 Message/ToolCall 的 14 项 HITL 断言全部保留，新增 pause_ack/accept_ack/accept_rollback 三项参数。7.4 的激活/心跳/终态回包丢失与此处的暂停/接收共同覆盖不确定提交；事务事实仍以 PG 为准，不要求 Python 返回值和事务回包永不丢失。
 
-## 结章文字总结（完成后填写）
+## 7.6 包末集成与集中验收（2026-11-14）
 
-待本章结束后填写实际实现、概念取舍、完整流程、验证与限制，以及与评测章节的衔接。A 包实施与验证见上方记录；本节待 B 包结束后按整章实际结果填写，不把 A 包通过当作整章结章。
+[真实链验收](../scripts/check_hitl.py) 与 [API 子进程](../scripts/hitl_process.py) 扩展到三个独立 OS 进程：正式上传/独立 Index Worker 构建并发布 → API 1 真实检索后暂停并退出 → API 2 认证接收补充、没有 Provider 因而保持 resume_pending，再退出 → API 3 重新加载本地模型、领取原 Run 并完成。PG、HTTP、CPU Embedding/Base、Milvus 及进程切换真实，回答/评判模型受控；实际调用分布为 `[answer,grade] / [] / [grade,answer]`，共 4 次，9 个事件、1 条引用，原 assistant ID/Document Version 保持。收费 0，1 个自有向量 scope 与临时库清理；报告只在所有断言和进程退出/清理完成后标 passed。
 
-## 本章结束时的代码框架（完成后填写）
+B 包以最终用例 node ID 去重：**391 项通过 = 26 新 + 365 既有；218 离线 + 173 真实 PG（含 HTTP/Redis/独立进程），0 跳过**。新用例是 leases.py 5、leases_pg.py 14、leases_migration.py 2、leases_http.py 2、hitl_pg.py 新模式 3。更新的旧 fixture/断言口径属于修改，不计为新增；多次执行同一节点不叠加。A 旧浏览器/前端结果不计入这 391。
 
-待实现后按真实文件梳理职责、调用关系、数据归属和代表性恢复流程。当前源码导航仅用于定位待扩展的正式 seam：
+实际通过的命令范围如下，均从 MiniMew 根目录运行。PG 命令使用专属临时库，不消费开发聊天或资料；因统一 owner/期限协议改变，覆盖所有手动 claim 的消费者及正式执行链，不扩展到上级 SuperMew：
 
-- [执行器](../src/minimew/execution/service.py)、[Repository](../src/minimew/execution/repository.py)、[Dispatcher](../src/minimew/execution/dispatcher.py)。
-- [RAG 图](../src/minimew/rag/workflow.py)、[评判与冻结策略](../src/minimew/rag/reasoning.py)。
-- [Run API](../src/minimew/api/runs.py)、[数据库模型](../src/minimew/models.py)、[Event 真源](../contracts/run_event_v1.json)。
+```powershell
+uv run --no-sync pytest -q tests/test_leases.py tests/test_execution.py tests/test_execution_retry.py tests/test_model_messages.py tests/test_agent.py tests/test_reasoning.py tests/test_reasoning_graph.py tests/test_answer_repairs.py tests/test_knowledge.py tests/test_evidence.py tests/test_cancellation.py tests/test_execution_diagnostics.py tests/test_dispatcher.py tests/test_hitl.py tests/test_hitl_policy.py tests/test_model_control.py tests/test_migrations.py
+# 218 passed
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_execution_pg.py tests/test_events_pg.py tests/test_answers_pg.py
+# 53 passed
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_cancellation_pg.py tests/test_agent_pg.py tests/test_runtime_pg.py
+# 46 passed
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_stream_reads_pg.py tests/test_sse_pg.py tests/test_outbox_pg.py
+# 18 passed
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_hitl_pg.py tests/test_leases_pg.py
+# 31 passed
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_leases_http.py tests/test_cancellation_http.py
+# 6 passed
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_answers_migration.py tests/test_document_migration.py tests/test_hitl_migration.py tests/test_tool_observation_migration.py
+# 4 passed
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_reasoning_pg.py tests/test_repair_pg.py tests/test_tool_observations_pg.py tests/test_leases_migration.py tests/test_cancellation_migration.py tests/test_indexing_migration.py
+# 首次 14 passed / 1 failed；下述单项复验后，此范围 15 个不同节点有效通过
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_cancellation_migration.py
+# 1 passed，不与上一命令重复累计
+uv run --env-file .env --no-sync python scripts/check_hitl.py
+# passed=true，3 API processes / 4 controlled calls / 9 events / 1 citation
+uv run --no-sync ruff check src tests migrations scripts
+uv run --no-sync ruff format --check src tests migrations scripts
+uv run --no-sync python scripts/generate_event_contract.py --check
+uv run --env-file .env --no-sync alembic upgrade head
+uv run --env-file .env --no-sync alembic check
+```
 
-A 包已在上述正式入口扩展持久暂停/续接，当前职责见实施记录；完整结章框架与结构整理在 B 包结束后记录。
+开发期失败和复验原因如实保留：旧手动 claim 的 fixture 未激活活动预算，最初被新写入 guard 拒绝；将 fixture 接上正式 activate 协议后，原业务断言复验通过。部分过期案例原用 remaining 等租期，现改为 PG lease 查询，活动预算另测，短准备租期直接过期的案例不误做激活。组合回收测试曾受其他遗留过期 Run 计数影响，改在自有新库复验，未放宽断言。旧 schema fixture 使用最新 ORM 时读取了不存在的新列，改为历史 SQL 构造器。原 0009 全状态 fixture 含 running，被 0017 预检正确拒绝；先断言 0016 全字段保真，再增加拒绝升级/DDL 回滚检查；只复跑受影响单项，未把旧状态自动终结或改迁移以迁就测试。离线批量修改辅助脚本曾因 Windows 默认 GBK 读取 UTF-8 失败，显式 UTF-8 后修正；失败不计通过。
+
+Event 真源/生成消费类型通过漂移检查；从正式路由构造 OpenAPI 并与已生成 JSON 作语义比较，完全一致，无手工修改生成物。B 无新增公开协议、ModelSnapshot/Checkpoint 版本、依赖或 RAG 评测资产变化。迁移、Worker/数据库检查入口的 head 校验、README 的排空/升级/重启命令和 `.env.example` 的 20/5 秒默认项已同步；不覆盖 `.env`。
+
+本包没有修改前端源码、API/Event 形状、浏览器依赖或 UI 配置，因此复用 [A 包集中验收](#a-包集中验收2026-11-14) 的 154 前端单元、类型/构建及 2 项补充/刷新浏览器结果，不声称本轮重跑。执行资格与终态改变的部分由本轮真实后端 HTTP/PG/进程链覆盖。A 全量格式检查的 39 个未改文件告警仍作为既有未通过项记录，没有批量格式化或凑出全绿。
+
+未执行：收费 DeepSeek 的歧义判别/澄清质量、全量 MiniMew/上级 SuperMew 门禁、运行中任意节点无损重放/写操作工具严格一次、长时间高并发/恢复 SLA 压测。前两项分别属于后续质量评测和未受影响范围，其余超出本章承诺。真实进程/短租期验证不能证明任意外部网络调用的执行次数或生产吞吐。设备初始化、模型缓存、历史数据保真和服务运行快照仅保存在 [本机设备记录](../devices/windows-desktop.md)，其他设备须重新核对。
+
+## 结章文字总结
+
+总结日期：2026-11-14，覆盖 7.1–7.6 的持久澄清、原 Run 续接、短租约资格与故障验证。学习进度、真实理解反馈和后续授权只见 [当前交接](../AGENT_HANDOFF.md#当前检查点)。
+
+### 本章实现了什么
+
+用户现在可以在知识问答遇到真实可澄清缺口时补充信息，而不是再发送原问题建立另一次问答。等待已经提交后，刷新页面或退出 API 仍能读到原提示；一次性凭据经认证轮换，补充幂等接收后回到原执行链。等待不占实例的活跃执行槽，但保持 Thread FIFO；原 Run、两条业务 Message、待完成 ToolCall、冻结快照和资料范围都不更换。
+
+健康执行通过短租约续租，失联执行更快具备回收条件；计算期限保持独立，不能因为服务还活着就无限工作。活动阶段结束后的有限租期只容许保存终态。数据最终来自同一 PG 事务，SSE、浏览器状态或进程内返回值均不拥有完成权。
+
+### 关键概念与取舍
+
+**图状态与业务事务分工**：LangGraph 知道下一步从澄清节点继续，但不知道业务 Message/Run/幂等凭据怎么更新。Run 私有 BufferedSaver 先保存白名单 JSON，HitlStore 再把完整恢复信封和业务等待同事务提交；仅安装一个通用 saver 并不能保证这些事实原子。外层 ToolCall、模型内部消息和额度必须随图一并保存，否则恢复会重新选工具或退还次数。
+
+**恢复边界必须可证明**：waiting_input 是完整暂停点，resume_pending 表示补充已接收且尚未调用模型，可跨进程继续。running 后的未知外部调用不在持续持久账本内，失联后只失败/取消，不能回退旧 Checkpoint。UUID owner_token 负责 PG 条件隔离；若未来加入写操作工具，目标系统的幂等/隔离仍需单独设计。
+
+**三个期限解决三个问题**：HITL 的等待期限受原 scope 生命周期约束；本段活动 deadline 决定计算余额；短 lease 决定当前提交资格。心跳不增加计算时间，等待不消耗活动时间，恢复不换版本或退次数。每 Run 最多一次澄清、等待最多 900 秒、原 scope 55 分钟/旧索引保留 1 小时，是当前资源策略的配套边界，不是跨天续跑能力。
+
+**模块与进程不同**：API、Dispatcher、RunExecutor、RAG 图、HITL 存储是同一 API 进程内的模块/协程；Indexing Worker 是单独进程。PostgreSQL 保存权威事实，Milvus 保存检索索引，Redis 负责提醒。每 Run 的心跳是私有协程，不是新增部署服务；运行多个 API 时仍由 PG 的锁/条件决定谁领取。
+
+### 业务流程与失败场景
+
+以“培训餐费能报多少”开始：Run 创建时冻结 v5 策略和消息对 → Dispatcher claim/activate → 外层模型选择 knowledge_search → 已发布资料 scope 内检索/重排/评判 → 图发现国内/海外歧义并 interrupt → 执行器停止监控，将图、原 ToolCall、Evidence、剩余预算交给 HitlStore → PG 原子提交 Checkpoint、waiting_input、assistant 等待和 hitl.required。
+
+用户补充“国内”时，API 验证身份/凭据/幂等键 → 原子保存接收记录、hitl.accepted 与 resume_pending → Dispatcher 领取新 owner，写 run.resumed → 执行器校验原 scope/快照并只激活原余额 → 重建原图/外层消息，以 Command(resume=...) 继续原工具 → 将最终 Evidence 一次交给外层 → 回答引用校验 → 原 assistant、答案依据、message.completed 与 run.completed 同提交。只有最后这个提交才是业务完成。
+
+暂停/接收/终结事务失败时，未提交部分回滚；此前已提交的正文/事件保留。响应丢失时读 PG/使用原幂等输入确认，不新建 Run。取消由同一锁顺序和终态事务裁决；原 owner 失权后不能追加 delta/工具观测/Checkpoint 或结果。通知不可用仍可从 PG 补放，断开 SSE/浏览器不等于取消任务。
+
+### 验证与限制
+
+A 包负责新增状态、序列化、原子暂停、权限、幂等与浏览器交互；B 包负责新资格协议、事务不确定性、取消/超时/失联隔离和三进程真实检索链。具体命令、26 新/365 旧的 B 去重结果、A 结果复用条件与未执行范围见 7.6，不将受控模型称作真实质量证明。当前没有新增通用逐节点持久执行引擎，也没有把失联 running 自动重新排队。
+
+### 与下一章的衔接
+
+第八章将围绕 Dataset、Observation/Judge、冻结评测配置与可比较报告，把此前“固定案例可运行”推进到质量闭环；可复用正式知识工具/Run 预算/错误语义和持久恢复边界。评测数据、指标、执行进程和质量阈值仍需先讨论并列明确工作包；本章总结不自动创建 Evaluation Worker、数据库表或第八章应用代码。
+
+## 本章结束时的代码框架
+
+范围日期：2026-11-14，以下按真实源码说明，省略未改变的通用认证/文档构建细节；未来评测执行器不列为已实现。
+
+### 业务目录与模块职责
+
+| 目录或模块 | 做什么、为何存在 | 上下游与数据归属 | 源码入口 |
+| --- | --- | --- | --- |
+| API / conversations | 认证资源入口，创建/查询/取消/获取恢复凭据/接收补充；不在 HTTP 中长跑模型 | 接收用户输入，调用正式 Repository/HitlStore；业务 Thread/Message 属 PG | [runs.py](../src/minimew/api/runs.py)、[conversations.py](../src/minimew/conversations.py) |
+| execution/dispatcher | 周期查候选、限制实例并发、扫描过期任务、有界退出 | PG 决定领取，调度执行器；只保存本实例活跃任务句柄 | [dispatcher.py](../src/minimew/execution/dispatcher.py) |
+| execution/repository | Thread→Run 短事务，claim/activate/heartbeat/取消/条件写入/唯一终态 | 读取冻结快照/原消息，写 PG Run/Message/Journal/Outbox/答案依据；Claim 是凭证 | [repository.py](../src/minimew/execution/repository.py) |
+| execution/service | 外层模型/工具循环、Run 私有 budget/context、取消心跳监控与最终回答 | 调 Provider/Registry/知识工具；收到 PauseRequested 交 HitlStore，最终结果交 Repository | [service.py](../src/minimew/execution/service.py)、[tools.py](../src/minimew/execution/tools.py) |
+| model_control / settings | 冻结业务策略与校验运行参数分开 | v5 HitlPolicy 随 Run 冻结；本实例 20/5 秒运行设置不改历史快照 | [model_control.py](../src/minimew/model_control.py)、[settings.py](../src/minimew/settings.py) |
+| knowledge / rag | 已发布 scope、检索/重排、内部评判/改写/规划与澄清路由 | 以同 Run context 调 Milvus/模型；图状态只归本次知识工具，不拥有业务终态 | [knowledge.py](../src/minimew/knowledge.py)、[workflow.py](../src/minimew/rag/workflow.py)、[reasoning.py](../src/minimew/rag/reasoning.py) |
+| hitl/checkpoint | 白名单 JSON、8 MiB 上限、Run 私有 BufferedSaver，保存最新 channel 与 pending writes | 与 LangGraph 异步接口协作；内存只是暂停提交前缓冲，正式文档存 PG | [checkpoint.py](../src/minimew/hitl/checkpoint.py) |
+| hitl/store / policy / schemas | 原子暂停/接收/等待过期、一次性摘要凭据、输入结构和冻结澄清规则 | 调 Repository 锁与终态入口；RunCheckpoint 文档/接收记录属 PG，恢复 Token 明文不保存 | [store.py](../src/minimew/hitl/store.py)、[policy.py](../src/minimew/hitl/policy.py)、[schemas.py](../src/minimew/hitl/schemas.py) |
+| models / migrations | 持久结构、状态/所有权/预算写入约束与历史升级 | 同一 PG 事实，无旁路内存镜像；0015/16/17 前向演进 | [models.py](../src/minimew/models.py)、[0015](../migrations/versions/0015_hitl_checkpoints.py)、[0016](../migrations/versions/0016_resume_receipt_nulls.py)、[0017](../migrations/versions/0017_active_execution_leases.py) |
+| execution/journal / outbox / streaming | 有序事件读回、可靠提醒、SSE 投影；提醒丢失仍查 Journal | 持久事实 PG，Redis 只提醒，订阅各自拥有游标/等待任务 | [journal.py](../src/minimew/execution/journal.py)、[outbox.py](../src/minimew/execution/outbox.py)、[streaming.py](../src/minimew/execution/streaming.py) |
+| frontend events / store / components | 按事件显示 waiting/resume，刷新重建、提交补充与错误说明 | projection 为投影；一次性 Token/原提交意图仅页面闭包，不写浏览器存储 | [reducer](../frontend/src/events/runEventReducer.ts)、[chat store](../frontend/src/stores/chat.ts)、[ChatPanel](../frontend/src/components/ChatPanel.vue) |
+| 验收资产 | PG 屏障、真实进程握手与受控模型的真实检索链 | 专属临时库/自有向量 scope，测试 SQL 历史 fixture 不进生产执行链 | [leases_pg](../tests/test_leases_pg.py)、[leases_http](../tests/test_leases_http.py)、[hitl_pg](../tests/test_hitl_pg.py)、[check_hitl](../scripts/check_hitl.py) |
+
+### 代表性流程走读
+
+```text
+浏览器 API / SSE
+    ↓ HTTP                ↑ Event Journal 重放
+API runs → HitlStore.accept → PG: resume_pending / accepted receipt
+    ↓
+Dispatcher → Repository.claim / activate → RunExecutor + 本 Run 心跳监控
+                                           ↓ 恢复原 ToolCall
+                                    knowledge_search
+                                           ↓
+                         RAG graph + BufferedSaver + Command(resume)
+                                           ↓
+                               Milvus / Grader / Evidence
+                                           ↓
+                    原工具完成 → 外层答案/引用校验 → Repository.finish
+                                           ↓
+                      PG: 原 Message + 答案依据 + 唯一 terminal Event
+```
+
+图中 API 内所有模块可在同一 OS 进程；用户补充请求结束后，Dispatcher 独立调度。第三进程续接证明状态来自 PG，前两个进程闭包/内存均不需要存活。索引 Worker 只负责上传构建和发布，不领取聊天 Run；新增心跳没有改变这种进程职责。
+
+### 本章发生的结构整理
+
+新增 MiniMew 自身 hitl 模块承载编码、策略、输入和存储职责，避免将图保存/权限事务/浏览器恢复协议全部堆入执行器。B 在原 execution 模块内扩展正式协议，没有再建恢复 Dispatcher/第二条聊天 route。测试历史 schema 构造器独立到 tests/historical_runs.py，辅助进程与真实资源验收脚本留在 tests/scripts；未重写已执行迁移、上级生产目录或依赖锁文件。后续路径变化须同步本表和章节链接。

@@ -60,7 +60,7 @@ def main():
     assert os.environ.get("MINIMEW_HITL_CHECK") == "1"
     assert Settings().db_name.startswith("minimew_test_")
     controlled = ControlledHitl(sys.argv[2])
-    answer_module.DeepSeekProvider = lambda key: controlled
+    answer_module.DeepSeekProvider = lambda key: None if sys.argv[2] == "accept" else controlled
     # 只验收 Journal，不创建 Redis 通知键。
     from check_knowledge import offline_notifications
 
