@@ -230,6 +230,8 @@
 
 ## 8. RAG 评测闭环
 
+子项、现有能力边界与拟议工作包见[第八章开章计划](chapters/08-RAG评测闭环.md)：A 包 8.1–8.3 建立离线契约/评分/Gate，B 包 8.4–8.5 接持久真实执行与 Evaluator，C 包 8.6 完成工作台与结章。实际进度和授权仅见[当前交接](AGENT_HANDOFF.md#当前检查点)。
+
 ### 首次引入的技术与概念
 
 - Dataset/Observation/Report schema、fingerprint、provenance、Gate、baseline：评测事实、可比性与发布政策。
