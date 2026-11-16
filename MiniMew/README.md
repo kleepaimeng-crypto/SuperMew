@@ -1063,6 +1063,10 @@ uv run --env-file .env --no-sync python scripts/check_hitl.py
 
 ## 当前进度
 
+第八章A包提供独立离线评测：严格Dataset/Observation/内容身份、纯评分、切片分母、baseline比较与逐条Gate。
+使用示例和命令见[离线评测说明](evals/rag/README.md)。仅需已有Pydantic/标准库；静态观察不代表真实模型质量，
+Evaluation Worker/Judge和评测工作台尚未实现。
+
 阶段、已通过的理解检查、待答问题与编码授权统一记录在 [Agent 交接文档](AGENT_HANDOFF.md#当前检查点)，继续学习前先读取。换设备流程也在该文档中。
 
 ## 参考范围与不变量

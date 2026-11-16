@@ -18,8 +18,9 @@ Mode = Literal["contract_smoke", "controlled", "live"]
 class EvaluationInputError(ValueError):
     """公开诊断只使用稳定code，不附输入原文。"""
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, details: dict[str, int] | None = None):
         self.code = code
+        self.details = details or {}
         super().__init__(code)
 
 
@@ -241,7 +242,14 @@ def validate_inputs(dataset: Dataset, corpus: Corpus, observations: ObservationS
     if observed - expected:
         raise EvaluationInputError("UNKNOWN_CASE")
     if expected - observed:
-        raise EvaluationInputError("MISSING_CASE")
+        raise EvaluationInputError(
+            "MISSING_CASE",
+            {
+                "expected": len(expected),
+                "observed": len(observed),
+                "missing": len(expected - observed),
+            },
+        )
     texts = {s.source_id: s.text for s in corpus.sources}
     for observation in observations.cases:
         for material in observation.materials:

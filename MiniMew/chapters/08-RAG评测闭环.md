@@ -1,6 +1,6 @@
 # 第 8 章：RAG 评测闭环
 
-当前学习进度、用户真实反馈和应用编码授权只见 [交接记录](../AGENT_HANDOFF.md#当前检查点)。本章是 2026-11-15 保存的开章方案，拟议模块和验收尚未实现；第七章已交付的恢复能力见[上一章总结](07-HITL与故障恢复.md#结章文字总结)。
+当前学习进度、用户真实反馈和应用编码授权只见 [交接记录](../AGENT_HANDOFF.md#当前检查点)。2026-11-15开章，2026-11-16已完成A包8.1–8.3离线闭环，实际实现见下方实施记录；B/C尚未实现或获开始授权。第七章已交付恢复能力见[上一章总结](07-HITL与故障恢复.md#结章文字总结)。
 
 ## 开章计划
 
@@ -255,10 +255,52 @@ Gate输出逐条规则的期望/实际/原因，不做不可解释的加权总�
 
 `uv run --no-sync pytest -q --confcutdir=tests/evaluation tests/evaluation/test_scoring.py`：14个新用例通过、0跳过；本次未重跑23个未变8.1行为，用例不叠加复跑计数。对应Ruff/格式和schema生成通过，8.1提交`f28628d`已推送personal/main。8.3仍在同一授权包连续实施，未增加在线依赖或真实模型质量结论。
 
+### 8.3 已完成：baseline、逐条Gate与离线CLI
+
+新增`evaluation/gate.py`：严格GatePolicy、来源/关键Case/完整性/预算/指标要求、声明实验变量的baseline比较及受Report指纹绑定的EvaluationArtifact。不可比时不生成差值；必需指标缺失为insufficient；关键失败为fail。`cli.py`提供validate/score/compare和同结果JSON/中文输出，退出码0/1/2区分通过、已形成未达标报告、无效输入。显式output拒绝覆盖任一输入或baseline，比较不自动更新参照；缺Case诊断提供expected/observed/missing计数，错误不回显输入。
+
+新增gate-policy/artifact生成schema和显式选定的contract_smoke baseline/policy；baseline由四条人工样本经评分器生成，测试核对其逐题事实与聚合，不作为模型质量证明。生成schema增加LF属性保证跨Windows设备字节一致；新增模块指南保存真源、评分版本、离线测试边界。8.3连同一个故障恢复允许多结果的评分修正验证：如果Case明确允许answered/error，恢复成功不因存在expected_error而误判；只有实际error才比错误码。
+
+#### 本包实际验证
+
+从MiniMew目录执行：
+
+```powershell
+uv run --no-sync pytest -q --confcutdir=tests/evaluation tests/evaluation
+uv run --no-sync ruff check src/minimew/evaluation tests/evaluation scripts/generate_evaluation_schema.py
+uv run --no-sync ruff format --check src/minimew/evaluation tests/evaluation scripts/generate_evaluation_schema.py
+uv run --no-sync python scripts/generate_evaluation_schema.py --check
+```
+
+最终68个不同新增用例通过，0 skipped、0既有在线用例计入；23个8.1+14个8.2+31个后续新例=68。8.3首轮29例已通过，随后新增保存baseline/故障恢复期望两例；因共享protocol错误诊断/评分修正与新CLI/生成消费者需要包末协作验证，统一复验最终68项，不将此前复跑累计为新增。Ruff通过、11个受影响Python文件格式检查通过，6份schema无漂移。初次行长检查/全局App夹具阻塞与处理见8.1；8.3两个报告长字符串及一条测试字符串行长在定向格式检查中修正，无删断言/放宽指标。
+
+CLI子进程验证校验、评分、显式保存baseline/对照、中文报告、三类退出码、缺Case计数、Secret不回显和不覆盖输入；并在禁止网络socket及torch/langgraph/sqlalchemy/pymilvus/openai/redis/在线App导入的环境中验证评分CLI成功。报告schema/政策不宣称离线JSON的live标签可证明真实来源。
+
+未运行PG/Milvus/真实模型/收费Provider/迁移/浏览器或全仓门禁：本包未改变这些行为/协议，仅新增独立离线模块。未添加依赖或修改lock；旧chapter06素材/观察和在线Run Event保持。本包8.1 `f28628d`、8.2 `07dd1c7`已推送个人main；8.3最终提交推送以Git记录为准。不夹带独立设备记录。
+
+#### A包实际代码框架与一次调用
+
+```text
+evals/rag/fixtures：人工Corpus/Dataset/静态Observation/显式policy与baseline
+          ↓ 严格文件加载
+evaluation/protocol.py：类型真源、内容指纹、区间与输入身份
+          ↓ 完整有效事实
+evaluation/scoring.py：纯逐Case计分 → 全体/quality/fault Report
+          ↓ 选定baseline与政策
+evaluation/gate.py：可比性/差值/逐条规则 → GateResult
+          ↓ 同一个EvaluationArtifact
+evaluation/cli.py：JSON或中文输出、明确退出码、显式文件导出
+
+scripts/generate_evaluation_schema.py → evals/rag/schema（生成物）
+tests/evaluation/：离线协议/评分/Gate与进程级CLI验证
+```
+
+一次请求就是显式读取三份输入，核验内容身份后按人工gold评分，再按政策比较选定baseline，输出可重建报告；整个链不创建Thread/Run/Job，不调用在线Grader或Evaluator。A包已完成，下一步先讨论B包8.4–8.5的共享RAG计算接口、Job身份/冻结配置、真实语料隔离与独立Judge预算，再取得具体开始反馈。第八章尚未结章。
+
 ## 结章文字总结（完成后填写）
 
 尚未实施。结束时按真实结果填写：交付能力、核心取舍、完整数据流、失败/复验记录、离线与真实质量证据、限制和第九章衔接；不提前填写模型质量通过或用户理解通过。
 
 ## 本章结束时的代码框架（完成后填写）
 
-本轮只列已有 seam，未创建 Evaluation 应用模块。每包完成后按实际源码补职责、状态归属与代表性请求；章末集中保存最终目录/模块协作和结构整理记录，不将上方拟议模块画成已实现。
+A包实际模块与调用关系见上方实施记录。真实Job/Worker/Evaluator和工作台仍为B/C计划；章末基于全部实际源码集中保存最终框架，不将拟议模块画成已实现。

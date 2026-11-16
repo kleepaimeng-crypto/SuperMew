@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from minimew.evaluation.gate import EvaluationArtifact, GatePolicy
 from minimew.evaluation.protocol import Corpus, Dataset, ObservationSet
 from minimew.evaluation.scoring import Report
 
@@ -14,7 +15,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    models = {"corpus": Corpus, "dataset": Dataset, "observation": ObservationSet, "report": Report}
+    models = {
+        "corpus": Corpus,
+        "dataset": Dataset,
+        "observation": ObservationSet,
+        "report": Report,
+        "gate-policy": GatePolicy,
+        "artifact": EvaluationArtifact,
+    }
     stale = []
     for name, model in models.items():
         schema = model.model_json_schema()

@@ -192,7 +192,9 @@ def score(dataset: Dataset, corpus: Corpus, observations: ObservationSet) -> Rep
                 outcome=observation.outcome,
                 error_code=observation.error_code,
                 outcome_match=observation.outcome in case.allowed_outcomes
-                and observation.error_code == case.expected_error,
+                and (
+                    observation.outcome != "error" or observation.error_code == case.expected_error
+                ),
                 gold_count=len(case.evidence_gold),
                 covered_count=count,
                 missing_gold=missing,

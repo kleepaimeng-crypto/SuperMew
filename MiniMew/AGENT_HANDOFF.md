@@ -83,6 +83,8 @@
 
 ## 当前检查点
 
+**2026-11-16第八章A包8.1–8.3已完成：协议/指纹/真实内容区间、纯Scorer、quality/fault明确分母、baseline可比性/声明变量、逐条Gate与validate/score/compare CLI已交付。68个不同新增离线测试有效通过（23+14+31，0 skipped，0旧在线用例），定向Ruff/11文件格式/6schema生成漂移通过；此前复跑不相加。覆盖缺Case/错误/无gold/引用/预算、关键退化、必需语义指标缺失、实验条件、保存baseline一致性和独立CLI；CLI在禁网络/模型/DB/在线App导入下仍通过。样本/baseline仅contract_smoke，语义质量未评价；原chapter06观察/线上Contract/迁移/依赖未改，不运行真实模型/PG/Milvus/收费调用/前端或全仓检查。初次全局夹具缺LangGraph已以独立测试目录/confcutdir隔离；故障Case允许answered/error的恢复结果判定已修正，未删断言。详见第八章实施记录和evals/rag/README。8.1 f28628d、8.2 07dd1c7已推送个人main，8.3以最终Git记录为准；独立devices/windows-laptop.md不纳入本包。下一步仅讨论B包8.4–8.5共享RAG接口/Job与真实语料隔离/独立Evaluator及预算，再取得开始反馈；B/C尚未授权，章节未结章，不预填用户理解通过。**
+
 **2026-11-16第八章8.2已完成、A包继续8.3：纯Scorer和Report已实现，区间覆盖/允许结果/引用结构/预算与quality/fault分母各自保存；等待不算完成，error不丢弃，无gold与语义指标为unavailable，报告加载校验聚合一致。14个新纯评分测试通过、0跳过，Ruff/格式/schema生成通过；8.1的23项此前有效结果不重复相加。8.1 f28628d已推送personal/main；8.3 Gate/baseline/CLI继续，不扩大真实Worker/Judge/DB或前端。**
 
 **2026-11-16第八章8.1已完成、A包内继续：严格Pydantic评测真源/Corpus与Dataset指纹/Observation身份和区间校验、schema生成器与4个contract_smoke样本已交付。23个新离线测试有效通过、0跳过，Ruff与schema漂移通过；最初在线全局夹具因缺LangGraph阻塞，已用独立tests/evaluation目录和--confcutdir隔离，不安装依赖、不修改旧夹具或删断言。8.2纯评分与8.3 Gate/CLI在同一已授权包连续实现；历史chapter06资产/在线契约/DB保持，无真实模型质量验证。实施细节见第八章A包记录，提交推送以Git记录为准；不扩大B/C。**

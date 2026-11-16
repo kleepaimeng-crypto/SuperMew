@@ -6,7 +6,15 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from minimew.evaluation.protocol import Corpus, Dataset, ObservationSet, canonical, load, text_hash
+from minimew.evaluation.protocol import (
+    Corpus,
+    Dataset,
+    ObservationSet,
+    canonical,
+    fingerprint,
+    load,
+    text_hash,
+)
 from minimew.evaluation.scoring import Report, score
 
 FIXTURES = Path(__file__).resolve().parents[2] / "evals/rag/fixtures"
@@ -96,6 +104,18 @@ def test_healthy_no_gold_is_unavailable_not_perfect_coverage():
     unknown = next(c for c in report.cases if c.case_id == "unknown")
     assert unknown.material_coverage is None and unknown.citation_structure is None
     assert unknown.outcome_match
+
+
+def test_fault_case_can_explicitly_allow_recovery_or_expected_error():
+    dataset, corpus, observations = inputs()
+    standard = dataset.model_dump(mode="json")
+    standard["cases"][3]["allowed_outcomes"] = ["answered", "error"]
+    dataset = Dataset.model_validate_json(json.dumps(standard))
+    actual = observations.model_dump(mode="json")
+    actual["dataset_fingerprint"] = fingerprint(dataset)
+    actual["cases"][3].update(outcome="answered", error_code=None)
+    result = score(dataset, corpus, ObservationSet.model_validate_json(json.dumps(actual)))
+    assert result.fault.metrics.outcome_match.value == 1
 
 
 def test_waiting_is_not_completed_or_scored_as_material_success():
