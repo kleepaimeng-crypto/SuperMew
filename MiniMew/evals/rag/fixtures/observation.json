@@ -1,0 +1,103 @@
+{
+  "dataset_fingerprint": "e9faea059e5b2681d0de59803860cce08b2aa1453ca5b5c54175eede3b2b20e1",
+  "corpus_fingerprint": "3876d2eb74c9539a49487c2e53193d8dae5a09973e33ac59da4a2d0a04e6bbb9",
+  "provenance": {
+    "mode": "contract_smoke",
+    "implementation": "2ad47ffa2c44e63f601770d25d4ca879bf9edef3a1ead64bcf60f905f33496f0",
+    "dependencies": "6b1581d03f1755927f60f23f7b4de1e2726498bd86cda90e2afec1e9e0f78c30",
+    "model": "18fb9fa0b971b807a1312d3702d18747a3b1b39a129df8c5d1a8f68d512bd1fd",
+    "strategy": "a3904526460ae6032e1b4e24632f71640902f4537dd3f8e02cbd00445f331fde",
+    "index": "8a76c15acafa28c88578c73027916c210ff030f193fa787b2affa93b6286bed3"
+  },
+  "cases": [
+    {
+      "case_id": "meal",
+      "outcome": "answered",
+      "materials": [
+        {
+          "material_id": "amount",
+          "source_id": "policy",
+          "start": 0,
+          "end": 9,
+          "content_sha256": "6824fec9db2c36d2a18359090721f5b2622b492d781435e0ebd154a092cba4ce"
+        }
+      ],
+      "citation_sources": [
+        "amount"
+      ],
+      "counts": {
+        "model_attempts": 1,
+        "retrieval_calls": 1,
+        "tool_calls": 1
+      },
+      "budget": {
+        "model_attempts": 4,
+        "retrieval_calls": 8,
+        "tool_calls": 6
+      }
+    },
+    {
+      "case_id": "exception",
+      "outcome": "answered",
+      "materials": [
+        {
+          "material_id": "exception-rule",
+          "source_id": "policy",
+          "start": 9,
+          "end": 19,
+          "content_sha256": "c2db40421b9995e2a0fc01fae431787bd8c4409e70798c300cb5d3c354fa380b"
+        },
+        {
+          "material_id": "other-meals",
+          "source_id": "policy",
+          "start": 19,
+          "end": 29,
+          "content_sha256": "2c9d612c1deb168ef306d87fcb5d0db811b2b081094ab02cfa38fa9a950c0a2b"
+        }
+      ],
+      "citation_sources": [
+        "exception-rule",
+        "other-meals"
+      ],
+      "counts": {
+        "model_attempts": 1,
+        "retrieval_calls": 1,
+        "tool_calls": 1
+      },
+      "budget": {
+        "model_attempts": 4,
+        "retrieval_calls": 8,
+        "tool_calls": 6
+      }
+    },
+    {
+      "case_id": "unknown",
+      "outcome": "no_knowledge",
+      "counts": {
+        "model_attempts": 1,
+        "retrieval_calls": 1,
+        "tool_calls": 1
+      },
+      "budget": {
+        "model_attempts": 4,
+        "retrieval_calls": 8,
+        "tool_calls": 6
+      }
+    },
+    {
+      "case_id": "timeout",
+      "outcome": "error",
+      "error_code": "PROVIDER_TIMEOUT",
+      "counts": {
+        "model_attempts": 1,
+        "retrieval_calls": 1,
+        "tool_calls": 1
+      },
+      "budget": {
+        "model_attempts": 4,
+        "retrieval_calls": 8,
+        "tool_calls": 6
+      }
+    }
+  ]
+}

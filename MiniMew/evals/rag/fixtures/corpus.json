@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "source_id": "policy",
+      "text": "餐费上限150元。已供餐不可重复报销。其他餐食按实际支出。"
+    }
+  ]
+}

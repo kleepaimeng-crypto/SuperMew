@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "dataset_id": "offline-smoke",
+  "sources": [
+    {
+      "source_id": "policy",
+      "content_sha256": "406611056f32d6c062c4c1424c78eb92148b67fb93b91bc375f5c712fcb7e11b",
+      "length": 29
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "meal",
+      "question": "餐费上限是多少？",
+      "kind": "quality",
+      "critical": true,
+      "allowed_outcomes": [
+        "answered"
+      ],
+      "expected_error": null,
+      "evidence_gold": [
+        {
+          "source_id": "policy",
+          "start": 0,
+          "end": 9
+        }
+      ],
+      "required_claims": [
+        "上限150元"
+      ],
+      "forbidden_claims": [],
+      "requires_citations": true
+    },
+    {
+      "case_id": "exception",
+      "question": "已提供午餐还能重复报销吗，其他餐食呢？",
+      "kind": "quality",
+      "critical": true,
+      "allowed_outcomes": [
+        "answered"
+      ],
+      "expected_error": null,
+      "evidence_gold": [
+        {
+          "source_id": "policy",
+          "start": 9,
+          "end": 19
+        },
+        {
+          "source_id": "policy",
+          "start": 19,
+          "end": 29
+        }
+      ],
+      "required_claims": [
+        "已供餐不可重复报销"
+      ],
+      "forbidden_claims": [
+        "当天其他餐食一律不能报销"
+      ],
+      "requires_citations": true
+    },
+    {
+      "case_id": "unknown",
+      "question": "火星基地补贴是多少？",
+      "kind": "quality",
+      "critical": false,
+      "allowed_outcomes": [
+        "no_knowledge"
+      ],
+      "expected_error": null,
+      "evidence_gold": [],
+      "required_claims": [],
+      "forbidden_claims": [],
+      "requires_citations": false
+    },
+    {
+      "case_id": "timeout",
+      "question": "模拟Provider超时",
+      "kind": "fault",
+      "critical": false,
+      "allowed_outcomes": [
+        "error"
+      ],
+      "expected_error": "PROVIDER_TIMEOUT",
+      "evidence_gold": [],
+      "required_claims": [],
+      "forbidden_claims": [],
+      "requires_citations": false
+    }
+  ]
+}
