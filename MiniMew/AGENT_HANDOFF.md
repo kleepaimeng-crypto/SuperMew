@@ -83,6 +83,8 @@
 
 ## 当前检查点
 
+**2026-11-16第八章8.2已完成、A包继续8.3：纯Scorer和Report已实现，区间覆盖/允许结果/引用结构/预算与quality/fault分母各自保存；等待不算完成，error不丢弃，无gold与语义指标为unavailable，报告加载校验聚合一致。14个新纯评分测试通过、0跳过，Ruff/格式/schema生成通过；8.1的23项此前有效结果不重复相加。8.1 f28628d已推送personal/main；8.3 Gate/baseline/CLI继续，不扩大真实Worker/Judge/DB或前端。**
+
 **2026-11-16第八章8.1已完成、A包内继续：严格Pydantic评测真源/Corpus与Dataset指纹/Observation身份和区间校验、schema生成器与4个contract_smoke样本已交付。23个新离线测试有效通过、0跳过，Ruff与schema漂移通过；最初在线全局夹具因缺LangGraph阻塞，已用独立tests/evaluation目录和--confcutdir隔离，不安装依赖、不修改旧夹具或删断言。8.2纯评分与8.3 Gate/CLI在同一已授权包连续实现；历史chapter06资产/在线契约/DB保持，无真实模型质量验证。实施细节见第八章A包记录，提交推送以Git记录为准；不扩大B/C。**
 
 **2026-11-16第八章A包已获开始授权：用户明确“开始第八章 A 包”，覆盖已列明8.1–8.3的离线契约/指纹、纯评分器、baseline/Gate/CLI和定向验证，包内连续实施。保持人工标准/观察/评分分离、分母与错误保留、同条件比较和来源限制；不改在线Run/Event/数据库/历史chapter06资产，不加载模型或收费调用。当前开始实现，未预填完成或测试通过；不扩大到B包真实Worker/Judge或C包界面。既有两份未提交设计文档属于本轮前置，保留并随相关小节交付。**

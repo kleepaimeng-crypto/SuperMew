@@ -19,4 +19,6 @@ uv run --no-sync pytest -q --confcutdir=tests/evaluation tests/evaluation
 引用目录对应关系属于评分检查；材料本身的内容身份无效则拒绝输入。
 
 测试专用命令隔离旧的在线App全局夹具，因此不要求LangGraph/模型/数据库可用；既有测试夹具不变。
-评分、Gate与CLI在同一A包的8.2–8.3继续交付。完整设计见[第八章](../../chapters/08-RAG评测闭环.md)。
+`evaluation/scoring.py`提供纯评分，Report核对逐Case与聚合一致；分开记录全体/quality/fault切片，
+材料覆盖不能推出答案正确，语义指标尚未评价。Gate与CLI在同一A包的8.3继续交付。
+完整设计见[第八章](../../chapters/08-RAG评测闭环.md)。

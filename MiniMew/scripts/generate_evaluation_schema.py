@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from minimew.evaluation.protocol import Corpus, Dataset, ObservationSet
+from minimew.evaluation.scoring import Report
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -13,7 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    models = {"corpus": Corpus, "dataset": Dataset, "observation": ObservationSet}
+    models = {"corpus": Corpus, "dataset": Dataset, "observation": ObservationSet, "report": Report}
     stale = []
     for name, model in models.items():
         schema = model.model_json_schema()
