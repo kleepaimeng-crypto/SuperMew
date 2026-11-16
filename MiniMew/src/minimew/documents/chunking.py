@@ -220,5 +220,5 @@ def build_version_chunks(
         content = store.read(identity.version_id, source_sha256)
     except OSError as exc:
         raise DocumentBuildError("DOCUMENT_SOURCE_UNAVAILABLE") from exc
-    parsed = parse_source(content, build.source_format, source_sha256)
+    parsed = parse_source(content, build.source_format, source_sha256, parser=build.parser)
     return build_chunks(parsed, identity, build, tokenizer)

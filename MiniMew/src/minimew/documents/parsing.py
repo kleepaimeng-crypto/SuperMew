@@ -62,7 +62,15 @@ class ParsedDocument:
         return self.text[span.start : span.end]
 
 
-def parse_source(content: bytes, source_format: str, expected_sha256: str) -> ParsedDocument:
+def parse_source(
+    content: bytes,
+    source_format: str,
+    expected_sha256: str,
+    *,
+    parser: Literal["markdown-txt-v1", "markdown-txt-v2"] = "markdown-txt-v2",
+) -> ParsedDocument:
+    if parser not in {"markdown-txt-v1", "markdown-txt-v2"}:
+        raise DocumentBuildError("DOCUMENT_PARSER_UNSUPPORTED")
     if hashlib.sha256(content).hexdigest() != expected_sha256:
         raise DocumentBuildError("DOCUMENT_SOURCE_HASH_MISMATCH")
     if source_format not in {"markdown", "text"}:
@@ -124,11 +132,15 @@ def parse_source(content: bytes, source_format: str, expected_sha256: str) -> Pa
                     drafts[stack.pop()]["end"] = begin
                 title = tokens[index + 1].content.strip()
                 parent = stack[-1]
+                titles = drafts[parent]["titles"]
+                # 空标题仍是结构节点；v2不把空元素写入可引用的标题路径。
+                if title or parser == "markdown-txt-v1":
+                    titles = (*titles, title)
                 drafts.append(
                     {
                         "parent": parent,
                         "level": level,
-                        "titles": (*drafts[parent]["titles"], title),
+                        "titles": titles,
                         "start": begin,
                         "end": len(text),
                     }

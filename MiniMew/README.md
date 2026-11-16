@@ -10,6 +10,8 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 理解整体设计先读[架构导读](ARCHITECTURE_GUIDE.md)：以三个协作系统串起运行进程、模块调用、数据归属、技术选择与后续连接点。教学按最新约定聚焦架构与模块关系，不再默认逐轮提简单场景或异常判断题。
 
+开发和使用中实际遇到的问题见[Bug记录](BUGS.md)：持续保存现象、根因、修复方法、历史数据处理和实际验证。笔记本环境与模型准备见[笔记本记录](devices/windows-laptop.md)。
+
 ## 运行最小后端
 
 需要 Python 3.12、uv 和正在运行的 Docker Desktop（Linux containers）。在 PowerShell 中进入本目录后运行：
@@ -261,6 +263,19 @@ uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <use
 ```
 
 升级更新该用户未来上传的构建目标，经既有候选Version/IndexJob/Worker核验发布；旧current在成功前继续可读，源文件和历史引用不改。存在并发上传时拒绝覆盖；批量可能部分入队，重新执行可继续，不自动清库或重建集合。独立Worker同时识别旧Dense和新Hybrid的显式构建身份。API/Worker需加载最新代码，普通API不执行迁移或索引构建。
+
+### 修复空标题的解析构建升级
+
+`markdown-txt-v2`保留空Markdown标题的层级与原文坐标，但不将空字符串加入引用标题路径。新知识库使用v2；已有知识库保持冻结构建，通过下面的显式流程升级，保留原索引布局（不会同时切换Hybrid）。先查看计划，再按需执行；API和Worker须使用新版代码：
+
+```powershell
+uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <user_uuid> --parser markdown-txt-v2
+uv run --env-file .env --no-sync python -m minimew.documents.upgrade --user <user_uuid> --parser markdown-txt-v2 --apply
+```
+
+只重建指定文档时，两条命令均可加`--document <document_uuid>`，服务端仍检查该文档属于指定用户；省略则按该用户的已发布文档形成计划。
+
+命令复用原Version/Job/Worker发布链，内容相同但构建身份不同会创建新候选版本；原文件和历史引用保留。只更新代码不会修正已冻结的旧片段。详情见[BUG-001](BUGS.md#bug-001空-markdown-标题导致知识问答失败)。
 
 ## 本地模型与 RAG 策略（6.3–6.7）
 

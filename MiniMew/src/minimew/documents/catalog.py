@@ -130,7 +130,9 @@ async def reserve_document(
         ).encode()
     ).hexdigest()
     async with session.begin():
-        initial = preset(default_profile).model_copy(update={"index_layout": index_layout})
+        initial = preset(default_profile).model_copy(
+            update={"index_layout": index_layout, "parser": "markdown-txt-v2"}
+        )
         initial = BuildConfiguration.model_validate(initial.model_dump())
         await session.execute(
             insert(KnowledgeBase)

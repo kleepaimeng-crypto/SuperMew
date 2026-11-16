@@ -458,9 +458,9 @@ export interface components {
       /**
        * Parser
        * @default markdown-txt-v1
-       * @constant
+       * @enum {string}
        */
-      parser: "markdown-txt-v1";
+      parser: "markdown-txt-v1" | "markdown-txt-v2";
       /**
        * Chunker
        * @default structure-v1

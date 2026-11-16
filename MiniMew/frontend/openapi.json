@@ -1411,7 +1411,7 @@
           },
           "parser": {
             "type": "string",
-            "const": "markdown-txt-v1",
+            "enum": ["markdown-txt-v1", "markdown-txt-v2"],
             "title": "Parser",
             "default": "markdown-txt-v1"
           },

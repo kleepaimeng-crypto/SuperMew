@@ -83,6 +83,8 @@
 
 ## 当前检查点
 
+**2026-11-16 BUG-001已修复并在笔记本验证：用户要求新建Bug文档并修复空标题问题，已建立[BUGS.md](BUGS.md)作为后续问题现象/根因/修复/验证记录。v2解析保留层级和原文位置，不写空标题元素；显式构建版本、Worker指纹、指定文档升级及生成类型同步，Evidence校验保持严格。112个不同定向用例通过（10新/102旧，72离线/40PG，0跳过），前端类型与Ruff通过；真实BGE/Milvus对原问题3个命中来源有效，两份同内容旧索引均按新候选发布，原文/历史消息与引用摘要保持。API/Worker恢复、live/ready200；没有收费回答或完整浏览器/全仓质量验收。详情见BUG-001及[笔记本设备记录](devices/windows-laptop.md)，第八章B包独立讨论不随此修复扩大。**
+
 **2026-11-16第八章A包8.1–8.3已完成：协议/指纹/真实内容区间、纯Scorer、quality/fault明确分母、baseline可比性/声明变量、逐条Gate与validate/score/compare CLI已交付。68个不同新增离线测试有效通过（23+14+31，0 skipped，0旧在线用例），定向Ruff/11文件格式/6schema生成漂移通过；此前复跑不相加。覆盖缺Case/错误/无gold/引用/预算、关键退化、必需语义指标缺失、实验条件、保存baseline一致性和独立CLI；CLI在禁网络/模型/DB/在线App导入下仍通过。样本/baseline仅contract_smoke，语义质量未评价；原chapter06观察/线上Contract/迁移/依赖未改，不运行真实模型/PG/Milvus/收费调用/前端或全仓检查。初次全局夹具缺LangGraph已以独立测试目录/confcutdir隔离；故障Case允许answered/error的恢复结果判定已修正，未删断言。详见第八章实施记录和evals/rag/README。8.1 f28628d、8.2 07dd1c7已推送个人main，8.3以最终Git记录为准；独立devices/windows-laptop.md不纳入本包。下一步仅讨论B包8.4–8.5共享RAG接口/Job与真实语料隔离/独立Evaluator及预算，再取得开始反馈；B/C尚未授权，章节未结章，不预填用户理解通过。**
 
 **2026-11-16第八章8.2已完成、A包继续8.3：纯Scorer和Report已实现，区间覆盖/允许结果/引用结构/预算与quality/fault分母各自保存；等待不算完成，error不丢弃，无gold与语义指标为unavailable，报告加载校验聚合一致。14个新纯评分测试通过、0跳过，Ruff/格式/schema生成通过；8.1的23项此前有效结果不重复相加。8.1 f28628d已推送personal/main；8.3 Gate/baseline/CLI继续，不扩大真实Worker/Judge/DB或前端。**

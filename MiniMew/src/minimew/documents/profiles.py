@@ -37,7 +37,7 @@ class EmbeddingProfile(FrozenConfiguration):
 class BuildConfiguration(FrozenConfiguration):
     schema_version: Literal[1] = 1
     source_format: Literal["markdown", "text"] | None = None
-    parser: Literal["markdown-txt-v1"] = "markdown-txt-v1"
+    parser: Literal["markdown-txt-v1", "markdown-txt-v2"] = "markdown-txt-v1"
     chunker: Literal["structure-v1"] = "structure-v1"
     chunk_tokens: int = Field(ge=32, le=8192)
     overlap_tokens: int = Field(ge=0)

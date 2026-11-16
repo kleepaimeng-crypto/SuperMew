@@ -30,6 +30,7 @@ def build_preview(path: Path, tokenizer: BudgetTokenizer) -> tuple[BuildConfigur
         {
             **preset("bge-small-zh-v1.5").model_dump(mode="json"),
             "source_format": source.format,
+            "parser": "markdown-txt-v2",
         }
     )
     # 仅供检查：身份固定标注 local-preview，不能作为数据库登记/鉴权的证据。
@@ -40,7 +41,7 @@ def build_preview(path: Path, tokenizer: BudgetTokenizer) -> tuple[BuildConfigur
         document,
         uuid5(document, source.sha256),
     )
-    parsed = parse_source(content, source.format, source.sha256)
+    parsed = parse_source(content, source.format, source.sha256, parser=build.parser)
     return build, build_chunks(parsed, identity, build, tokenizer)
 
 

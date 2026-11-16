@@ -17,7 +17,7 @@ from minimew.settings import Settings
 from minimew.vector_store.manifest import HYBRID_LAYOUT
 
 
-async def upgrade(sessions, store, user_id, *, apply=False):
+async def upgrade(sessions, store, user_id, *, apply=False, parser=None, document_id=None):
     async with sessions() as session, session.begin():
         kb = await session.scalar(
             select(KnowledgeBase).where(KnowledgeBase.user_id == user_id).with_for_update()
@@ -25,19 +25,24 @@ async def upgrade(sessions, store, user_id, *, apply=False):
         if kb is None:
             raise ValueError("Knowledge base not found")
         build = read_build(kb.build_configuration, kb.build_fingerprint)
-        target = build.model_copy(update={"index_layout": HYBRID_LAYOUT})
+        updates = {"index_layout": HYBRID_LAYOUT} if parser is None else {"parser": parser}
+        target = type(build).model_validate({**build.model_dump(mode="json"), **updates})
         rows = (
             await session.execute(
                 select(Document, DocumentVersion)
                 .join(DocumentVersion, Document.current_version_id == DocumentVersion.id)
                 .where(Document.user_id == user_id)
+                .where(*([Document.id == document_id] if document_id is not None else []))
                 .order_by(Document.id)
             )
         ).all()
+        if document_id is not None and not rows:
+            raise ValueError("Published document not found for this owner")
         plans = []
         for doc, version in rows:
             old = read_build(version.build_configuration, version.build_fingerprint)
-            if old.index_layout == HYBRID_LAYOUT:
+            expected = target.model_copy(update={"source_format": version.source_format})
+            if old.fingerprint() == expected.fingerprint():
                 continue
             if doc.pending_version_id is not None:
                 pending = await session.get(DocumentVersion, doc.pending_version_id)
@@ -46,8 +51,8 @@ async def upgrade(sessions, store, user_id, *, apply=False):
                     and pending.content_sha256 == version.content_sha256
                     and read_build(
                         pending.build_configuration, pending.build_fingerprint
-                    ).index_layout
-                    == HYBRID_LAYOUT
+                    ).fingerprint()
+                    == expected.fingerprint()
                 ):
                     continue
                 raise ValueError("Pending upload exists; finish it before upgrading")
@@ -77,7 +82,11 @@ async def upgrade(sessions, store, user_id, *, apply=False):
                     store,
                     user_id,
                     source,
-                    f"hybrid-v1-{old_version}",
+                    (
+                        f"hybrid-v1-{old_version}"
+                        if parser is None
+                        else f"parser-v2-{old_version}-{target.fingerprint()}"
+                    ),
                     build.embedding.id,
                     doc_id,
                     expected_current_version=old_version,
@@ -90,7 +99,13 @@ async def upgrade(sessions, store, user_id, *, apply=False):
                         "created": created,
                     }
                 )
-    return {"apply": apply, "layout": HYBRID_LAYOUT, "documents": len(plans), "jobs": receipts}
+    return {
+        "apply": apply,
+        "layout": target.index_layout,
+        "parser": target.parser,
+        "documents": len(plans),
+        "jobs": receipts,
+    }
 
 
 async def main(args):
@@ -102,6 +117,8 @@ async def main(args):
             SourceStore(settings.document_upload_dir),
             args.user,
             apply=args.apply,
+            parser=args.parser,
+            document_id=args.document,
         )
         print(json.dumps(result, ensure_ascii=False))
     finally:
@@ -112,4 +129,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--user", type=UUID, required=True)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--parser", choices=["markdown-txt-v2"], help="仅升级解析器，保留索引布局")
+    parser.add_argument("--document", type=UUID, help="仅为指定用户的一份已发布文档重建")
     asyncio.run(main(parser.parse_args()))
