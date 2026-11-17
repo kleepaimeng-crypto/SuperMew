@@ -25,10 +25,12 @@ class ProviderRequest:
     instructions: str = ""
     purpose: Literal["answer", "grade", "plan", "rewrite", "repair"] = "answer"
     private_output: bool = False
+    force_answer: bool = False
 
     def __post_init__(self):
         if (
             type(self.private_output) is not bool
+            or type(self.force_answer) is not bool
             or (self.purpose == "repair") != self.private_output
         ):
             raise ValueError("Repair requests require private output")

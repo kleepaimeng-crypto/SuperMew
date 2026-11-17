@@ -32,6 +32,11 @@ class RepairPolicy(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
     answer_repair_limit: Literal[1] = 1
     aggregation: Literal["representatives-v1"] = "representatives-v1"
+    finalization: Literal["reserved-v1"] | None = None
+
+
+class FinalizationReserved(Exception):
+    """计算尚未超额，但剩余调用只供最终回答与格式纠正使用。"""
 
 
 class Grade(BaseModel):
@@ -53,15 +58,22 @@ class Plan(BaseModel):
 
 
 async def grade_materials(caller, question, draft, aspects=()):
-    result = await caller(
-        "grade",
-        {
-            "question": question,
-            "materials": [m.model_dump(mode="json") for m in draft.matches],
-            "aspects": aspects,
-        },
-        Grade,
-    )
+    try:
+        result = await caller(
+            "grade",
+            {
+                "question": question,
+                "materials": [m.model_dump(mode="json") for m in draft.matches],
+                "aspects": aspects,
+            },
+            Grade,
+        )
+    except FinalizationReserved:
+        return Grade(
+            status="insufficient",
+            supported=(),
+            missing=("模型预算已为最终回答及格式纠正预留，材料充分性未完成验证",),
+        )
     ids = {m.citation_id for m in draft.matches}
     if not set(result.supported) <= ids or (
         result.status == "sufficient" and (not result.supported or result.missing)

@@ -8,10 +8,11 @@ from dataclasses import replace
 
 from pydantic import ValidationError
 
-from minimew.execution.diagnostics import capture, emit
+from minimew.execution.diagnostics import Diagnostic, capture, emit
 from minimew.execution.messages import InputMessage, json_object, validate_turn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta, ProviderFailure
 from minimew.execution.tools import ToolFailure
+from minimew.rag.reasoning import FinalizationReserved
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,17 @@ class RunModelCaller:
         async with asyncio.timeout_at(self.deadline), self.slots:
             for attempt in range(2):
                 await self.check()
-                self.budget.take_internal()
+                try:
+                    self.budget.take_internal()
+                except FinalizationReserved:
+                    emit(
+                        logger,
+                        "model_budget_reserved",
+                        self.request.run_id,
+                        "AGENT_BUDGET_EXCEEDED",
+                        Diagnostic("budget", "finalization_reserve", counts=self.budget.counts()),
+                    )
+                    raise
                 try:
                     turn = None
                     stream = self.provider.stream(request)

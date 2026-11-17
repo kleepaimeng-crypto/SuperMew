@@ -12,6 +12,8 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 开发和使用中实际遇到的问题见[Bug记录](BUGS.md)：持续保存现象、根因、修复方法、历史数据处理和实际验证。笔记本环境与模型准备见[笔记本记录](devices/windows-laptop.md)。
 
+新Run的回答修复策略冻结`finalization=reserved-v1`：在原4次外层/12次总模型上限内预留最终回答及一次格式纠正，接近边界时停止工具探索；内部评判未完成须明确不足，旧Run保留原策略。该预留不放宽引用/正文校验，预算错误的具体类别与计数只写受控服务日志，详情见[BUG-002](BUGS.md#bug-002答案格式纠正前模型预算耗尽)。
+
 ## 运行最小后端
 
 需要 Python 3.12、uv 和正在运行的 Docker Desktop（Linux containers）。在 PowerShell 中进入本目录后运行：

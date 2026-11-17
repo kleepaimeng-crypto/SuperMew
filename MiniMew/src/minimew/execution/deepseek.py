@@ -229,7 +229,10 @@ class DeepSeekProvider:
                         )
                     )
             bound = (
-                model.bind_tools([tool.wire() for tool in request.tools], tool_choice="auto")
+                model.bind_tools(
+                    [tool.wire() for tool in request.tools],
+                    tool_choice="none" if request.force_answer else "auto",
+                )
                 if request.tools
                 else model
             )

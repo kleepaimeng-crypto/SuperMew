@@ -14,6 +14,7 @@ class Diagnostic:
     exception_type: str | None = None
     stack: tuple[dict, ...] = ()
     cause_code: str | None = None
+    counts: dict[str, int] | None = None
 
 
 def capture(stage, reason, error=None, *, cause_code=None):

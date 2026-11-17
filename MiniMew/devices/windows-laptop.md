@@ -46,3 +46,9 @@ uv run --env-file .env --no-sync python -m minimew.rag.reranker check
 确认无进行中Run/IndexJob后暂停本项目API/Worker，保存历史数据摘要，按v2解析规则分别重建两份同内容的上传副本；保留Dense布局，两份均发布409个片段、空标题元数据为零。原文件与旧版本保留，历史Run/Message/AnswerMaterials/Journal行数/hash不变。没有合并或删除重复文档。
 
 本机辅助检查文件只在忽略的`.artifacts/bug001-*`：升级意图、历史摘要、真实检索结果及新API/Worker日志。原问题经真实本地Embedding/Milvus得到3个来源投影有效命中，不调用DeepSeek。新版API在8001的live/ready均200，索引Worker已恢复常驻；启动使用现有CPU模型，未修改GPU环境或`.env`。前端5174进程保持。
+
+## BUG-002预算预留部署（2026-11-17）
+
+修复与验证见[BUG-002](../BUGS.md#bug-002答案格式纠正前模型预算耗尽)。确认生产库无进行中Run后，仅重启本项目8001 API加载新冻结策略；索引Worker、数据库结构、索引、模型与`.env`未改，前端进程保持。
+
+真实当前配置在Run预留事务中的只读快照检查为`repairs.finalization=reserved-v1`，outer_limit=4/model_limit=12/thinking=disabled。API的live/ready均200；runs/messages/answer_materials/run_events行数与摘要保持，原`a958c192...`及`6fd01df0...`失败记录仍为failed。辅助摘要和启动日志在忽略的`.artifacts/bug002-*`。本次验证包含真实PG/图的受控Provider全链与真实SDK内存HTTP，不含付费DeepSeek在线质量测量，也不对旧Run重发请求。

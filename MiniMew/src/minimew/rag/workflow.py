@@ -89,6 +89,8 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
             return "clarify"
         if grade.status != "insufficient":
             return "finish"
+        if budget.finalization and budget.internal_available() < 2:
+            return "finish"
         if grade.decompose and state["phase"] == "initial" and not budget.planner_used:
             return "plan"
         return "rewrite" if not budget.rewrite_used else "finish"

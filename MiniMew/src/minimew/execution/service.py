@@ -65,27 +65,68 @@ class RunBudget:
     rewrite_used: bool = False
     reasoning: bool = False
     clarification_used: bool = False
+    finalization: bool = False
+
+    def counts(self):
+        return {
+            "outer_model_requests": self.model_requests,
+            "internal_model_requests": self.internal_requests,
+            "total_model_requests": self.model_requests + self.internal_requests,
+            "tool_calls": self.tool_calls,
+            "retrieval_queries": self.retrieval_queries,
+        }
+
+    def exhausted(self, reason):
+        from minimew.execution.diagnostics import Diagnostic
+
+        return ToolFailure(
+            "AGENT_BUDGET_EXCEEDED",
+            diagnostic=Diagnostic("budget", reason, counts=self.counts()),
+        )
+
+    def internal_available(self):
+        return max(
+            0, 12 - self.model_requests - self.internal_requests - (2 if self.finalization else 1)
+        )
+
+    def can_request_tools(self):
+        return (
+            4 - self.model_requests >= 3
+            and 12 - self.model_requests - self.internal_requests >= 3
+            and self.tool_calls < 6
+            and self.retrieval_queries < 8
+        )
 
     def require_model(self):
-        if self.model_requests >= 4 or (
-            self.reasoning and self.model_requests + self.internal_requests >= 12
-        ):
-            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+        if self.model_requests >= 4:
+            raise self.exhausted("outer_model_limit")
+        if self.reasoning and self.model_requests + self.internal_requests >= 12:
+            raise self.exhausted("total_model_limit")
 
     def take_internal(self):
+        if self.finalization and not self.internal_available():
+            from minimew.rag.reasoning import FinalizationReserved
+
+            if self.model_requests + self.internal_requests < 12:
+                raise FinalizationReserved
+            raise self.exhausted("total_model_limit")
         if self.model_requests + self.internal_requests >= 11:
-            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+            raise self.exhausted("internal_model_limit")
         self.internal_requests += 1
 
     def take_retrieval(self):
         if self.retrieval_queries >= 8:
-            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+            raise self.exhausted("retrieval_limit")
         self.retrieval_queries += 1
 
     def require_tools(self, count):
         self.require_model()  # 工具执行后必须仍有机会向模型交回结果。
+        if self.finalization and (
+            4 - self.model_requests < 2 or 12 - self.model_requests - self.internal_requests < 2
+        ):
+            raise self.exhausted("finalization_reserve")
         if self.tool_calls + count > 6:
-            raise ToolFailure("AGENT_BUDGET_EXCEEDED")
+            raise self.exhausted("tool_limit")
 
 
 class RunExecutor:
@@ -338,7 +379,10 @@ class RunExecutor:
         budget = (
             RunBudget(**resume["budget"])
             if resume
-            else RunBudget(reasoning=context.reasoning is not None)
+            else RunBudget(
+                reasoning=context.reasoning is not None,
+                finalization=getattr(context.repairs, "finalization", None) == "reserved-v1",
+            )
         )
         if resume:
             request = replace(
@@ -369,6 +413,14 @@ class RunExecutor:
                 previous = resume["outer"]["assistant"]
                 turn = ModelTurn("tool_calls", previous.content, previous.tool_calls)
             else:
+                if budget.finalization and request.tools and not budget.can_request_tools():
+                    request = replace(
+                        request,
+                        force_answer=True,
+                        instructions=request.instructions
+                        + "\n检索探索阶段已结束。不要再调用工具；基于已有材料输出最终回答，"
+                        "未被资料验证或预算内未完成验证的内容必须明确说明。",
+                    )
                 turn = await self._model_turn(claim, request, deadline, progress, budget)
             if turn.kind == "text":
                 if context.evidence.queried:
@@ -377,6 +429,11 @@ class RunExecutor:
                     )
                 return AnswerResult(turn.content)
             await self._check_active(claim, request, deadline)
+            if request.force_answer:
+                raise ProviderFailure(
+                    "PROVIDER_INVALID_RESPONSE",
+                    diagnostic=capture("answer_model", "final_answer_requested_tools"),
+                )
             assistant = InputMessage("assistant", turn.content, turn.tool_calls)
             prepared = self.registry.prepare(turn.tool_calls, context)
             # 执行前确认原调用ID未重复，且调用数据本身可装入下一轮上下文。
@@ -482,7 +539,19 @@ class RunExecutor:
                 if attempt >= limit or not repairable:
                     raise ProviderFailure("PROVIDER_INVALID_RESPONSE", diagnostic=detail) from None
                 await self._check_active(claim, request, deadline)
-                budget.require_model()
+                emit(
+                    logger,
+                    "answer_validation_failed",
+                    request.run_id,
+                    "PROVIDER_INVALID_RESPONSE",
+                    detail,
+                    thread_id=request.thread_id,
+                )
+                try:
+                    budget.require_model()
+                except ToolFailure as exhausted:
+                    exhausted.diagnostic = replace(exhausted.diagnostic, cause_code=detail.reason)
+                    raise
                 payload = {
                     "question": context.question,
                     "format_error": detail.reason,

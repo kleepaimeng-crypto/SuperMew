@@ -19,3 +19,27 @@
 - 真实链：用本地BGE Small编码原问题、真实Milvus读取当前发布范围，3个命中均通过KnowledgeService来源投影。检查不调用付费Provider、不创建新业务Run，不把来源校验通过当作最终答案质量证明。未跑全仓/完整浏览器/付费回答回归；后端与前端正式接口可供用户重新提问。未知未来问题继续按独立编号追加，不把本记录当所有KNOWLEDGE_RESULT_INVALID都已解决。
 - 复现命令：离线`pytest -q tests/test_empty_headings.py tests/test_document_chunking.py tests/test_hybrid.py tests/test_knowledge.py`；真实PG使用`python scripts/check_runtime.py tests/test_hybrid_pg.py tests/test_documents_pg.py tests/test_indexing_pg.py`，指定文档新增后定向复验`tests/test_hybrid_pg.py`。完整命令通过项目`uv run --env-file .env --no-sync`执行。
 - 提交：见Git中`fix(minimew): 修复 BUG-001 空标题解析与索引重建`提交。设备与本机检查明细见[笔记本记录](devices/windows-laptop.md)。其他模型/外部API不在本次修复范围。
+
+## BUG-002：答案格式纠正前模型预算耗尽
+
+- 发现：2026-11-16，Windows笔记本；状态：**已修复，2026-11-17完成定向验证**。
+- 现象：BUG-001修复后重新提问“rag有什么知识点”，两次knowledge_search均完成，最终无正文，错误码`AGENT_BUDGET_EXCEEDED`。任务`6fd01df0-e040-4804-94ff-3630c4032a3d`，持久Journal为两组tool.started/tool.completed，随后message.completed(failed)/run.failed，与BUG-001的tool.failed不同。
+- 确认依据：服务端诊断堆栈进入`_grounded_answer`，在解析答案捕获可修正的ValueError后、调用格式纠正前的`budget.require_model()`抛出ToolFailure（当时service.py第485/73行）。即资料检索及结果转换已通过，答案校验未通过且纠正调用没有预算；不能将本次错误解释为同一空标题问题或工具调用次数必然耗尽。
+- 根因边界：当前内部调用只预留一个外层最终回答机会，没有完整预留一次格式纠正；外层4次/总12次上限与格式修复存在竞争。同时预算拒绝覆盖了原始答案格式诊断，日志将其归类为tool_failed，未附外层/内部/检索计数。现有记录不足以断言本Run具体耗尽哪项模型上限，也不能确定缺标题还是某段缺引用；不靠猜测补结论。
+- 伴随状态：检索显式记录`HYBRID_LAYOUT_UNAVAILABLE`，沿已声明Dense能力执行；这是现有文档布局信息，不是本次异常的直接抛出点。它与答案预算问题分别处理，不自动改索引或放大权限/调用预算。
+- 拟议修复：在原固定总预算与期限内提前规划工具/内部推理/最终回答及一次纠正的额度，预算边界前停止增加工作；拒绝时保留原格式原因、具体预算类别和计数。仍须严格验证引用/正文，不靠删除校验、无限重试、自动补编引用或提高总上限掩盖问题。具体冻结策略与新旧Run语义、定向用例范围需在实施前明确。
+- 首轮诊断（2026-11-16）：只读Run/Journal与既有服务日志、核对实际抛出位置，当时尚未修改预算或实施修复。此前BUG-001验证只覆盖真实来源转换；BUG-002的后续修复与验证见下，不以早期只读记录代替当前状态。
+
+### BUG-002修复与验证（2026-11-17）
+
+- 新Run冻结`RepairPolicy.finalization="reserved-v1"`；旧快照中该字段为缺省None，按原策略执行，catalog hash递归排除None，旧v1–v5快照及历史失败任务不回写。不是修改全局变量让已创建Run中途切换策略。
+- 总上限保持外层4次、总12次、工具6次、检索8次和原deadline。内部模型调用为最终回答及一次格式纠正预留2次；预留边界使用独立信号，Grader只能返回“充分性未完成验证/insufficient”，保留已有材料，不能把停止计算说成健康空知识或已经支持全部答案。Provider故障、权限、期限和取消继续走原失败路径。
+- 外层发现剩余额度不足以再开展工具探索时，保留工具规格和私有缓冲语义，以`force_answer`请求显式收尾，DeepSeek发送`tool_choice=none`，不再执行模型违反该约束返回的工具请求。既有材料/不足信息交给原回答路径；格式纠正仍最多一次，严格校验正文字符和来源，不能改金额/删事实/编引用。
+- RunBudget的预留状态随原Checkpoint字典保存并恢复；预算拒绝日志记录具体outer/total/internal/retrieval/tool类别及五项计数，格式校验原因先独立记录，纠正前预算拒绝还保留该原因作为cause_code。只记录受控标签/数值，不记录模型草稿、原文或Secret。没有新增公开Event或数据库字段。
+- 实际验证：193个不同pytest通过（165离线、28真实临时PG；14新增、179既有，0跳过）。包括2轮工具+8内部调用+回答/纠正正好12次的执行器场景；真实RAG图/PG原Run在探索到边界后回答并纠正；改金额拒绝、强制收尾后调用工具拒绝、旧快照摘要、取消/暂停恢复、公开正文不泄露。另验证旧预算拒绝仍保留原格式原因与计数，日志不含私有草稿。HTTP内存Mock使用真实DeepSeek SDK，确认发送none；不是付费模型质量验证。
+- 新增测试最初暴露了tools/tool标签断言、SDK夹具返回值和Registry方法名的测试接线错误，修正测试后11项通过；未放宽旧断言。1条既有畸形SDK输入Pydantic warning仍保留。其他复跑不重复累计。
+- 检查入口：`pytest -q tests/test_finalization_budget.py tests/test_answer_repairs.py tests/test_reasoning.py tests/test_reasoning_graph.py tests/test_agent_sdk.py tests/test_execution_diagnostics.py tests/test_hitl_policy.py tests/test_hitl.py`，以及Provider/Agent/重试/ModelControl的101项定向回归；真实PG经`check_runtime.py`执行`test_repair_pg.py test_hitl_pg.py test_reasoning_pg.py test_diagnostics_pg.py`和新增`test_finalization_pg.py`。常规由`uv run --env-file .env --no-sync`运行。
+- 10个受影响Python文件Ruff/格式通过，OpenAPI/TS重新导出无协议diff，前端typecheck通过；无新依赖、DDL、评测资产或前端行为变化，未运行全仓/全浏览器或收费Provider。官方工具收尾协议核对见[DeepSeek文档](https://api-docs.deepseek.com/api/create-chat-completion/)。
+- 本机部署/历史保持结果见[笔记本记录](devices/windows-laptop.md)。旧失败Run保留，用新Run验证新策略；预留不保证资料必然充分、Provider永不故障或一次格式纠正必然成功，硬上限和最终契约继续生效。
+- 部署核对：排空后仅重启本项目API，索引Worker与数据索引保持；live/ready均200。新Run冻结策略检查为reserved-v1，外层4/总12、thinking=disabled；runs/messages/answer_materials/run_events前后摘要一致，原两次失败Run未改写。
+- 提交：见Git中`fix(minimew): 修复 BUG-002 回答与纠正预算预留`提交。

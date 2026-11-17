@@ -128,7 +128,11 @@ async def freeze_current_snapshot(session: AsyncSession) -> ModelSnapshot:
     try:
         configuration = ModelConfiguration.model_validate(profile.configuration)
         reasoning = ReasoningPolicy() if ReasoningSettings().enabled else None
-        repairs = RepairPolicy() if reasoning is not None and RepairSettings().enabled else None
+        repairs = (
+            RepairPolicy(finalization="reserved-v1")
+            if reasoning is not None and RepairSettings().enabled
+            else None
+        )
         hitl = HitlPolicy() if repairs is not None and HitlSettings().enabled else None
         return ModelSnapshot(
             schema_version=5
