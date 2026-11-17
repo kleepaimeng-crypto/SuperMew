@@ -1250,6 +1250,201 @@
           }
         ]
       }
+    },
+    "/v1/evaluation-jobs": {
+      "post": {
+        "tags": ["evaluation"],
+        "summary": "Create",
+        "operationId": "create_v1_evaluation_jobs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobReceipt"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evaluation-jobs/{job_id}": {
+      "get": {
+        "tags": ["evaluation"],
+        "summary": "Read",
+        "operationId": "read_v1_evaluation_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evaluation-jobs/{job_id}/cancel": {
+      "post": {
+        "tags": ["evaluation"],
+        "summary": "Cancel",
+        "operationId": "cancel_v1_evaluation_jobs__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evaluation-jobs/{job_id}/report": {
+      "get": {
+        "tags": ["evaluation"],
+        "summary": "Report",
+        "operationId": "report_v1_evaluation_jobs__job_id__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1351,6 +1546,84 @@
         "required": ["kind", "start", "end"],
         "title": "AnswerSection"
       },
+      "ArtifactV2": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "scorer_version": {
+            "type": "string",
+            "const": "controlled-judge-v2",
+            "title": "Scorer Version",
+            "default": "controlled-judge-v2"
+          },
+          "source_stages": {
+            "type": "string",
+            "const": "local-retrieval/controlled-generation/controlled-judge",
+            "title": "Source Stages",
+            "default": "local-retrieval/controlled-generation/controlled-judge"
+          },
+          "structural": {
+            "$ref": "#/components/schemas/EvaluationArtifact"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/CaseEvaluation"
+            },
+            "type": "array",
+            "title": "Evaluations"
+          },
+          "judge_minimum": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Judge Minimum"
+          },
+          "decision": {
+            "type": "string",
+            "enum": ["pass", "fail", "insufficient", "incomparable"],
+            "title": "Decision"
+          },
+          "total_model_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Model Attempts"
+          },
+          "baseline_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Fingerprint"
+          },
+          "judge_deltas": {
+            "items": {
+              "$ref": "#/components/schemas/JudgeDelta"
+            },
+            "type": "array",
+            "title": "Judge Deltas",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "structural",
+          "evaluations",
+          "judge_minimum",
+          "decision",
+          "total_model_attempts"
+        ],
+        "title": "ArtifactV2"
+      },
       "Body_upload_document_v1_documents_post": {
         "properties": {
           "file": {
@@ -1447,6 +1720,331 @@
         "required": ["chunk_tokens", "overlap_tokens", "embedding"],
         "title": "BuildConfiguration"
       },
+      "Case": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Case Id"
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["quality", "fault"],
+            "title": "Kind",
+            "default": "quality"
+          },
+          "critical": {
+            "type": "boolean",
+            "title": "Critical",
+            "default": false
+          },
+          "allowed_outcomes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "answered",
+                "no_knowledge",
+                "insufficient",
+                "waiting",
+                "cancelled",
+                "error"
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Allowed Outcomes"
+          },
+          "expected_error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,79}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Error"
+          },
+          "evidence_gold": {
+            "items": {
+              "$ref": "#/components/schemas/Span"
+            },
+            "type": "array",
+            "title": "Evidence Gold",
+            "default": []
+          },
+          "required_claims": {
+            "items": {
+              "type": "string",
+              "maxLength": 10000,
+              "minLength": 1
+            },
+            "type": "array",
+            "title": "Required Claims",
+            "default": []
+          },
+          "forbidden_claims": {
+            "items": {
+              "type": "string",
+              "maxLength": 10000,
+              "minLength": 1
+            },
+            "type": "array",
+            "title": "Forbidden Claims",
+            "default": []
+          },
+          "requires_citations": {
+            "type": "boolean",
+            "title": "Requires Citations",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["case_id", "question", "allowed_outcomes"],
+        "title": "Case"
+      },
+      "CaseEvaluation": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Case Id"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JudgeResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "judge_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Error"
+          },
+          "requested": {
+            "type": "boolean",
+            "title": "Requested",
+            "default": false
+          },
+          "matched": {
+            "type": "boolean",
+            "title": "Matched",
+            "default": false
+          },
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted",
+            "default": false
+          },
+          "resumed": {
+            "type": "boolean",
+            "title": "Resumed",
+            "default": false
+          },
+          "clarification_required": {
+            "type": "boolean",
+            "title": "Clarification Required",
+            "default": false
+          },
+          "judge_attempts": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Judge Attempts",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["case_id"],
+        "title": "CaseEvaluation"
+      },
+      "CaseScore": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Case Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["quality", "fault"],
+            "title": "Kind"
+          },
+          "critical": {
+            "type": "boolean",
+            "title": "Critical"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "answered",
+              "no_knowledge",
+              "insufficient",
+              "waiting",
+              "cancelled",
+              "error"
+            ],
+            "title": "Outcome"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,79}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "outcome_match": {
+            "type": "boolean",
+            "title": "Outcome Match"
+          },
+          "gold_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Gold Count"
+          },
+          "covered_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Covered Count"
+          },
+          "missing_gold": {
+            "items": {
+              "$ref": "#/components/schemas/Span"
+            },
+            "type": "array",
+            "title": "Missing Gold"
+          },
+          "material_coverage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Coverage"
+          },
+          "citation_structure": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation Structure"
+          },
+          "budget_ok": {
+            "type": "boolean",
+            "title": "Budget Ok"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "semantic_correctness": {
+            "type": "null",
+            "title": "Semantic Correctness"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "case_id",
+          "kind",
+          "critical",
+          "outcome",
+          "error_code",
+          "outcome_match",
+          "gold_count",
+          "covered_count",
+          "missing_gold",
+          "material_coverage",
+          "citation_structure",
+          "budget_ok",
+          "counts"
+        ],
+        "title": "CaseScore"
+      },
+      "CaseView": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Case Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "generating",
+              "waiting",
+              "accepted",
+              "generated",
+              "judging",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,79}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["case_id", "status", "error_code"],
+        "title": "CaseView"
+      },
       "Citation": {
         "properties": {
           "citation_id": {
@@ -1469,6 +2067,29 @@
         "type": "object",
         "required": ["citation_id", "start", "end"],
         "title": "Citation"
+      },
+      "Counts": {
+        "properties": {
+          "model_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Model Attempts"
+          },
+          "retrieval_calls": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Retrieval Calls"
+          },
+          "tool_calls": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tool Calls"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["model_attempts", "retrieval_calls", "tool_calls"],
+        "title": "Counts"
       },
       "CreateRunRequest": {
         "properties": {
@@ -1496,6 +2117,132 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateThreadRequest"
+      },
+      "Dataset": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "dataset_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Dataset Id"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Sources"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/Case"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Cases"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["dataset_id", "sources", "cases"],
+        "title": "Dataset"
+      },
+      "Delta": {
+        "properties": {
+          "metric": {
+            "type": "string",
+            "enum": [
+              "material_coverage",
+              "outcome_match",
+              "citation_structure",
+              "budget_ok",
+              "semantic_correctness"
+            ],
+            "title": "Metric"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": -1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["metric", "baseline", "candidate", "change"],
+        "title": "Delta"
+      },
+      "Difference": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "implementation",
+              "dependencies",
+              "model",
+              "strategy",
+              "index"
+            ],
+            "title": "Field"
+          },
+          "baseline": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Baseline"
+          },
+          "candidate": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate"
+          },
+          "permitted": {
+            "type": "boolean",
+            "title": "Permitted"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["field", "baseline", "candidate", "permitted"],
+        "title": "Difference"
       },
       "DocumentPage": {
         "properties": {
@@ -1651,6 +2398,26 @@
         ],
         "title": "EmbeddingProfile"
       },
+      "EvaluationArtifact": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "report": {
+            "$ref": "#/components/schemas/Report"
+          },
+          "gate": {
+            "$ref": "#/components/schemas/GateResult"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["report", "gate"],
+        "title": "EvaluationArtifact"
+      },
       "Evidence": {
         "properties": {
           "knowledge_base_id": {
@@ -1741,6 +2508,77 @@
         ],
         "title": "Evidence"
       },
+      "GateResult": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "report_fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Report Fingerprint"
+          },
+          "policy_fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Policy Fingerprint"
+          },
+          "baseline_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Fingerprint"
+          },
+          "decision": {
+            "type": "string",
+            "enum": ["pass", "fail", "insufficient", "incomparable"],
+            "title": "Decision"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/Rule"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Rules"
+          },
+          "differences": {
+            "items": {
+              "$ref": "#/components/schemas/Difference"
+            },
+            "type": "array",
+            "title": "Differences"
+          },
+          "deltas": {
+            "items": {
+              "$ref": "#/components/schemas/Delta"
+            },
+            "type": "array",
+            "title": "Deltas"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "report_fingerprint",
+          "policy_fingerprint",
+          "baseline_fingerprint",
+          "decision",
+          "rules",
+          "differences",
+          "deltas"
+        ],
+        "title": "GateResult"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1821,6 +2659,25 @@
           "data"
         ],
         "title": "HitlAcceptedEvent"
+      },
+      "HitlPolicy": {
+        "properties": {
+          "clarification_limit": {
+            "type": "integer",
+            "const": 1,
+            "title": "Clarification Limit",
+            "default": 1
+          },
+          "wait_seconds": {
+            "type": "integer",
+            "const": 900,
+            "title": "Wait Seconds",
+            "default": 900
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HitlPolicy"
       },
       "HitlRequiredData": {
         "properties": {
@@ -2008,6 +2865,246 @@
           "finished_at"
         ],
         "title": "IndexJobResponse"
+      },
+      "JobReceipt": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["job_id"],
+        "title": "JobReceipt"
+      },
+      "JobReport": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "completed", "failed", "cancelled"],
+            "title": "Status"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactV2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,79}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["status", "report", "error_code"],
+        "title": "JobReport"
+      },
+      "JobRequest": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
+          "corpus_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Corpus Id"
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Dataset"
+          },
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/Scenario"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Scenarios"
+          },
+          "case_seconds": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 10.0,
+            "title": "Case Seconds",
+            "default": 120
+          },
+          "job_seconds": {
+            "type": "integer",
+            "maximum": 7200.0,
+            "minimum": 30.0,
+            "title": "Job Seconds",
+            "default": 1800
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/ModelSnapshot"
+          },
+          "judge_minimum": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Judge Minimum",
+            "default": 2
+          },
+          "total_model_limit": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Total Model Limit",
+            "default": 112
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["corpus_id", "dataset", "scenarios"],
+        "title": "JobRequest"
+      },
+      "JobView": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "completed", "failed", "cancelled"],
+            "title": "Status"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,79}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/CaseView"
+            },
+            "type": "array",
+            "title": "Cases"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "cancel_requested",
+          "error_code",
+          "cases"
+        ],
+        "title": "JobView"
+      },
+      "JudgeDelta": {
+        "properties": {
+          "metric": {
+            "type": "string",
+            "enum": ["correctness", "completeness", "grounding"],
+            "title": "Metric"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["metric", "baseline", "candidate", "change"],
+        "title": "JudgeDelta"
+      },
+      "JudgeResult": {
+        "properties": {
+          "rubric_version": {
+            "type": "string",
+            "const": "controlled-rubric-v1",
+            "title": "Rubric Version",
+            "default": "controlled-rubric-v1"
+          },
+          "correctness": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Correctness"
+          },
+          "completeness": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Completeness"
+          },
+          "grounding": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Grounding"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["correctness", "completeness", "grounding", "reason"],
+        "title": "JudgeResult"
       },
       "LoginRequest": {
         "properties": {
@@ -2269,6 +3366,404 @@
         ],
         "title": "MessageResponse"
       },
+      "Metric": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "eligible": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Eligible"
+          },
+          "evaluated": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Evaluated"
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Errors"
+          },
+          "unavailable": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Unavailable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["value", "eligible", "evaluated", "errors", "unavailable"],
+        "title": "Metric"
+      },
+      "Metrics": {
+        "properties": {
+          "material_coverage": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "outcome_match": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "citation_structure": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "budget_ok": {
+            "$ref": "#/components/schemas/Metric"
+          },
+          "semantic_correctness": {
+            "$ref": "#/components/schemas/Metric"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "material_coverage",
+          "outcome_match",
+          "citation_structure",
+          "budget_ok",
+          "semantic_correctness"
+        ],
+        "title": "Metrics"
+      },
+      "ModelConfiguration": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "const": "openai_compatible",
+            "title": "Provider"
+          },
+          "model_name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+            "title": "Model Name"
+          },
+          "base_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Base Url"
+          },
+          "temperature": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature"
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "maximum": 65536.0,
+            "minimum": 1.0,
+            "title": "Max Output Tokens"
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "maximum": 300.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Timeout Seconds"
+          },
+          "thinking": {
+            "$ref": "#/components/schemas/ThinkingPolicy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "model_name",
+          "base_url",
+          "temperature",
+          "max_output_tokens",
+          "timeout_seconds",
+          "thinking"
+        ],
+        "title": "ModelConfiguration"
+      },
+      "ModelSnapshot": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "enum": [1, 2, 3, 4, 5],
+            "title": "Schema Version",
+            "default": 1
+          },
+          "answer": {
+            "$ref": "#/components/schemas/ProfileSnapshot"
+          },
+          "rag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RagPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReasoningPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repairs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepairPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hitl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HitlPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["answer"],
+        "title": "ModelSnapshot"
+      },
+      "ProfileSnapshot": {
+        "properties": {
+          "profile_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Profile Id"
+          },
+          "profile_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Profile Version"
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/ModelConfiguration"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["profile_id", "profile_version", "configuration"],
+        "title": "ProfileSnapshot"
+      },
+      "Provenance": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["contract_smoke", "controlled", "live"],
+            "title": "Mode"
+          },
+          "implementation": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Implementation"
+          },
+          "dependencies": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Dependencies"
+          },
+          "model": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Model"
+          },
+          "strategy": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Strategy"
+          },
+          "index": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Index"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode",
+          "implementation",
+          "dependencies",
+          "model",
+          "strategy",
+          "index"
+        ],
+        "title": "Provenance"
+      },
+      "RagPolicy": {
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "enum": ["dense", "hybrid"],
+            "title": "Strategy",
+            "default": "dense"
+          },
+          "recall_k": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Recall K",
+            "default": 10
+          },
+          "rrf_k": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Rrf K",
+            "default": 60
+          },
+          "fused_k": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Fused K",
+            "default": 12
+          },
+          "candidate_limit": {
+            "type": "integer",
+            "maximum": 24.0,
+            "minimum": 1.0,
+            "title": "Candidate Limit",
+            "default": 18
+          },
+          "group_limit": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Group Limit",
+            "default": 6
+          },
+          "final_k": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Final K",
+            "default": 6
+          },
+          "merge": {
+            "type": "boolean",
+            "title": "Merge",
+            "default": true
+          },
+          "rerank": {
+            "type": "boolean",
+            "title": "Rerank",
+            "default": true
+          },
+          "reranker": {
+            "type": "string",
+            "const": "BAAI/bge-reranker-base",
+            "title": "Reranker",
+            "default": "BAAI/bge-reranker-base"
+          },
+          "revision": {
+            "type": "string",
+            "const": "2cfc18c9415c912f9d8155881c133215df768a70",
+            "title": "Revision",
+            "default": "2cfc18c9415c912f9d8155881c133215df768a70"
+          },
+          "window": {
+            "type": "integer",
+            "const": 512,
+            "title": "Window",
+            "default": 512
+          },
+          "batch_size": {
+            "type": "integer",
+            "const": 1,
+            "title": "Batch Size",
+            "default": 1
+          },
+          "dtype": {
+            "type": "string",
+            "const": "float32",
+            "title": "Dtype",
+            "default": "float32"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RagPolicy"
+      },
+      "ReasoningPolicy": {
+        "properties": {
+          "model_limit": {
+            "type": "integer",
+            "const": 12,
+            "title": "Model Limit",
+            "default": 12
+          },
+          "outer_limit": {
+            "type": "integer",
+            "const": 4,
+            "title": "Outer Limit",
+            "default": 4
+          },
+          "tool_limit": {
+            "type": "integer",
+            "const": 6,
+            "title": "Tool Limit",
+            "default": 6
+          },
+          "retrieval_limit": {
+            "type": "integer",
+            "const": 8,
+            "title": "Retrieval Limit",
+            "default": 8
+          },
+          "concurrency": {
+            "type": "integer",
+            "const": 2,
+            "title": "Concurrency",
+            "default": 2
+          },
+          "grade_tokens": {
+            "type": "integer",
+            "const": 1024,
+            "title": "Grade Tokens",
+            "default": 1024
+          },
+          "plan_tokens": {
+            "type": "integer",
+            "const": 512,
+            "title": "Plan Tokens",
+            "default": 512
+          },
+          "rewrite_tokens": {
+            "type": "integer",
+            "const": 256,
+            "title": "Rewrite Tokens",
+            "default": 256
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReasoningPolicy"
+      },
       "RegisterRequest": {
         "properties": {
           "username": {
@@ -2291,6 +3786,101 @@
         "type": "object",
         "required": ["username", "password"],
         "title": "RegisterRequest"
+      },
+      "RepairPolicy": {
+        "properties": {
+          "answer_repair_limit": {
+            "type": "integer",
+            "const": 1,
+            "title": "Answer Repair Limit",
+            "default": 1
+          },
+          "aggregation": {
+            "type": "string",
+            "const": "representatives-v1",
+            "title": "Aggregation",
+            "default": "representatives-v1"
+          },
+          "finalization": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "reserved-v1"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalization"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RepairPolicy"
+      },
+      "Report": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "scorer_version": {
+            "type": "string",
+            "const": "source-span-v1",
+            "title": "Scorer Version",
+            "default": "source-span-v1"
+          },
+          "dataset_fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Dataset Fingerprint"
+          },
+          "corpus_fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Corpus Fingerprint"
+          },
+          "observation_fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Observation Fingerprint"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/CaseScore"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Cases"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Summary"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Summary"
+          },
+          "fault": {
+            "$ref": "#/components/schemas/Summary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset_fingerprint",
+          "corpus_fingerprint",
+          "observation_fingerprint",
+          "provenance",
+          "cases",
+          "summary",
+          "quality",
+          "fault"
+        ],
+        "title": "Report"
       },
       "ResumeCredential": {
         "properties": {
@@ -2348,6 +3938,55 @@
         "type": "object",
         "required": ["checkpoint_id", "token", "idempotency_key", "answer"],
         "title": "ResumeInput"
+      },
+      "RoleReply": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": ["grade", "plan", "rewrite"],
+            "title": "Purpose"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["purpose", "payload"],
+        "title": "RoleReply"
+      },
+      "Rule": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "unavailable", "incomparable"],
+            "title": "Status"
+          },
+          "expected": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Expected"
+          },
+          "actual": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Actual"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["name", "status", "expected", "actual"],
+        "title": "Rule"
       },
       "RunCancelRequestedData": {
         "properties": {
@@ -3042,6 +4681,212 @@
           "data"
         ],
         "title": "RunStartedEvent"
+      },
+      "Scenario": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Case Id"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleReply"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Roles"
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Answer"
+          },
+          "repair_answer": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repair Answer"
+          },
+          "expected_prompt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Prompt"
+          },
+          "supplement": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplement"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JudgeResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "judge_fault": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["timeout", "invalid", "transient"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Fault"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["case_id", "roles", "answer"],
+        "title": "Scenario"
+      },
+      "Source": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Source Id"
+          },
+          "content_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256"
+          },
+          "length": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Length"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["source_id", "content_sha256", "length"],
+        "title": "Source"
+      },
+      "Span": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Source Id"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["source_id", "start", "end"],
+        "title": "Span"
+      },
+      "Summary": {
+        "properties": {
+          "expected": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected"
+          },
+          "observed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Observed"
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Completed"
+          },
+          "waiting": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Waiting"
+          },
+          "cancelled": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Cancelled"
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Errors"
+          },
+          "missing": {
+            "type": "integer",
+            "const": 0,
+            "title": "Missing",
+            "default": 0
+          },
+          "counts": {
+            "$ref": "#/components/schemas/Counts"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/Metrics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected",
+          "observed",
+          "completed",
+          "waiting",
+          "cancelled",
+          "errors",
+          "counts",
+          "metrics"
+        ],
+        "title": "Summary"
+      },
+      "ThinkingPolicy": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "disabled",
+            "title": "Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type"],
+        "title": "ThinkingPolicy"
       },
       "ThreadListResponse": {
         "properties": {

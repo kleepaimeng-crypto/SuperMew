@@ -26,6 +26,61 @@ class Base(DeclarativeBase):
     pass
 
 
+class EvaluationCorpus(Base):
+    __tablename__ = "evaluation_corpora"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    collection: Mapped[str] = mapped_column(String(80), unique=True)
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationJob(Base):
+    __tablename__ = "evaluation_jobs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_evaluation_jobs_key"),
+        CheckConstraint(
+            "status IN ('pending','running','completed','failed','cancelled')",
+            name="ck_evaluation_jobs_status",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    corpus_id: Mapped[UUID] = mapped_column(ForeignKey("evaluation_corpora.id"))
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    snapshot: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    cancel_requested: Mapped[bool] = mapped_column(default=False)
+    owner_token: Mapped[UUID | None] = mapped_column(Uuid)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    report: Mapped[dict | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationCase(Base):
+    __tablename__ = "evaluation_cases"
+    __table_args__ = (
+        UniqueConstraint("job_id", "case_id", name="uq_evaluation_cases_job"),
+        CheckConstraint(
+            "status IN ('pending','generating','waiting','accepted',"
+            "'generated','judging','completed','failed','cancelled')",
+            name="ck_evaluation_cases_status",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("evaluation_jobs.id"))
+    case_id: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    checkpoint: Mapped[dict | None] = mapped_column(JSONB)
+    generation: Mapped[dict | None] = mapped_column(JSONB)
+    judgment: Mapped[dict | None] = mapped_column(JSONB)
+    progress: Mapped[dict | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(String(80))
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (UniqueConstraint("username", name="uq_users_username"),)

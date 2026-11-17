@@ -297,6 +297,236 @@ tests/evaluation/：离线协议/评分/Gate与进程级CLI验证
 
 一次请求就是显式读取三份输入，核验内容身份后按人工gold评分，再按政策比较选定baseline，输出可重建报告；整个链不创建Thread/Run/Job，不调用在线Grader或Evaluator。A包已完成，下一步先讨论B包8.4–8.5的共享RAG计算接口、Job身份/冻结配置、真实语料隔离与独立Judge预算，再取得具体开始反馈。第八章尚未结章。
 
+## B包首轮架构讨论（2026-11-16，仅设计）
+
+用户在A包完成后回复“继续”，本轮开始8.4–8.5设计讨论，不沿用A授权写B代码或更改数据库。A的三个提交f28628d/07dd1c7/f06a95c已推送personal/main，68项为前轮有效结果，本轮不重复运行。独立设备记录不纳入本轮改动。
+
+### 从已有计算接口看需要拆什么
+
+现有[RagPipeline.search](../src/minimew/rag/pipeline.py)接受query/scope/user/policy/deadline，负责召回、融合、补全与重排。更上层[knowledge.py](../src/minimew/knowledge.py)拥有Run会话授权、scope、材料准备/Evidence登记，并调用[run_workflow](../src/minimew/rag/workflow.py)完成Grader/改写/拆解等。
+
+当前ToolContext显式要求user_id/thread_id/run_id，EvidenceLedger绑定该三元组；RunModelCaller使用聊天ProviderRequest与Run快照，图日志、HITL检查点也使用Run身份。因此B不能仅把Job UUID传给run_id，或者给每题创建虚构Thread/Run来调用聊天服务。真正共享需要明确抽取计算上下文与宿主适配，不绕过已有发布/权限约束。
+
+拟议结构如下，名称仅用于职责讲解：
+
+```text
+聊天：RunExecutor → 聊天工具/权限适配 ─┐
+                                    ├→ 唯一共享RAG/答案计算 → 结果与事实
+评测：EvaluationWorker → Case适配 ───┘
+        │                                  │
+        ├─EvaluationJob/Case资格与状态      ├─聊天宿主写原Message/Journal
+        └─独立Evaluator → Observation      └─评测宿主写Case结果/观察
+                                ↓
+                      A包Scorer / Report / Gate
+```
+
+共享层拟接受可信资料scope、冻结策略/模型、私有材料/证据目录、预算与deadline、取消/资格检查及结构化调用接口；计算返回草稿/最终材料/引用/计数等，不自行写聊天终态或Evaluation Job。聊天保留原Run与HITL生命周期，评测使用job_id/case_id/attempt_id的真实身份和独立Repository。
+
+共享模型调用同样要从Run专属请求/日志中提取宿主无关部分，再由聊天和评测适配提供各自可信身份；不能只给底层函数加几个可空run_id就宣称边界清楚。权重/客户端可由进程生命周期管理，共享只读资源；材料、Evidence、预算、trace和图状态必须逐Case隔离。替换后两条宿主调用同一正式计算实现，不保留一份复制的评测RAG算法。
+
+### Job、Case与Worker分别管理什么
+
+- Dataset/Case（A包）定义人工标准；EvaluationJob是一次按固定数据/语料/配置开展的评测任务；持久Case执行记录保存本次每题的状态/阶段产物/错误。相同Case ID可以属于不同Job，不能因题目ID相同覆盖历史结果。
+- API负责权限、校验、创建Job并返回身份，读取进度/报告和请求取消；不在HTTP请求中长跑模型。初期入口可按B包实际范围收敛，C包再接最小工作台，不提前重设计UI。
+- 独立EvaluationWorker领取Job/Case，加载冻结执行资源，执行共享计算、保存生成结果、调用Evaluator、投影观察并汇总。PG保存事实，Worker内存只暂存当前Case，不让模型输出或Redis提醒成为任务完成依据。
+- 复用既有lease/owner和条件写入的设计，但由评测Repository拥有评测状态；Worker失去资格后不能保存结果。已持久完成的Case不重跑；未开始Case可继续处理；运行中外部结果未知时明确记录失败/不确定，不退还预算或重新生成假装恢复。B包需在具体范围中确定阶段提交和恢复策略。
+
+初步倾向逐Case串行执行，先测真实本地资源，不为吞吐引入新队列/集群。每题有私有生成预算，Job有总体期限/资源上限，Evaluator额度单独声明但计入Job总限制；取消、租约检查和最终写入不能因分开额度而绕过。具体数值/收费运行范围尚未选定。
+
+### Evaluator怎样评价，怎样避免标准泄漏
+
+生成侧只接收问题、明确允许的澄清补充和受权限约束的资料；Dataset里的required_claims/forbidden_claims、gold答案和期望结果只提供给评分侧，不能用于引导答案或伪造“模型已经覆盖”。固定语料本身是可检索资料，与人工gold的用途不同。
+
+拟议Evaluator在生成结果提交后读取问题、候选答案、实际最终材料/引用，以及独立人工标准和量表；返回严格结构化的正确性/完整性/依据等评价与简短可核查理由/证据身份，不索取私有思维链。它不重写候选答案，也不参与在线Grader的路线决策。同一模型可担任两种角色，但角色/输入/提示/冻结配置/预算独立，不因此声称统计独立或无偏。
+
+Evaluator超时、格式无效或不具备充分证据时，单独保存judge_error/unavailable，不冒充答案语义0分或生成失败。生成已保存不等于评分完成；Job成功跑完评测仍可能得到Gate不通过的报告。Judge结果需人工抽查校准，不能用“模型给了高分”作为唯一质量证据。具体模型角色与真实调用费用在B范围/授权中明确，本轮不新选模型或发请求。
+
+现有A包Observation没有答案/Judge产物，CaseScore.semantic_correctness明确只能是null；B接真实评价必须显式定义答案/量表/Judge结果协议并同步版本、schema和评分规则，不能将分数塞进counts、改旧v1字段含义或重写静态baseline。保留历史A结果可解释，真实与受控观察来源继续区分。
+
+### 固定语料与HITL如何进入评测
+
+Job冻结Dataset、模型/策略、语料内容和索引构建身份，采用评测专属collection/受控统计语料边界；现有用户published scope的过滤不隔离共享BM25统计。只换namespace或随机用户仍可能被其他资料影响词项排序，不能据此宣称严格可复现。资料/索引由显式准备流程构建核验，Worker不偷偷重建线上库，也不能删其他Job/用户资源。
+
+聊天需要澄清时等待真人；评测若覆盖此类Case，应事先单独标注允许提供的补充输入，再由评测宿主按实际共享流程续接，补充内容不能从gold答案自动生成。无预设补充则记录waiting/incomplete，不能编一个答案把流程跑完。哪些HITL路线进入首版B包、是否先只跑无需补充的Case，留具体范围讨论，不擅自创建第二条聊天恢复路径。
+
+### 本轮结论与下一步
+
+B包首先确定共享计算接口及真实身份、再实现独立持久执行与受控事实采集，最后接独立Evaluator。它沿用A包的事实/评分/Gate主线，但会显式扩展真实评价所需协议；A包静态通过不升级成live质量证明。
+
+下一步集中讲一次Job从创建到报告的数据流，明确最小B范围、Case/HITL覆盖、语料准备与Evaluator模型/费用政策，然后取得具体开始反馈。当前没有B包编码授权，也未宣称用户已完全理解；本轮只更新章节/交接和文档检查，不改应用/协议/生成物/依赖/数据库，不运行测试/模型/服务或commit/push。
+
+## B包端到端执行与首版范围讨论（2026-11-17，仅设计）
+
+用户“继续”，本轮按一次Job走读创建、执行、持久观察与报告，并提出两个真实范围问题：首轮受控生成/Judge还是另定上限后调用现有DeepSeek；只覆盖无需澄清Case还是包括预标注补充的Case。提问只确认方案，不代表B包开始、下载或收费调用授权；答案未收到前不预填选择。
+
+本轮工作区已有BUG-001提交9752dd2及其他未提交的预算/最终回答修复和测试，全部保留，不评审/改写或把其临时实现认定为B包已交付。B共享调用须以实际最终稳定的执行接口为准，不能据设计讲解退回旧预算行为。本轮仅在既有章节/交接中追加说明，不commit/push或运行应用测试。
+
+### 一次Job的完整数据流
+
+| 阶段 | 所属模块 | 保存或使用什么 |
+| --- | --- | --- |
+| 0. 显式准备语料 | 评测资料准备与正式索引Adapter | 确认用户权限，固定来源内容与真实文档版本映射，核验专属collection及统计语料；产物就绪后才允许创建可运行Job |
+| 1. 创建Job | 评测API/Repository | 冻结Dataset内容/指纹、语料/索引产物、生成与Judge角色、提示/量表/评分版本、Case/Job预算，事务创建Case执行记录并返回Job ID |
+| 2. 领取任务 | 独立EvaluationWorker/Repository | 在PG事务领取资格、owner/lease与Case状态，不在HTTP内运行模型 |
+| 3. 生成答案 | Case宿主适配→共享RAG与答案计算 | 只提供问题/允许补充/可信scope，私有Evidence/trace/预算/取消检查，不提供人工gold |
+| 4. 保存生成结果 | Case Repository | 原子保存候选答案、实际最终材料/引用身份、生成计数和阶段状态；不依赖Worker内存保留答卷 |
+| 5. 独立评价 | Evaluator | 从保存结果取得答案/材料，再加人工标准与冻结量表，受控执行Judge并保存结构化结果或judge_error |
+| 6. 投影观察 | Observation适配 | 记录逐阶段来源/计数/错误、Case结果和Judge结果，真实输入符合协议后交给评分器 |
+| 7. 汇总报告 | Scorer/Gate/Job Repository | 形成逐Case与切片报告，比较显式baseline，保存报告/接受判定及Job完成事实 |
+| 8. 查询与取消 | 原评测API，后续C工作台消费 | 返回PG持久进度和报告；取消请求写入数据库，Worker检查并以资格条件终结 |
+
+初版倾向先将已发布的真实文档版本作为语料输入，显式把Dataset source_id/内容hash映射到版本，再准备独立检索产物；不让评测Job/Case ID冒充document/version ID。是否支持直接导入Corpus文本为新文档属于实际范围选择，不能不知情向用户当前知识库插入示例资料。正式Adapter需承认可信的评测索引绑定，不能靠修改冻结manifest中的collection或绕过payload验证“复用”。
+
+Job引用的是有生命周期管理的冻结产物；不能在每题重新读取Document.current，也不能把聊天55分钟scope直接当成任意长Job的有效期。评测数据、索引与保留期需要相互匹配，专属资源仍在使用时不得清理。本文只定义职责和约束，尚未创建表、API或迁移。
+
+### 快照分为评价标准与执行条件
+
+人工Dataset决定“应该是什么”，包括必要/禁止事实；执行快照决定“这次如何测”，包括生成模型、检索策略、Embedding/Reranker revision、专属索引、Judge模型/提示/量表及额度。控制面修改只影响以后创建的Job。
+
+生成侧不能读取gold/正确答案/允许结果来填答案；语料是可检索资料，gold是独立评分依据。Evaluator读取gold也不能改写已生成结果或使失败Case消失。Job中的模型身份应与角色对应，不能仅保存一个笼统model哈希后把生成/Judge/内部Grader混作同一次调用。
+
+### 生成、评价、报告为何分阶段保存
+
+模型已输出但未提交时，仍不能宣称Case生成结果已保存；生成结果持久化后，Judge失败不应丢掉答卷或触发再次生成。Judge完成但回包/提交不确定时，也按持久阶段和单一重试所有者处理，未知外部结果不自动重发。已保存的完整Case不可被后续owner覆盖，未开始Case可按Job策略继续。
+
+拟议Case阶段是“待生成→生成中→答卷已保存→评价中→观察已保存”，失败/取消/评价不可用明确区分；这是职责图，不是已落库状态枚举。Job跑完所有Case可以形成Gate失败报告，Job基础设施失败则是执行未完成；两者不能共享一个模糊success字段。缺失Case的Job不能借A包严格输入器静默补齐并通过Gate。
+
+### 预算与来源必须分阶段说明
+
+每Case生成预算覆盖正式RAG内部Grader/Planner/Rewrite和最终回答；Judge有单独冻结额度，但生成/Judge两侧仍受Job总调用/token/时间和费用政策约束。不能只给“每题最多一次Judge”就宣称限制了整轮费用，生成侧也可能多次调用。具体收费上限未确认，不采用任何真实调用示例数字作为默认授权。
+
+本地真实检索＋受控生成/Judge得到的是controlled流程观察，能够验收共享计算/阶段持久化/隔离/取消和评分接线；不证明生成模型或Judge语义质量。真实生成和真实Judge才分别记录各自live来源，也仍需人工抽查。单个mode标签不能完整说明混合路径，B必须显式扩展Observation/Provenance及评分版本，而不是改A v1旧观察的含义。
+
+本轮推荐首轮先受控生成/Judge、不收费，仍使用真实本地Embedding/Base/Milvus；模型下载与其他Reranker/API不纳入。若用户选择现有DeepSeek，须先明确小批Case、调用/token/费用上限和角色配置，再另行运行真实测量，不能沿用聊天API Key配置作为无限评测授权。没有新增模型推荐或实际外部调用。
+
+### 首版HITL的两种明确范围
+
+方案一：先覆盖无需补充的Case，若实际进入澄清则记录waiting/incomplete或按冻结规则受控结束，不伪造答案；报告不把等待算最终完成。这能先交付Job/共享计算/Evaluator完整链。
+
+方案二：同时支持预标注补充输入及其适用条件；共享流程真正产生澄清后，评测宿主只能在条件匹配时提供该输入并继续。输入与gold分开，不从期望答案自动推导；没有匹配补充时仍是不完整。是否将这些Case纳入首版，需要用户选择，不能因第七章已有人机界面就直接让后台Worker等待浏览器。
+
+### 待选项与当前范围
+
+已通过异步问题请求用户选择“受控生成/Judge还是现有DeepSeek真实调用”和“首版是否包含预标注澄清”。这两项决定B包大小、验证性质及费用政策；不重问已选Base或原片段引用。不要求用户复述或回答简单异常判断题。
+
+下一步结合实际反馈收敛B包的明确共享接口、持久模型/协议升级、语料准备、角色/额度、测试与提交范围，再取得“开始第八章B包”等具体开始指令。当前无B编码授权，无新应用/测试/schema/迁移/环境/资产改动，仅章节/交接差异和本地链接检查；不重复A的68项，不执行真实服务/模型、收费调用或提交推送。
+
+## B包范围选择确认（2026-11-17）
+
+用户已明确回复两项方案选择：首轮“先用受控生成与评分，不收费”；澄清范围“同时覆盖有预设补充的澄清问题”。本节优先于上文待答/推荐先非澄清的历史状态，不重复询问这两项。选择方案不等于已开始B包应用编码。
+
+### 已确认的执行边界
+
+- 使用真实本地检索、现有Embedding与已选Base；生成、在线策略模型输出和Evaluator评价采用明确受控输入/输出，不调用收费Provider，不要求评测API Key，不新增模型或外部Rerank服务。这样的观察是controlled流程验收，不是live生成/评价质量证明。
+- B包首版同时包含无需澄清与有预设补充的Case；不能在实施时静默缩为非澄清子集。澄清必须由共享流程实际产生，不能把补充预先拼入问题后宣称验证了暂停/续接。
+- 预设补充属于测试场景输入，例如用户确认“我问的是国内培训”；required/forbidden claims等人工gold仍只进入评分侧。补充不携带期望金额/答案来帮生成侧过关，也不从gold自动生成。
+- 受控评价结果用于验证Judge协议、持久阶段、错误/不可用、评分汇总与Gate接线；人工期望仍独立维护，不把受控Judge分数当模型语义能力证据。真实生成/Judge及费用实验待用户后续明确授权。
+
+### 澄清Case的拟议数据流
+
+```text
+Case原始问题 → 共享RAG实际触发澄清
+                ↓
+保存该Case的检查点、待补充信息和已用预算
+                ↓
+按预标注触发条件匹配，应用允许的补充输入
+                ↓
+持久记录补充接收 → 同一Job/Case续接共享流程
+                ↓
+保存最终答卷 → 受控Evaluator → Observation/报告
+```
+
+触发条件需在B协议中明确（例如本Case期望的澄清类型或受控提示契约），不能任何澄清都盲填同一个文本。匹配规则确定且可测试，不让模型阅读gold后自己决定该提供什么补充。澄清次数沿冻结策略限制，续接保持同一Case、原语料/模型/资料范围和已用预算，资格由评测Repository拥有，不伪造聊天Run或调用依赖Thread的恢复接口。
+
+没有预标注补充或条件不匹配时，记录无可用补充与waiting/incomplete，并受Job期限/终结政策约束；未恢复不能计为最终完成。若人工标准要求澄清但实际没有触发，应在相应行为指标中明确反映；最终答案即使正确，也不将未发生的HITL流程计作已验证。
+
+B观察协议需要分别记录实际是否请求澄清、是否匹配/接收补充、是否续接及最终结果，不只保存一个answered状态。检查点与补充接收的持久事务、失去资格/取消与跨进程续接必须进入对应集成验收；这部分不能用单纯把两个函数串起来的静态测试替代。具体状态/字段/迁移及测试在最终B包范围中收敛，不在本轮创建。
+
+### 接续与本轮记录
+
+下一步按上述已选范围给出B包共享接口、持久Job/Case/检查点、语料准备、观察/Judge协议升级、验证与提交边界，再取得“开始第八章B包”等具体开始指令。包内开始后连续完成，不重问受控调用或澄清范围；不预填用户理解通过。
+
+本轮只更新本章、LEARNING_PLAN和交接记录，并检查文档差异/本地链接；既有预算修复源码/测试/BUG记录保留。未写B应用/迁移/生成物/测试/资产、未运行服务或业务测试、未下载模型/收费调用，也不commit/push。
+
+## B包最终实施范围建议（2026-11-17，待明确开始）
+
+用户在确认“受控生成/评分、不收费，且覆盖预设补充澄清”后回复“继续”。本轮把8.4–8.5收敛为明确工作包，仍无开始编码反馈；下列为待实施范围，不预填模型/数据库/测试通过，也不重问已选方案。
+
+### 包的目标与边界
+
+交付一轮可持久查询、取消与跨进程续接的受控评测：冻结人工Dataset与真实资料索引，独立Worker逐Case调用唯一共享RAG/答案计算，实际暂停并应用匹配的预设补充，保存答卷、受控Judge和逐阶段Observation，复用并显式扩展A包Report/Gate。不创建虚构Thread/Run、不复制知识图、不把受控Judge分数写成live语义质量。
+
+沿用已有Python/Pydantic、SQLAlchemy/Alembic/PG、LangGraph、Milvus和本地Embedding/Base；先核对现有锁定依赖/缓存，缺依赖按项目锁同步，不自动升级版本、下载其他模型或准备GPU环境。生成/内部模型/Judge均受控，不读取真实API Key，不调用收费Provider或新外部服务。
+
+### 8.4：共享计算、语料和持久执行
+
+| 实施顺序 | 具体交付 | 保持的边界 |
+| --- | --- | --- |
+| 1. 抽取共享执行上下文 | 类型明确的宿主身份、可信scope、冻结模型/策略、私有预算/Evidence/trace、资格检查与模型调用/暂停接口；聊天和Case各自适配 | Provider日志/错误/检查点保留真实Run或Job/Case身份，不能仅把run_id设空或换成Job UUID |
+| 2. 统一正式计算 | 从现有knowledge/执行器中提取材料准备、工作流与最终答案/格式纠正所需纯计算，聊天也迁到此入口 | 现有聊天授权、Message/Journal、终态与HITL持久事务仍由聊天宿主拥有；正式替换后不留旧计算副本 |
+| 3. 显式准备评测语料 | Dataset来源映射到当前用户可访问的真实已发布Document Version，按固定版本构建核验专属collection/统计语料，形成就绪CorpusArtifact | 不改用户current、KB默认配置或旧manifest；不往用户KB自动插示例文档，不复用共享BM25统计集合假装隔离 |
+| 4. 版本化持久模型 | EvaluationJob、逐Case执行记录、语料产物引用、Case检查点/补充接收和阶段结果的正式表与前向迁移 | 独立领域状态/Repository，用户归属和幂等；不把Job写入Run表或修改旧Run快照 |
+| 5. 最小API | 拟POST /v1/evaluation-jobs创建，GET /{job_id}查询状态/Case进度，POST /{job_id}/cancel请求取消，GET /{job_id}/report读取结果 | 认证/所有权服务端核验；HTTP不跑模型；C包工作台以后消费同一API，不新增平行入口 |
+| 6. 独立Worker | 独立启动入口，PG领取/心跳/条件写入，串行Case，受控生成到实际最终材料及答案保存 | 原回答/检索额度服从所选正式冻结策略，临时源码预算修复不在B讨论中回退或擅自固定为旧行为 |
+| 7. 持久澄清与续接 | 实际图暂停→原子保存Case检查点/待补充信息/已用预算→条件匹配→幂等保存补充→同Case新资格续接 | 不提前拼补充、不从gold造输入；保留原模型/语料/计数，只续接已提交状态，等待不等于最终完成 |
+
+最小创建接口接收显式Dataset与就绪CorpusArtifact引用，Job事务冻结内容/指纹、角色/量表/政策和Case目录。Corpus准备通过专用受控命令/服务复用正式解析/分块/索引Adapter；来源映射须内容hash/版本匹配。缺少映射/未发布/无权限/产物不就绪时不能隐式另查当前知识库或联网补资料。
+
+CorpusArtifact的内容/manifest/index身份与物理随机名称分开；索引对Job只读，Job引用期间保留，清理只针对明确所属且无活动引用的评测产物，不删除源Document/Version/聊天索引。评测scope有效期按Job和产物生命周期管理，不偷用聊天55分钟scope去支撑长任务，也不绕过scope校验。先在自有隔离资料/数据库验证准备与精确回收，不自动升级/重建开发知识库。
+
+建议初版每个Worker一次一个Case；短租约/心跳沿已验证的5秒/20秒思路，计算活动期限与资格分开，具体配置在Job快照中明确。生成侧沿用正式预算策略、Judge额度独立但受Job总限额；初版Judge建议最多2次尝试（含1次明确可重试失败），结构化输出上限1024 token，Case/Job总体期限采用显式有限配置并在实际适配时核对资源耗时。受控路径无用量费用，但仍记录完整尝试/预算，不能因为假Provider而绕过计数。
+
+Job取消/期限到达时保留已完成Case、当前阶段和剩余未执行数量，给出取消/未完成诊断；不凭空补成功观察以通过A包完整性要求。可续接的只包括已提交等待/已接收补充/阶段结果与未开始工作；未知外部结果的运行中Case明确失败/不确定，不重新执行来冒充任意恢复。资格失效后的迟到保存、重复补充、提交回包丢失都由PG事实与条件写入裁决。
+
+### 8.5：受控Evaluator、协议和报告
+
+1. 明确生成/在线策略与Evaluator两个角色。生成只读取问题、允许补充和检索材料；Evaluator在答卷保存后读取固定人工标准、候选答案及实际材料。受控脚本分别维护，不在运行时读gold来生成答案或补充。
+2. 定义严格JudgeResult与量表：拟正确性/完整性/依据各为0不满足、1部分满足、2满足，附有长度限制的简短理由/必要来源身份；格式错误、超时和证据不足独立为judge_error/unavailable，不能等同语义0分。受控Judge可验证此协议，不证明模型评价有效。
+3. 显式增加Evaluation Snapshot与Observation/Provenance/Report版本：记录生成与Judge阶段来源、冻结角色/提示/量表、生成与Judge计数、实际澄清/匹配/接收/续接/最终结果。A v1历史schema/样本与source-span-v1分数不回写，新指标不得悄悄改变旧报告含义。
+4. 扩展同一评分/Gate接口，按量表版本计算可用评价指标与澄清行为/最终结果，保留原材料/结构/错误/分母。新旧报告按显式版本加载，不做猜字段或异常兜底；评分规则不同的baseline不作为同条件对照。报告标明controlled阶段，不满足live质量Gate。
+5. 新协议schema/最小API/OpenAPI消费者从正式真源生成，相关必要迁移和历史数据检查同步；不手改生成类型，不新增C包页面。报告/观察不公开整份材料、原始Provider payload/异常/Secret；Judge临时取回原文须核验固定来源，受保护检查点只保留续接必要状态。
+
+预设补充Case拟增加独立scenario字段：允许的澄清触发契约、补充文本、是否要求实际暂停/续接。匹配规则确定且可测试，不采用模型从gold自由生成输入。未触发要求的澄清、无匹配补充、仅接收未恢复与真正恢复完成分别记录；缺匹配时受Job期限约束记录incomplete，不让Worker无限占槽等待真人浏览器。
+
+### 拟议实际源码归属
+
+- `evaluation/protocol.py/scoring.py/gate.py/cli.py`：沿用A包正式入口并显式版本化；A包纯离线能力仍不导入在线运行依赖。
+- 新评测运行/语料准备/Repository/API/Worker模块：归属评测域，管理Job/Case和受保护阶段状态，具体文件按实际职责建立，不创建空层。
+- 共享RAG与模型调用/答案准备模块：由现有正式实现抽取，聊天与评测宿主共同调用；聊天Run/Message/Journal的写入留在现有执行Repository/Store。
+- `evals/rag`：新受控场景、资料映射、观察/量表与明确基线，不改chapter06历史观察或用结果倒推人工标准。
+
+### 必须覆盖的验收
+
+| 改动风险 | 验收范围 |
+| --- | --- |
+| 共享计算替换影响聊天 | 定向工具/知识图/答案校验/预算及HITL回归，必要PG链；原Thread/Run/Message/终态与权限不变量保持 |
+| 新评测表与状态 | 相关迁移及现有数据保留、所有权/幂等/Job快照、Case阶段原子性、错误与报告语义 |
+| Worker资格/取消 | 定向PG并发、旧owner迟到拒写、取消与心跳/期限、未知结果不重复执行、不同Case材料/预算隔离 |
+| 真实本地检索 | 使用自有临时CorpusArtifact/collection及现有缓存Embedding/Base，核验固定来源/独立BM25语料/精确清理；不调用收费生成或评分 |
+| 澄清与跨进程 | 受控触发真实共享图暂停，独立进程保存/接收后退出，另一Worker同Case续接；同时验证不匹配/重复补充、取消/资格和计数不重置 |
+| Judge与新报告 | 结构化有效/无效/超时、量表/来源/版本、gold不进生成、controlled不能充live，A指标/分母和旧样本保持 |
+| 新API/生成物 | 身份/输入/查询/取消/报告定向HTTP、schema与OpenAPI漂移、直接消费者类型；无前端交互变化则不跑全浏览器 |
+
+包内按新行为最小测试；集中覆盖共享接口与持久链后复用未变化结果，不按切分提交重复全仓或收费验收。旧A纯测试在协议/评分消费者受影响时定向复验，不能将历史68项直接写成本轮通过，也不能为过关删除原断言。
+
+### 开始与提交边界
+
+取得“开始第八章B包”等明确反馈后，按共享计算→资料/Job持久化/Worker与澄清→Evaluator/报告的依赖顺序连续完成8.4–8.5，包内不再逐模块询问开始。B不包括C的工作台/全章结章、真实付费质量实验、新模型下载/GPU部署或其他外部能力。
+
+按8.4与8.5可独立审阅边界组织必要测试/记录/提交，并依既有持续授权推送个人main；若实际耦合无法分开，则先说明具体合并提交范围。实施前重新核对工作区已有预算修复和用户文件的归属，保留全部未提交改动；不能把无关存量一并提交，不能为“干净工作区”回滚。若必要共享文件的前置修复尚未稳定、接口或范围实际变化，再说明具体差异，不在本轮预判已完成。
+
+本轮仅保存具体建议/交接与计划入口、检查文档差异/本地链接；无B代码/迁移/生成物/测试/依赖/语料创建，无模型/DB/服务/收费操作，无测试或commit/push。当前仍待明确开始，不预填理解通过。
+
+## B包实施检查点（2026-11-17，实施中）
+
+用户明确“开始第八章 B 包”，已授权上述8.4–8.5连续实施，不再逐模块请求开始。前置BUG-002已独立提交f327a4e，保留IDE与已有设计文档变更。
+
+第一步新增execution/identity.py的ChatIdentity和CaseIdentity，宿主字段不混用；Case的检查点键绑定Job/Case且不随领取attempt改变，Evidence归属则包含attempt，避免旧资格共用目录。ToolContext提供明确聊天身份。evidence.py把引用分配/去重/预算/提交提取到EvidenceDirectory，由原EvidenceLedger继承，保留既有owner三元组与owns校验；没有复制一套引用分配实现，也没有创建虚构Thread/Run。
+
+实际验证：`uv run --no-sync pytest -q --confcutdir=tests/evaluation tests/evaluation/test_identity.py`的5个新身份隔离用例通过；`uv run --no-sync pytest -q tests/test_evidence.py tests/test_tools.py tests/test_knowledge.py`的75个已有用例通过，0跳过。4个受影响Python文件Ruff/格式通过。合计80个不同用例（5新/75旧），不是整个B包验收；未运行新迁移/Worker/真实检索/Judge或跨进程评测，因为这些仍未实现。
+
+当前8.4尚未完成，不创建小节完成提交/推送。下一步从此代码继续共享知识/模型调用与答案计算上下文，再实现语料、Job/Case迁移、最小API、Worker和持久澄清，最后完成8.5受控Evaluator/版本化报告及集中验证。既有B包授权持续有效，不重问受控费用或澄清范围，不将此基础步骤标成完整交付。
+
 ## 结章文字总结（完成后填写）
 
 尚未实施。结束时按真实结果填写：交付能力、核心取舍、完整数据流、失败/复验记录、离线与真实质量证据、限制和第九章衔接；不提前填写模型质量通过或用户理解通过。
@@ -304,3 +534,81 @@ tests/evaluation/：离线协议/评分/Gate与进程级CLI验证
 ## 本章结束时的代码框架（完成后填写）
 
 A包实际模块与调用关系见上方实施记录。真实Job/Worker/Evaluator和工作台仍为B/C计划；章末基于全部实际源码集中保存最终框架，不将拟议模块画成已实现。
+
+## B包实现与架构复盘（2026-11-17）
+
+本次覆盖已授权8.4–8.5：正式知识计算共享、独立持久评测、真实本地专属检索、预设补充的实际暂停/跨进程续接、受控Evaluator及v2报告。
+用户明确继续本包，不要求重复逐模块开始；不将实现结果等同用户已掌握全部细节。C工作台/第八章结章尚未开始。
+
+### 两条入口、一套知识计算
+
+```mermaid
+flowchart TD
+    Chat[聊天 RunExecutor] --> Adapter[ToolContext 转 RagContext]
+    Job[评测 API] --> PG[PostgreSQL Job / Case]
+    PG --> Worker[独立 EvaluationWorker]
+    Worker --> Case[CaseIdentity + RagContext]
+    Adapter --> Calc[KnowledgeCalculation]
+    Case --> Calc
+    Calc --> Graph[同一个 LangGraph RAG]
+    Graph --> Retrieval[Dense / BM25 / RRF / 合并 / Base重排]
+    Retrieval --> Evidence[EvidenceDirectory]
+    Evidence --> Answer[共享答案校验与有限纠正]
+    Answer --> Saved[先保存答卷]
+    Saved --> Judge[独立受控 JudgeInput / Judge]
+    Judge --> Report[v2 Report / baseline / Gate]
+```
+
+图中的共享对象都是代码模块，不是新服务进程。聊天仍由Run拥有状态，评测由Job/Case拥有状态；两者各有真实身份和私有Evidence/预算/检查点。
+API、Index Worker、Evaluation Worker是独立进程，PG/Milvus是基础设施；评测不依赖Redis通知驱动，不创建聊天Thread或Run。
+
+### 代码对应与拆分理由
+
+| 入口/模块 | 职责和上游下游 |
+| --- | --- |
+| `api/evaluations.py` | 正常身份鉴权、创建/查询/请求取消/报告；不在HTTP内跑模型；生成OpenAPI与TS类型 |
+| `evaluation/runtime_protocol.py` | Job输入、受控角色/Scenario与冻结配置、有限预算；不是执行器 |
+| `evaluation/corpus.py`、`manage.py` | 明确映射真实已发布Version，核验源文与manifest，复制到专属Milvus集合；不改用户发布目录 |
+| `models.py`、迁移0018、`evaluation/store.py` | 三张表及Job/Case事务事实；幂等、领取、租约、owner fencing、补充接收和阶段保存 |
+| `evaluation/worker.py` | 独立串行宿主；恢复已保存阶段、调用共享计算，先存答卷再评价；心跳/取消和联合模型次数由PG裁决 |
+| `rag/context.py`、`execution/identity.py` | ChatIdentity/CaseIdentity区分宿主；RagContext只保存本次计算所需依赖，不拥有任务终态 |
+| `knowledge.py` | KnowledgeService保留聊天目录/权限适配；KnowledgeCalculation供两宿主复用相同检索/图/证据算法 |
+| `execution/reasoning.py`、`budget.py`、`grounded.py` | 通用ModelCaller、相同预算和答案校验/纠正；RunModelCaller保留聊天限制，RunExecutor继续拥有聊天终态 |
+| `evidence.py` | EvidenceDirectory管理本执行引用；EvidenceLedger保留原聊天owner/owns协议，不以全局变量共享材料 |
+| `evaluation/judge.py` | 答卷保存后才构造JudgeInput，人工gold仅进入这里；受控结果/故障与生成侧分别配置 |
+| `evaluation/result_protocol.py`、`runtime_result.py` | 纯v2类型与评分/Gate，保留v1结构指标，Judge单独给分和比较，保存完整baseline血缘 |
+| `evaluation/versioned.py`、`cli.py` | 显式版本分派与离线消费者；未知版本/跨版本baseline明确拒绝，不加载数据库/模型 |
+| `evaluation/environment.py`、`model_protocol.py` | 冻结源码/安装依赖摘要；模型类型与SQL控制面分离，旧聊天快照hash语义保持 |
+| `vector_store/adapter.py`、`milvus.py` | 完整产物复制核验和服务端专属namespace；Dense/Hybrid集合分开，评测BM25统计不混用户资料 |
+
+### 一道题如何流转
+
+1. 显式准备Dataset与Version映射，核验原文并复制可信向量产物，得到ready Corpus。该Corpus拥有独立集合与7天scope。
+2. POST Job时冻结Dataset、受控Scenario、v5策略/模型配置、源码/依赖指纹与有限额度，创建各Case；同幂等键返回原Job。
+3. Worker用独立短事务领取Job和owner资格，再在事务外启动本地模型与专属索引。不同Case有独立身份/材料/额度。
+4. Case调用相同KnowledgeCalculation/图。需要补充时先保存graph、Evidence、预算与剩余时间；实际prompt精确匹配预设触发条件才持久接收。
+5. 新进程读取同Case的accepted和检查点，以原图状态/预算继续；澄清节点后按补充问题再次检索，不重新问初始题或重放已完成grader。
+6. 将真实检索结果交给受控生成，使用相同引用/正文校验与一次有限格式纠正。先提交generated答卷，再构造含gold的JudgeInput。
+7. Judge每Case最多两次尝试；永久格式/超时/缺失为明确错误或未评价。保存阶段结果，再汇总v2 Observation/Artifact/Gate并写Job完成。
+
+### 事实与故障边界
+
+- PG是Job/Case阶段事实来源。取消请求不是取消终态；旧owner和过期lease不能写结果。取消/期限终止保留已完成答卷和计数，标记剩余Case。
+- waiting/accepted/generated可从持久边界续接；领取到过期generating/judging时标记结果未知，不假定外部调用可任意重放。
+- 进程环境变化明确报错，不静默换模型或重新生成。Job总尝试包含策略/生成/纠正/Judge，调用前保存计数；预算失败的阶段写入回滚。
+- 专属语料构建中断保留ready=false归属记录；清理只删除该记录的专属集合，仍被Job引用时拒绝。
+- 检索故障仍是错误，不变成无资料。结构覆盖不变成语义正确；受控Judge通过只证明本包流程，真实语义质量评测仍未执行。
+
+### 实际验证与交付边界
+
+- 82项纯离线评测测试（原68＋身份5＋v2报告9）、10项索引隔离/Judge依赖测试、107项共享聊天/知识/模型快照回归通过。
+- 真实PG：迁移/原聊天与HITL及评测初版共31项通过；新增并发领取/语料过期后，评测7项再次通过。去重为32项PG，共231个不同测试，重复执行不累加。
+- 0017→0018→0017→0018保留既有用户/Thread，Alembic check无元数据漂移；真实HTTP覆盖鉴权/用户隔离/幂等/取消/报告与严格JSON输入。
+- `scripts/check_evaluation.py`使用真实缓存BGE-small/Base、Milvus和PG，三个独立进程得到同Case和同检查点；generation尝试1→1→3，Judge1，共4次、收费0；初次与澄清后共两次检索。
+- 精确清理1个本次源候选和评测独立集合，临时数据库已删除，原文档current version保持。验收摘要见`.artifacts/evaluation-check.json`（本机生成物不纳入版本控制）。
+- OpenAPI/TS已由真源生成，前端typecheck通过；未增加页面交互，因此不运行全量浏览器。旧六份A schema/fixture/baseline未更改，未执行收费API/下载/GPU、全仓门禁或C工作台。
+- 开发数据库未升级/应用未重启部署；上面的迁移只在自有临时库执行。部署需将API/Index Worker代码与0018同步。
+
+8.4的Worker/报告API已直接依赖8.5的Judge协议与v2结果，必要测试也共同验证先存答卷再评分；本包实现无法按原小节分成两个各自完整可运行的提交。
+拟合并提交8.4–8.5的上述实现、迁移、测试、schema/OpenAPI生成物和学习交接；排除`.idea/MiniMew.iml`用户改动。
+用户已于2026-11-17明确选择“合并提交并推送（推荐）”，批准上述合并范围；本轮提交后核对personal/main与本地HEAD一致，IDE修改继续保留。

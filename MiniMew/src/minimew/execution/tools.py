@@ -81,6 +81,12 @@ class ToolContext:
     hitl: object | None = None
     checkpoint: dict | None = None
 
+    @property
+    def execution_identity(self):
+        from minimew.execution.identity import ChatIdentity
+
+        return ChatIdentity(self.user_id, self.thread_id, self.run_id)
+
     def __post_init__(self):
         if self.evidence is None:
             object.__setattr__(

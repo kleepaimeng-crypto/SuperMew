@@ -139,6 +139,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
                     exc.code,
                     getattr(exc, "diagnostic", None) or capture("subtask", "subtask_failed", exc),
                     thread_id=context.thread_id,
+                    identity=getattr(context, "execution_identity", None),
                     subtask=state["index"] + 1,
                 )
                 return {"pieces": ((state["index"], None, exc.code, frozenset()),)}
@@ -289,7 +290,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
     saver = BufferedSaver(saved["graph"] if saved else None) if context.hitl else None
     config = {"recursion_limit": 24 if context.hitl else 16, "callbacks": []}
     if saver:
-        config["configurable"] = {"thread_id": str(context.run_id)}
+        config["configurable"] = {"thread_id": context.execution_identity.checkpoint_key}
 
     with tracing_context(enabled=False):
         result = await graph.compile(checkpointer=saver).ainvoke(

@@ -73,14 +73,20 @@ class EvidenceLimit(ValueError):
     pass
 
 
-class EvidenceLedger:
-    def __init__(self, user_id: UUID, thread_id: UUID, run_id: UUID):
-        self.owner = (user_id, thread_id, run_id)
+class EvidenceDirectory:
+    """宿主私有来源目录；引用分配不拥有任何聊天或评测事务。"""
+
+    def __init__(self, identity):
+        from minimew.execution.identity import CaseIdentity, ChatIdentity
+
+        if not isinstance(identity, (ChatIdentity, CaseIdentity)):
+            raise ValueError("Typed execution identity required")
+        self.identity = identity
         self.queried = False
         self.items: tuple[Evidence, ...] = ()
 
-    def owns(self, user_id, thread_id, run_id):
-        return self.owner == (user_id, thread_id, run_id)
+    def owned_by(self, identity):
+        return self.identity == identity
 
     def propose(self, source: EvidenceSource, pending: tuple[Evidence, ...]) -> Evidence:
         source = EvidenceSource.model_validate(source)
@@ -98,6 +104,17 @@ class EvidenceLedger:
 
     def commit(self, pending: tuple[Evidence, ...]):
         self.items = (*self.items, *pending)
+
+
+class EvidenceLedger(EvidenceDirectory):
+    def __init__(self, user_id: UUID, thread_id: UUID, run_id: UUID):
+        from minimew.execution.identity import ChatIdentity
+
+        super().__init__(ChatIdentity(user_id, thread_id, run_id))
+        self.owner = (user_id, thread_id, run_id)
+
+    def owns(self, user_id, thread_id, run_id):
+        return self.owner == (user_id, thread_id, run_id)
 
 
 class AnswerSection(EvidenceModel):

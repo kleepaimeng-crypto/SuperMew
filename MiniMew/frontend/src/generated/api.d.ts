@@ -380,6 +380,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/evaluation-jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create */
+    post: operations["create_v1_evaluation_jobs_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evaluation-jobs/{job_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read */
+    get: operations["read_v1_evaluation_jobs__job_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evaluation-jobs/{job_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel */
+    post: operations["cancel_v1_evaluation_jobs__job_id__cancel_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evaluation-jobs/{job_id}/report": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Report */
+    get: operations["report_v1_evaluation_jobs__job_id__report_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -431,6 +499,46 @@ export interface components {
       /** End */
       end: number;
     };
+    /** ArtifactV2 */
+    ArtifactV2: {
+      /**
+       * Schema Version
+       * @default 2
+       * @constant
+       */
+      schema_version: 2;
+      /**
+       * Scorer Version
+       * @default controlled-judge-v2
+       * @constant
+       */
+      scorer_version: "controlled-judge-v2";
+      /**
+       * Source Stages
+       * @default local-retrieval/controlled-generation/controlled-judge
+       * @constant
+       */
+      source_stages: "local-retrieval/controlled-generation/controlled-judge";
+      structural: components["schemas"]["EvaluationArtifact"];
+      /** Evaluations */
+      evaluations: components["schemas"]["CaseEvaluation"][];
+      /** Judge Minimum */
+      judge_minimum: number;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: "pass" | "fail" | "insufficient" | "incomparable";
+      /** Total Model Attempts */
+      total_model_attempts: number;
+      /** Baseline Fingerprint */
+      baseline_fingerprint?: string | null;
+      /**
+       * Judge Deltas
+       * @default []
+       */
+      judge_deltas: components["schemas"]["JudgeDelta"][];
+    };
     /** Body_upload_document_v1_documents_post */
     Body_upload_document_v1_documents_post: {
       /** File */
@@ -479,6 +587,158 @@ export interface components {
        */
       index_layout: "dense-cosine-v1" | "hybrid-jieba-bm25-v1";
     };
+    /** Case */
+    Case: {
+      /** Case Id */
+      case_id: string;
+      /** Question */
+      question: string;
+      /**
+       * Kind
+       * @default quality
+       * @enum {string}
+       */
+      kind: "quality" | "fault";
+      /**
+       * Critical
+       * @default false
+       */
+      critical: boolean;
+      /** Allowed Outcomes */
+      allowed_outcomes: (
+        | "answered"
+        | "no_knowledge"
+        | "insufficient"
+        | "waiting"
+        | "cancelled"
+        | "error"
+      )[];
+      /** Expected Error */
+      expected_error?: string | null;
+      /**
+       * Evidence Gold
+       * @default []
+       */
+      evidence_gold: components["schemas"]["Span"][];
+      /**
+       * Required Claims
+       * @default []
+       */
+      required_claims: string[];
+      /**
+       * Forbidden Claims
+       * @default []
+       */
+      forbidden_claims: string[];
+      /**
+       * Requires Citations
+       * @default false
+       */
+      requires_citations: boolean;
+    };
+    /** CaseEvaluation */
+    CaseEvaluation: {
+      /** Case Id */
+      case_id: string;
+      /** Answer */
+      answer?: string | null;
+      judge?: components["schemas"]["JudgeResult"] | null;
+      /** Judge Error */
+      judge_error?: string | null;
+      /**
+       * Requested
+       * @default false
+       */
+      requested: boolean;
+      /**
+       * Matched
+       * @default false
+       */
+      matched: boolean;
+      /**
+       * Accepted
+       * @default false
+       */
+      accepted: boolean;
+      /**
+       * Resumed
+       * @default false
+       */
+      resumed: boolean;
+      /**
+       * Clarification Required
+       * @default false
+       */
+      clarification_required: boolean;
+      /**
+       * Judge Attempts
+       * @default 0
+       */
+      judge_attempts: number;
+    };
+    /** CaseScore */
+    CaseScore: {
+      /** Case Id */
+      case_id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "quality" | "fault";
+      /** Critical */
+      critical: boolean;
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome:
+        | "answered"
+        | "no_knowledge"
+        | "insufficient"
+        | "waiting"
+        | "cancelled"
+        | "error";
+      /** Error Code */
+      error_code: string | null;
+      /** Outcome Match */
+      outcome_match: boolean;
+      /** Gold Count */
+      gold_count: number;
+      /** Covered Count */
+      covered_count: number;
+      /** Missing Gold */
+      missing_gold: components["schemas"]["Span"][];
+      /** Material Coverage */
+      material_coverage: number | null;
+      /** Citation Structure */
+      citation_structure: boolean | null;
+      /** Budget Ok */
+      budget_ok: boolean;
+      counts: components["schemas"]["Counts"];
+      /** Semantic Correctness */
+      semantic_correctness?: null;
+    };
+    /** CaseView */
+    CaseView: {
+      /** Case Id */
+      case_id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status:
+        | "pending"
+        | "generating"
+        | "waiting"
+        | "accepted"
+        | "generated"
+        | "judging"
+        | "completed"
+        | "failed"
+        | "cancelled";
+      /** Error Code */
+      error_code: string | null;
+    };
     /** Citation */
     Citation: {
       /** Citation Id */
@@ -487,6 +747,15 @@ export interface components {
       start: number;
       /** End */
       end: number;
+    };
+    /** Counts */
+    Counts: {
+      /** Model Attempts */
+      model_attempts: number;
+      /** Retrieval Calls */
+      retrieval_calls: number;
+      /** Tool Calls */
+      tool_calls: number;
     };
     /** CreateRunRequest */
     CreateRunRequest: {
@@ -497,6 +766,54 @@ export interface components {
     };
     /** CreateThreadRequest */
     CreateThreadRequest: Record<string, never>;
+    /** Dataset */
+    Dataset: {
+      /**
+       * Schema Version
+       * @default 1
+       * @constant
+       */
+      schema_version: 1;
+      /** Dataset Id */
+      dataset_id: string;
+      /** Sources */
+      sources: components["schemas"]["Source"][];
+      /** Cases */
+      cases: components["schemas"]["Case"][];
+    };
+    /** Delta */
+    Delta: {
+      /**
+       * Metric
+       * @enum {string}
+       */
+      metric:
+        | "material_coverage"
+        | "outcome_match"
+        | "citation_structure"
+        | "budget_ok"
+        | "semantic_correctness";
+      /** Baseline */
+      baseline: number | null;
+      /** Candidate */
+      candidate: number | null;
+      /** Change */
+      change: number | null;
+    };
+    /** Difference */
+    Difference: {
+      /**
+       * Field
+       * @enum {string}
+       */
+      field: "implementation" | "dependencies" | "model" | "strategy" | "index";
+      /** Baseline */
+      baseline: string;
+      /** Candidate */
+      candidate: string;
+      /** Permitted */
+      permitted: boolean;
+    };
     /** DocumentPage */
     DocumentPage: {
       /** Items */
@@ -568,6 +885,17 @@ export interface components {
       /** Max Input Tokens */
       max_input_tokens: number;
     };
+    /** EvaluationArtifact */
+    EvaluationArtifact: {
+      /**
+       * Schema Version
+       * @default 1
+       * @constant
+       */
+      schema_version: 1;
+      report: components["schemas"]["Report"];
+      gate: components["schemas"]["GateResult"];
+    };
     /** Evidence */
     Evidence: {
       /**
@@ -611,6 +939,32 @@ export interface components {
       text: string;
       /** Citation Id */
       citation_id: string;
+    };
+    /** GateResult */
+    GateResult: {
+      /**
+       * Schema Version
+       * @default 1
+       * @constant
+       */
+      schema_version: 1;
+      /** Report Fingerprint */
+      report_fingerprint: string;
+      /** Policy Fingerprint */
+      policy_fingerprint: string;
+      /** Baseline Fingerprint */
+      baseline_fingerprint: string | null;
+      /**
+       * Decision
+       * @enum {string}
+       */
+      decision: "pass" | "fail" | "insufficient" | "incomparable";
+      /** Rules */
+      rules: components["schemas"]["Rule"][];
+      /** Differences */
+      differences: components["schemas"]["Difference"][];
+      /** Deltas */
+      deltas: components["schemas"]["Delta"][];
     };
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -660,6 +1014,21 @@ export interface components {
        */
       type: "hitl.accepted";
       data: components["schemas"]["HitlAcceptedData"];
+    };
+    /** HitlPolicy */
+    HitlPolicy: {
+      /**
+       * Clarification Limit
+       * @default 1
+       * @constant
+       */
+      clarification_limit: 1;
+      /**
+       * Wait Seconds
+       * @default 900
+       * @constant
+       */
+      wait_seconds: 900;
     };
     /** HitlRequiredData */
     HitlRequiredData: {
@@ -769,6 +1138,113 @@ export interface components {
       created_at: string;
       /** Finished At */
       finished_at: string | null;
+    };
+    /** JobReceipt */
+    JobReceipt: {
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+    };
+    /** JobReport */
+    JobReport: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "pending" | "running" | "completed" | "failed" | "cancelled";
+      report: components["schemas"]["ArtifactV2"] | null;
+      /** Error Code */
+      error_code: string | null;
+    };
+    /** JobRequest */
+    JobRequest: {
+      /**
+       * Schema Version
+       * @default 2
+       * @constant
+       */
+      schema_version: 2;
+      /**
+       * Corpus Id
+       * Format: uuid
+       */
+      corpus_id: string;
+      dataset: components["schemas"]["Dataset"];
+      /** Scenarios */
+      scenarios: components["schemas"]["Scenario"][];
+      /**
+       * Case Seconds
+       * @default 120
+       */
+      case_seconds: number;
+      /**
+       * Job Seconds
+       * @default 1800
+       */
+      job_seconds: number;
+      snapshot?: components["schemas"]["ModelSnapshot"];
+      /**
+       * Judge Minimum
+       * @default 2
+       */
+      judge_minimum: number;
+      /**
+       * Total Model Limit
+       * @default 112
+       */
+      total_model_limit: number;
+    };
+    /** JobView */
+    JobView: {
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "pending" | "running" | "completed" | "failed" | "cancelled";
+      /** Cancel Requested */
+      cancel_requested: boolean;
+      /** Error Code */
+      error_code: string | null;
+      /** Cases */
+      cases: components["schemas"]["CaseView"][];
+    };
+    /** JudgeDelta */
+    JudgeDelta: {
+      /**
+       * Metric
+       * @enum {string}
+       */
+      metric: "correctness" | "completeness" | "grounding";
+      /** Baseline */
+      baseline: number | null;
+      /** Candidate */
+      candidate: number | null;
+      /** Change */
+      change: number | null;
+    };
+    /** JudgeResult */
+    JudgeResult: {
+      /**
+       * Rubric Version
+       * @default controlled-rubric-v1
+       * @constant
+       */
+      rubric_version: "controlled-rubric-v1";
+      /** Correctness */
+      correctness: number;
+      /** Completeness */
+      completeness: number;
+      /** Grounding */
+      grounding: number;
+      /** Reason */
+      reason: string;
     };
     /** LoginRequest */
     LoginRequest: {
@@ -922,6 +1398,219 @@ export interface components {
        */
       created_at: string;
     };
+    /** Metric */
+    Metric: {
+      /** Value */
+      value: number | null;
+      /** Eligible */
+      eligible: number;
+      /** Evaluated */
+      evaluated: number;
+      /** Errors */
+      errors: number;
+      /** Unavailable */
+      unavailable: number;
+    };
+    /** Metrics */
+    Metrics: {
+      material_coverage: components["schemas"]["Metric"];
+      outcome_match: components["schemas"]["Metric"];
+      citation_structure: components["schemas"]["Metric"];
+      budget_ok: components["schemas"]["Metric"];
+      semantic_correctness: components["schemas"]["Metric"];
+    };
+    /** ModelConfiguration */
+    ModelConfiguration: {
+      /**
+       * Provider
+       * @constant
+       */
+      provider: "openai_compatible";
+      /** Model Name */
+      model_name: string;
+      /** Base Url */
+      base_url: string;
+      /** Temperature */
+      temperature: number;
+      /** Max Output Tokens */
+      max_output_tokens: number;
+      /** Timeout Seconds */
+      timeout_seconds: number;
+      thinking: components["schemas"]["ThinkingPolicy"];
+    };
+    /** ModelSnapshot */
+    ModelSnapshot: {
+      /**
+       * Schema Version
+       * @default 1
+       * @enum {integer}
+       */
+      schema_version: 1 | 2 | 3 | 4 | 5;
+      answer: components["schemas"]["ProfileSnapshot"];
+      rag?: components["schemas"]["RagPolicy"] | null;
+      reasoning?: components["schemas"]["ReasoningPolicy"] | null;
+      repairs?: components["schemas"]["RepairPolicy"] | null;
+      hitl?: components["schemas"]["HitlPolicy"] | null;
+    };
+    /** ProfileSnapshot */
+    ProfileSnapshot: {
+      /**
+       * Profile Id
+       * Format: uuid
+       */
+      profile_id: string;
+      /** Profile Version */
+      profile_version: number;
+      configuration: components["schemas"]["ModelConfiguration"];
+    };
+    /** Provenance */
+    Provenance: {
+      /**
+       * Mode
+       * @enum {string}
+       */
+      mode: "contract_smoke" | "controlled" | "live";
+      /** Implementation */
+      implementation: string;
+      /** Dependencies */
+      dependencies: string;
+      /** Model */
+      model: string;
+      /** Strategy */
+      strategy: string;
+      /** Index */
+      index: string;
+    };
+    /** RagPolicy */
+    RagPolicy: {
+      /**
+       * Strategy
+       * @default dense
+       * @enum {string}
+       */
+      strategy: "dense" | "hybrid";
+      /**
+       * Recall K
+       * @default 10
+       */
+      recall_k: number;
+      /**
+       * Rrf K
+       * @default 60
+       */
+      rrf_k: number;
+      /**
+       * Fused K
+       * @default 12
+       */
+      fused_k: number;
+      /**
+       * Candidate Limit
+       * @default 18
+       */
+      candidate_limit: number;
+      /**
+       * Group Limit
+       * @default 6
+       */
+      group_limit: number;
+      /**
+       * Final K
+       * @default 6
+       */
+      final_k: number;
+      /**
+       * Merge
+       * @default true
+       */
+      merge: boolean;
+      /**
+       * Rerank
+       * @default true
+       */
+      rerank: boolean;
+      /**
+       * Reranker
+       * @default BAAI/bge-reranker-base
+       * @constant
+       */
+      reranker: "BAAI/bge-reranker-base";
+      /**
+       * Revision
+       * @default 2cfc18c9415c912f9d8155881c133215df768a70
+       * @constant
+       */
+      revision: "2cfc18c9415c912f9d8155881c133215df768a70";
+      /**
+       * Window
+       * @default 512
+       * @constant
+       */
+      window: 512;
+      /**
+       * Batch Size
+       * @default 1
+       * @constant
+       */
+      batch_size: 1;
+      /**
+       * Dtype
+       * @default float32
+       * @constant
+       */
+      dtype: "float32";
+    };
+    /** ReasoningPolicy */
+    ReasoningPolicy: {
+      /**
+       * Model Limit
+       * @default 12
+       * @constant
+       */
+      model_limit: 12;
+      /**
+       * Outer Limit
+       * @default 4
+       * @constant
+       */
+      outer_limit: 4;
+      /**
+       * Tool Limit
+       * @default 6
+       * @constant
+       */
+      tool_limit: 6;
+      /**
+       * Retrieval Limit
+       * @default 8
+       * @constant
+       */
+      retrieval_limit: 8;
+      /**
+       * Concurrency
+       * @default 2
+       * @constant
+       */
+      concurrency: 2;
+      /**
+       * Grade Tokens
+       * @default 1024
+       * @constant
+       */
+      grade_tokens: 1024;
+      /**
+       * Plan Tokens
+       * @default 512
+       * @constant
+       */
+      plan_tokens: 512;
+      /**
+       * Rewrite Tokens
+       * @default 256
+       * @constant
+       */
+      rewrite_tokens: 256;
+    };
     /** RegisterRequest */
     RegisterRequest: {
       /** Username */
@@ -931,6 +1620,50 @@ export interface components {
        * Format: password
        */
       password: string;
+    };
+    /** RepairPolicy */
+    RepairPolicy: {
+      /**
+       * Answer Repair Limit
+       * @default 1
+       * @constant
+       */
+      answer_repair_limit: 1;
+      /**
+       * Aggregation
+       * @default representatives-v1
+       * @constant
+       */
+      aggregation: "representatives-v1";
+      /** Finalization */
+      finalization?: "reserved-v1" | null;
+    };
+    /** Report */
+    Report: {
+      /**
+       * Schema Version
+       * @default 1
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Scorer Version
+       * @default source-span-v1
+       * @constant
+       */
+      scorer_version: "source-span-v1";
+      /** Dataset Fingerprint */
+      dataset_fingerprint: string;
+      /** Corpus Fingerprint */
+      corpus_fingerprint: string;
+      /** Observation Fingerprint */
+      observation_fingerprint: string;
+      provenance: components["schemas"]["Provenance"];
+      /** Cases */
+      cases: components["schemas"]["CaseScore"][];
+      summary: components["schemas"]["Summary"];
+      quality: components["schemas"]["Summary"];
+      fault: components["schemas"]["Summary"];
     };
     /** ResumeCredential */
     ResumeCredential: {
@@ -962,6 +1695,32 @@ export interface components {
       idempotency_key: string;
       /** Answer */
       answer: string;
+    };
+    /** RoleReply */
+    RoleReply: {
+      /**
+       * Purpose
+       * @enum {string}
+       */
+      purpose: "grade" | "plan" | "rewrite";
+      /** Payload */
+      payload: {
+        [key: string]: unknown;
+      };
+    };
+    /** Rule */
+    Rule: {
+      /** Name */
+      name: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "pass" | "fail" | "unavailable" | "incomparable";
+      /** Expected */
+      expected: string;
+      /** Actual */
+      actual: string;
     };
     /** RunCancelRequestedData */
     RunCancelRequestedData: {
@@ -1391,6 +2150,73 @@ export interface components {
        */
       type: "run.started";
       data: components["schemas"]["RunStartedData"];
+    };
+    /** Scenario */
+    Scenario: {
+      /** Case Id */
+      case_id: string;
+      /** Roles */
+      roles: components["schemas"]["RoleReply"][];
+      /** Answer */
+      answer: string;
+      /** Repair Answer */
+      repair_answer?: string | null;
+      /** Expected Prompt */
+      expected_prompt?: string | null;
+      /** Supplement */
+      supplement?: string | null;
+      judge?: components["schemas"]["JudgeResult"] | null;
+      /** Judge Fault */
+      judge_fault?: ("timeout" | "invalid" | "transient") | null;
+    };
+    /** Source */
+    Source: {
+      /** Source Id */
+      source_id: string;
+      /** Content Sha256 */
+      content_sha256: string;
+      /** Length */
+      length: number;
+    };
+    /** Span */
+    Span: {
+      /** Source Id */
+      source_id: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+    };
+    /** Summary */
+    Summary: {
+      /** Expected */
+      expected: number;
+      /** Observed */
+      observed: number;
+      /** Completed */
+      completed: number;
+      /** Waiting */
+      waiting: number;
+      /** Cancelled */
+      cancelled: number;
+      /** Errors */
+      errors: number;
+      /**
+       * Missing
+       * @default 0
+       * @constant
+       */
+      missing: 0;
+      counts: components["schemas"]["Counts"];
+      metrics: components["schemas"]["Metrics"];
+    };
+    /** ThinkingPolicy */
+    ThinkingPolicy: {
+      /**
+       * Type
+       * @constant
+       */
+      type: "disabled";
     };
     /** ThreadListResponse */
     ThreadListResponse: {
@@ -2490,6 +3316,134 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["BuildConfiguration"][];
+        };
+      };
+    };
+  };
+  create_v1_evaluation_jobs_post: {
+    parameters: {
+      query?: never;
+      header: {
+        "idempotency-key": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["JobRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobReceipt"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  read_v1_evaluation_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cancel_v1_evaluation_jobs__job_id__cancel_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  report_v1_evaluation_jobs__job_id__report_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobReport"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

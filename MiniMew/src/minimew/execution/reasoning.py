@@ -17,7 +17,7 @@ from minimew.rag.reasoning import FinalizationReserved
 logger = logging.getLogger(__name__)
 
 
-class RunModelCaller:
+class ModelCaller:
     def __init__(self, provider, request, budget, deadline, check, policy):
         self.provider, self.request, self.budget, self.deadline, self.check, self.policy = (
             provider,
@@ -127,6 +127,7 @@ class RunModelCaller:
                                 "PROVIDER_ERROR",
                                 capture(purpose, "stream_cleanup_failed", failure),
                                 thread_id=self.request.thread_id,
+                                identity=self.request.case_identity,
                             )
                     if turn is None or turn.kind != "text":
                         raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
@@ -158,7 +159,17 @@ class RunModelCaller:
                         exc.code,
                         exc.diagnostic,
                         thread_id=self.request.thread_id,
+                        identity=self.request.case_identity,
                         attempt=attempt + 1,
                     )
                     await asyncio.sleep(delay)
         raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
+
+
+class RunModelCaller(ModelCaller):
+    """聊天宿主适配；实际模型计算由ModelCaller唯一实现。"""
+
+    def __init__(self, provider, request, budget, deadline, check, policy):
+        if request.case_identity is not None:
+            raise ValueError("Chat model caller requires a real Run")
+        super().__init__(provider, request, budget, deadline, check, policy)

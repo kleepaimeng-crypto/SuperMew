@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from minimew.api.auth import router as auth_router
 from minimew.api.documents import UploadLimitMiddleware
 from minimew.api.documents import router as documents_router
+from minimew.api.evaluations import router as evaluations_router
 from minimew.api.health import router as health_router
 from minimew.api.runs import router as runs_router
 from minimew.api.threads import router as threads_router
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(threads_router)
     app.include_router(runs_router)
     app.include_router(documents_router)
+    app.include_router(evaluations_router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, error):

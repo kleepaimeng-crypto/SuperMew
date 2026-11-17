@@ -6,6 +6,7 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 from minimew.execution.diagnostics import Diagnostic
+from minimew.execution.identity import CaseIdentity
 from minimew.execution.messages import (
     InputMessage,
     ModelTurn,
@@ -17,8 +18,8 @@ from minimew.model_control import ModelSnapshot
 
 @dataclass(frozen=True)
 class ProviderRequest:
-    run_id: UUID
-    thread_id: UUID
+    run_id: UUID | None
+    thread_id: UUID | None
     snapshot: ModelSnapshot
     messages: tuple[InputMessage, ...]
     tools: tuple[ToolDefinition, ...] = ()
@@ -26,8 +27,15 @@ class ProviderRequest:
     purpose: Literal["answer", "grade", "plan", "rewrite", "repair"] = "answer"
     private_output: bool = False
     force_answer: bool = False
+    case_identity: CaseIdentity | None = None
 
     def __post_init__(self):
+        if self.case_identity is not None and (
+            not isinstance(self.case_identity, CaseIdentity)
+            or self.run_id is not None
+            or self.thread_id is not None
+        ):
+            raise ValueError("Evaluation requests cannot impersonate a chat Run")
         if (
             type(self.private_output) is not bool
             or type(self.force_answer) is not bool

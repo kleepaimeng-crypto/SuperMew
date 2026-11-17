@@ -6,6 +6,8 @@ from pathlib import Path
 
 from minimew.evaluation.gate import EvaluationArtifact, GatePolicy
 from minimew.evaluation.protocol import Corpus, Dataset, ObservationSet
+from minimew.evaluation.runtime_protocol import CorpusV2, JobRequest, JudgeResult
+from minimew.evaluation.runtime_result import ArtifactV2, ObservationV2
 from minimew.evaluation.scoring import Report
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +24,11 @@ def main():
         "report": Report,
         "gate-policy": GatePolicy,
         "artifact": EvaluationArtifact,
+        "corpus-v2": CorpusV2,
+        "job-request-v2": JobRequest,
+        "judge-v2": JudgeResult,
+        "observation-v2": ObservationV2,
+        "artifact-v2": ArtifactV2,
     }
     stale = []
     for name, model in models.items():

@@ -42,8 +42,20 @@ def emit(
     tool_call_id=None,
     attempt=None,
     subtask=None,
+    identity=None,
 ):
-    record = {"event": event, "run_id": str(run_id), "code": code, **asdict(diagnostic)}
+    record = {"event": event, "code": code, **asdict(diagnostic)}
+    if run_id is not None:
+        record["run_id"] = str(run_id)
+    if identity is not None:
+        from minimew.execution.identity import CaseIdentity
+
+        if isinstance(identity, CaseIdentity):
+            record.update(
+                job_id=str(identity.job_id),
+                case_id=str(identity.case_id),
+                attempt_id=str(identity.attempt_id),
+            )
     if thread_id is not None:
         record["thread_id"] = str(thread_id)
     if tool_call_id is not None:

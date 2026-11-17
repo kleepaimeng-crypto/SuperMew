@@ -7,15 +7,15 @@ from pathlib import Path
 
 from minimew.evaluation.gate import EvaluationArtifact, GatePolicy, evaluate
 from minimew.evaluation.protocol import (
-    Corpus,
     Dataset,
     EvaluationInputError,
-    ObservationSet,
     canonical,
     load,
     validate_inputs,
 )
+from minimew.evaluation.runtime_result import ArtifactV2, ObservationV2, compare_v2, score_v2
 from minimew.evaluation.scoring import score
+from minimew.evaluation.versioned import load_artifact, load_corpus, load_observations
 
 
 def render(artifact: EvaluationArtifact) -> str:
@@ -61,6 +61,7 @@ def main(argv=None) -> int:
     parser.add_argument("--corpus", type=Path, required=True)
     parser.add_argument("--observations", type=Path, required=True)
     parser.add_argument("--policy", type=Path)
+    parser.add_argument("--judge-minimum", type=int, choices=(0, 1, 2), default=2)
     parser.add_argument("--baseline", type=Path, help="显式选择此前JSON评测产物作为参照")
     parser.add_argument("--format", choices=("json", "text"), default="json")
     parser.add_argument("--output", type=Path, help="显式写出；不得覆盖任何输入文件")
@@ -74,19 +75,58 @@ def main(argv=None) -> int:
         ):
             raise EvaluationInputError("OUTPUT_OVERWRITES_INPUT")
         dataset = load(args.dataset, Dataset)
-        corpus = load(args.corpus, Corpus)
-        observations = load(args.observations, ObservationSet)
-        validate_inputs(dataset, corpus, observations)
+        corpus = load_corpus(args.corpus)
+        observations = load_observations(args.observations)
+        v2 = isinstance(observations, ObservationV2)
+        validate_inputs(dataset, corpus, observations.structural if v2 else observations)
         if args.command == "validate":
             output = canonical({"status": "valid", "cases": len(dataset.cases)}) + "\n"
             code = 0
         else:
-            policy = load(args.policy, GatePolicy) if args.policy else GatePolicy()
-            baseline = load(args.baseline, EvaluationArtifact).report if args.baseline else None
-            report = score(dataset, corpus, observations)
-            artifact = EvaluationArtifact(report=report, gate=evaluate(report, policy, baseline))
-            output = canonical(artifact) + "\n" if args.format == "json" else render(artifact)
-            code = 0 if artifact.gate.decision == "pass" else 1
+            policy = (
+                load(args.policy, GatePolicy)
+                if args.policy
+                else GatePolicy(allowed_modes=("controlled",))
+                if v2
+                else GatePolicy()
+            )
+            baseline = load_artifact(args.baseline) if args.baseline else None
+            if baseline is not None and isinstance(baseline, ArtifactV2) != v2:
+                raise EvaluationInputError("BASELINE_SCHEMA_MISMATCH")
+            if v2:
+                artifact = score_v2(
+                    dataset, corpus, observations, minimum=args.judge_minimum, policy=policy
+                )
+                if baseline is not None:
+                    artifact = compare_v2(artifact, baseline, policy)
+                text = (
+                    render(artifact.structural) + f"受控Judge（0–2）：{artifact.decision}；"
+                    f"总模型尝试：{artifact.total_model_attempts}\n"
+                    "受控输出只验证流程，不证明模型语义质量。\n"
+                )
+                for result in artifact.evaluations:
+                    value = (
+                        f"正确性={result.judge.correctness}，完整性={result.judge.completeness}，"
+                        f"依据性={result.judge.grounding}"
+                        if result.judge
+                        else f"未评价（{result.judge_error or 'JUDGE_UNAVAILABLE'}）"
+                    )
+                    text += f"  Judge {result.case_id}：{value}；已续接={result.resumed}\n"
+                for delta in artifact.judge_deltas:
+                    text += (
+                        f"  Judge差值 {delta.metric}：{delta.baseline} → {delta.candidate}，"
+                        f"差值{delta.change}\n"
+                    )
+                code = 0 if artifact.decision == "pass" else 1
+            else:
+                report = score(dataset, corpus, observations)
+                artifact = EvaluationArtifact(
+                    report=report,
+                    gate=evaluate(report, policy, baseline.report if baseline else None),
+                )
+                text = render(artifact)
+                code = 0 if artifact.gate.decision == "pass" else 1
+            output = canonical(artifact) + "\n" if args.format == "json" else text
         if args.output:
             args.output.write_bytes(output.encode("utf-8"))
         else:

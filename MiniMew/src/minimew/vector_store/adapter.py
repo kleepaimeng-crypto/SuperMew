@@ -109,6 +109,19 @@ class CandidateIndex:
         self._validate(manifest, rows, complete=True)
         return VerifiedCandidate(manifest)
 
+    def copy_to(self, manifest: CandidateManifest, target):
+        """复制可信完整产物到另一显式后端；不修改来源manifest。"""
+        rows = self.backend.read(manifest.scope, len(manifest.entries) + 1)
+        self._validate(manifest, rows, complete=True)
+        layout = manifest.scope.index_layout
+        target.backend.ensure_collection(**({"layout": layout} if layout == HYBRID_LAYOUT else {}))
+        for start in range(0, len(rows), self.batch_size):
+            target.backend.upsert(
+                rows[start : start + self.batch_size],
+                **({"layout": layout} if layout == HYBRID_LAYOUT else {}),
+            )
+        return target.verify(manifest)
+
     def search(
         self,
         verified: VerifiedCandidate,

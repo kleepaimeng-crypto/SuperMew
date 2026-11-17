@@ -36,12 +36,23 @@ def scope_filter(scope: CandidateScope) -> str:
 
 
 class MilvusBackend:
-    def __init__(self, settings: VectorSettings, client):
+    def __init__(self, settings: VectorSettings, client, *, namespace=None):
         self.settings = settings
         self.client = client
+        if namespace is not None:
+            import re
+
+            if re.fullmatch(r"minimew_eval_[0-9a-f]{32}", namespace) is None:
+                raise ValueError("Server-owned evaluation namespace required")
+        self.namespace = namespace
+
+    def collection(self, layout):
+        if self.namespace is None:
+            return collection_for(layout)
+        return self.namespace + ("_hybrid" if layout == HYBRID_LAYOUT else "_dense")
 
     @classmethod
-    def connect(cls, settings: VectorSettings) -> "MilvusBackend":
+    def connect(cls, settings: VectorSettings, *, namespace=None) -> "MilvusBackend":
         try:
             from pymilvus import MilvusClient
         except ImportError as exc:
@@ -68,7 +79,7 @@ class MilvusBackend:
                     ),
                 },
             )
-            return cls(settings, client)
+            return cls(settings, client, namespace=namespace)
         except Exception as exc:
             raise VectorError("VECTOR_UNAVAILABLE") from exc
 
@@ -90,7 +101,7 @@ class MilvusBackend:
     def ensure_collection(self, *, layout="dense-cosine-v1") -> None:
         from pymilvus import DataType, Function, FunctionType
 
-        collection = collection_for(layout)
+        collection = self.collection(layout)
         hybrid = layout == HYBRID_LAYOUT
         description = DESCRIPTION if not hybrid else "MiniMew hybrid jieba bm25 v1 " + SPACE_HASH
 
@@ -207,7 +218,7 @@ class MilvusBackend:
     def read(self, scope: CandidateScope, max_rows: int) -> list[dict]:
         iterator = self._rpc(
             self.client.query_iterator,
-            collection_name=collection_for(scope.index_layout),
+            collection_name=self.collection(scope.index_layout),
             filter=scope_filter(scope),
             output_fields=FIELDS
             + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
@@ -232,7 +243,7 @@ class MilvusBackend:
             raise VectorError("VECTOR_INVALID_QUERY")
         return self._rpc(
             self.client.query,
-            collection_name=collection_for(scope.index_layout),
+            collection_name=self.collection(scope.index_layout),
             filter=scope_filter(scope) + " and chunk_id in " + canonical(list(ids)),
             output_fields=FIELDS
             + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
@@ -241,14 +252,14 @@ class MilvusBackend:
         )
 
     def upsert(self, rows: list[dict], *, layout="dense-cosine-v1") -> None:
-        result = self._rpc(self.client.upsert, collection_name=collection_for(layout), data=rows)
+        result = self._rpc(self.client.upsert, collection_name=self.collection(layout), data=rows)
         if result["upsert_count"] != len(rows):
             raise VectorError("VECTOR_PARTIAL_WRITE")
 
     def search(self, scope: CandidateScope, vector: list[float], limit: int) -> list[dict]:
         result = self._rpc(
             self.client.search,
-            collection_name=collection_for(scope.index_layout),
+            collection_name=self.collection(scope.index_layout),
             data=[vector],
             anns_field="vector",
             filter=scope_filter(scope),
@@ -265,7 +276,7 @@ class MilvusBackend:
             raise VectorError("VECTOR_CAPABILITY_UNSUPPORTED")
         return self._rpc(
             self.client.search,
-            collection_name=collection_for(scope.index_layout),
+            collection_name=self.collection(scope.index_layout),
             data=[query],
             anns_field="sparse",
             filter=scope_filter(scope),
@@ -278,6 +289,6 @@ class MilvusBackend:
     def delete(self, scope: CandidateScope) -> None:
         self._rpc(
             self.client.delete,
-            collection_name=collection_for(scope.index_layout),
+            collection_name=self.collection(scope.index_layout),
             filter=scope_filter(scope),
         )
