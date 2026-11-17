@@ -1,5 +1,6 @@
 """显式真实PG/Milvus/缓存CPU模型验收；三个进程同Case澄清续接，收费0。"""
 
+import argparse
 import asyncio
 import json
 import os
@@ -50,7 +51,7 @@ def process(phase):
         raise AssertionError("Evaluation subprocess failed: " + phase)
 
 
-async def main():
+async def main(browser=False):
     report = {
         "passed": False,
         "paid_model_calls": 0,
@@ -174,67 +175,98 @@ async def main():
                             }
                         )
                     )
-                    store = EvaluationStore(sessions)
-                    job_id = await store.create(user, "local-evaluation", request)
-                    case_id = None
-                    saved_graph = None
-                    phases = []
-                    for phase in ("waiting", "accepted", "completed"):
-                        await asyncio.to_thread(process, phase)
-                        job, cases = await store.read(user, job_id)
-                        case = cases[0]
-                        assert case.status == phase, (
-                            phase,
-                            job.status,
-                            job.error_code,
-                            case.error_code,
-                        )
-                        if case_id is None:
-                            case_id = case.id
-                            saved_graph = fingerprint(case.checkpoint["graph"])
-                        assert case.id == case_id
-                        assert fingerprint(case.checkpoint["graph"]) == saved_graph
-                        phases.append(
-                            {
-                                "phase": phase,
-                                "case_id": str(case.id),
-                                "model_attempts": (case.progress or {}).get("model_attempts"),
-                            }
-                        )
-                        if phase != "completed":
-                            async with sessions() as session, session.begin():
-                                await session.execute(
-                                    text(
-                                        "UPDATE evaluation_jobs "
-                                        "SET lease_until=clock_timestamp()-interval '1 second' "
-                                        "WHERE id=:id"
-                                    ),
-                                    {"id": job_id},
+                    if browser:
+                        from evaluation_browser import run_browser
+
+                        evidence = await run_browser(request, credentials, database, directory)
+                        async with sessions() as session:
+                            finished = (
+                                await session.scalars(
+                                    select(EvaluationJob).where(EvaluationJob.user_id == user)
                                 )
-                    assert job.status == "completed" and job.report["decision"] == "pass", (
-                        job.report
-                    )
-                    assert job.report["total_model_attempts"] == 4
-                    assert job.report["evaluations"][0]["resumed"]
-                    # 正式图在补充后会重新检索：初次一次＋澄清后一次。
-                    assert case.generation["observation"]["counts"]["retrieval_calls"] == 2
-                    async with sessions() as session:
-                        original = await session.get(Document, document)
-                        assert original.current_version_id == version
-                    report.update(
-                        passed=True,
-                        phases=phases,
-                        total_model_attempts=4,
-                        original_version_unchanged=True,
-                    )
+                            ).all()
+                            assert len(finished) == 3
+                            assert sorted(j.status for j in finished) == [
+                                "cancelled",
+                                "completed",
+                                "completed",
+                            ]
+                            assert all(
+                                j.report["decision"] == "pass"
+                                for j in finished
+                                if j.status == "completed"
+                            )
+                        report.update(
+                            passed=True, browser="passed", jobs=3, browser_evidence=evidence
+                        )
+                    else:
+                        store = EvaluationStore(sessions)
+                        job_id = await store.create(user, "local-evaluation", request)
+                        case_id = None
+                        saved_graph = None
+                        phases = []
+                        for phase in ("waiting", "accepted", "completed"):
+                            await asyncio.to_thread(process, phase)
+                            job, cases = await store.read(user, job_id)
+                            case = cases[0]
+                            assert case.status == phase, (
+                                phase,
+                                job.status,
+                                job.error_code,
+                                case.error_code,
+                            )
+                            if case_id is None:
+                                case_id = case.id
+                                saved_graph = fingerprint(case.checkpoint["graph"])
+                            assert case.id == case_id
+                            assert fingerprint(case.checkpoint["graph"]) == saved_graph
+                            phases.append(
+                                {
+                                    "phase": phase,
+                                    "case_id": str(case.id),
+                                    "model_attempts": (case.progress or {}).get("model_attempts"),
+                                }
+                            )
+                            if phase != "completed":
+                                async with sessions() as session, session.begin():
+                                    await session.execute(
+                                        text(
+                                            "UPDATE evaluation_jobs "
+                                            "SET lease_until=clock_timestamp()-interval '1 second' "
+                                            "WHERE id=:id"
+                                        ),
+                                        {"id": job_id},
+                                    )
+                        assert job.status == "completed" and job.report["decision"] == "pass", (
+                            job.report
+                        )
+                        assert job.report["total_model_attempts"] == 4
+                        assert job.report["evaluations"][0]["resumed"]
+                        # 正式图在补充后会重新检索：初次一次＋澄清后一次。
+                        assert case.generation["observation"]["counts"]["retrieval_calls"] == 2
+                        async with sessions() as session:
+                            original = await session.get(Document, document)
+                            assert original.current_version_id == version
+                        report.update(
+                            passed=True,
+                            phases=phases,
+                            total_model_attempts=4,
+                            original_version_unchanged=True,
+                        )
                 finally:
-                    if job_id:
+                    if corpus_id:
                         async with sessions() as session, session.begin():
-                            await session.execute(
-                                delete(EvaluationCase).where(EvaluationCase.job_id == job_id)
+                            owned = select(EvaluationJob.id).where(
+                                EvaluationJob.user_id == user, EvaluationJob.corpus_id == corpus_id
                             )
                             await session.execute(
-                                delete(EvaluationJob).where(EvaluationJob.id == job_id)
+                                delete(EvaluationCase).where(EvaluationCase.job_id.in_(owned))
+                            )
+                            await session.execute(
+                                delete(EvaluationJob).where(
+                                    EvaluationJob.user_id == user,
+                                    EvaluationJob.corpus_id == corpus_id,
+                                )
                             )
                     if corpus_id:
                         await cleanup(sessions, user, corpus_id, VectorSettings())
@@ -256,11 +288,17 @@ async def main():
         app_module.notification_lifespan = old_notify
         os.environ.clear()
         os.environ.update(old_env)
-        target = ROOT / ".artifacts/evaluation-check.json"
+        target = ROOT / (
+            ".artifacts/evaluation-browser-check.json"
+            if browser
+            else ".artifacts/evaluation-check.json"
+        )
         target.parent.mkdir(exist_ok=True)
         target.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--browser", action="store_true")
+    asyncio.run(main(parser.parse_args().browser))

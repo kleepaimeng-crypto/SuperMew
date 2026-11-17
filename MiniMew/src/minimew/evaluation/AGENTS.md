@@ -14,3 +14,4 @@
 - store拥有Job/Case资格与阶段事务；暂停和补充接收分别保存，恢复同一Case和检查点；过期generating/judging按未知结果失败，不盲目重放。
 - corpus只复制明确映射并已发布的不可变版本，使用服务端生成的专属Milvus集合隔离BM25统计；清理只针对其记录，引用中的Job存在时拒绝清理。
 - 真实本地/跨进程验收必须显式执行scripts/check_evaluation.py，离线单测不得隐式依赖本机模型、Secret或下载。
+- `workbench.py`定义工作台公开投影/比较输入；历史、Corpus目录、Case详情只由同一EvaluationStore按账号读取，比较调用同一compare_v2。页面不输出私有Checkpoint/owner/gold，也不另算一套Gate。工作台状态/轮询不得宣布Worker终态。

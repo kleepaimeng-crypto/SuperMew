@@ -35,7 +35,8 @@ async function retry() {
     :class="{
       'workspace-shell':
         (route.path.startsWith('/threads') ||
-          route.path.startsWith('/documents')) &&
+          route.path.startsWith('/documents') ||
+          route.path.startsWith('/evaluations')) &&
         auth.status === 'authenticated',
     }"
   >
@@ -50,6 +51,7 @@ async function retry() {
       >
         <RouterLink to="/threads">对话</RouterLink>
         <RouterLink to="/documents">文档</RouterLink>
+        <RouterLink to="/evaluations">评测</RouterLink>
         <RouterLink to="/account">账户</RouterLink>
       </nav>
       <span v-else class="header-label">我的空间</span>

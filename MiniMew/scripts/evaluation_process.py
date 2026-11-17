@@ -39,7 +39,7 @@ async def main(phase):
     worker.store = BoundaryStore(sessions, phase)
     try:
         try:
-            assert await worker.once(), "No owned Job claimed"
+            assert await worker.once() or phase == "cancelled", "No owned Job claimed"
         except PhaseSaved:
             assert phase != "completed"
     finally:
@@ -48,5 +48,5 @@ async def main(phase):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("phase", choices=("waiting", "accepted", "completed"))
+    parser.add_argument("phase", choices=("waiting", "accepted", "completed", "cancelled"))
     asyncio.run(main(parser.parse_args().phase))

@@ -17,8 +17,9 @@ export async function request(
   body?: unknown,
   token?: string,
   signal?: AbortSignal,
+  extraHeaders?: Record<string, string>,
 ): Promise<unknown> {
-  const headers = new Headers();
+  const headers = new Headers(extraHeaders);
   const multipart = body instanceof FormData;
   if (body !== undefined && !multipart)
     headers.set("Content-Type", "application/json");

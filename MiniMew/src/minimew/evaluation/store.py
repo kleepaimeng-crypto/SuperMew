@@ -47,18 +47,8 @@ class EvaluationStore:
                 if previous.request_hash != fingerprint(request):
                     raise EvaluationConflict
                 return previous.id
-            corpus = await session.get(EvaluationCorpus, request.corpus_id, with_for_update=True)
-            if corpus is None or corpus.user_id != user_id:
-                raise EvaluationNotFound
-            if not corpus.payload.get("ready"):
-                raise EvaluationConflict
-            if corpus.payload["corpus_fingerprint"] != request.dataset.corpus_fingerprint():
-                raise EvaluationConflict
+            corpus = await self._validate_corpus(session, user_id, request, lock=True)
             now = await session.scalar(select(func.clock_timestamp()))
-            if datetime.fromisoformat(
-                corpus.payload["scope"]["expires_at"].replace("Z", "+00:00")
-            ) <= now + timedelta(seconds=request.job_seconds):
-                raise EvaluationConflict
             job = EvaluationJob(
                 id=uuid4(),
                 user_id=user_id,
@@ -259,4 +249,112 @@ class EvaluationStore:
                 status="cancelled" if job.status == "cancelled" else "failed",
                 error_code=job.error_code,
             )
+        )
+
+    async def validate(self, user_id, request):
+        async with self.sessions() as session:
+            await self._validate_corpus(session, user_id, request)
+
+    async def _validate_corpus(self, session, user_id, request, *, lock=False):
+        corpus = await session.get(EvaluationCorpus, request.corpus_id, with_for_update=lock)
+        if corpus is None or corpus.user_id != user_id:
+            raise EvaluationNotFound
+        now = await session.scalar(select(func.clock_timestamp()))
+        if (
+            not corpus.payload.get("ready")
+            or corpus.payload["corpus_fingerprint"] != request.dataset.corpus_fingerprint()
+            or datetime.fromisoformat(corpus.payload["scope"]["expires_at"].replace("Z", "+00:00"))
+            <= now + timedelta(seconds=request.job_seconds)
+        ):
+            raise EvaluationConflict
+        return corpus
+
+    async def history(self, user_id, offset, limit):
+        async with self.sessions() as session:
+            return (
+                await session.scalars(
+                    select(EvaluationJob)
+                    .where(EvaluationJob.user_id == user_id)
+                    .order_by(EvaluationJob.created_at.desc(), EvaluationJob.id.desc())
+                    .offset(offset)
+                    .limit(limit + 1)
+                )
+            ).all()
+
+    async def corpora(self, user_id, offset, limit):
+        from sqlalchemy import DateTime, cast
+
+        async with self.sessions() as session:
+            return (
+                await session.scalars(
+                    select(EvaluationCorpus)
+                    .where(
+                        EvaluationCorpus.user_id == user_id,
+                        EvaluationCorpus.payload["ready"].as_boolean().is_(True),
+                        cast(
+                            EvaluationCorpus.payload["scope"]["expires_at"].astext,
+                            DateTime(timezone=True),
+                        )
+                        > func.clock_timestamp(),
+                    )
+                    .order_by(EvaluationCorpus.created_at.desc(), EvaluationCorpus.id.desc())
+                    .offset(offset)
+                    .limit(limit + 1)
+                )
+            ).all()
+
+    async def case_detail(self, user_id, job_id, case_key):
+        from minimew.evaluation.workbench import CaseDetail
+
+        job, cases = await self.read(user_id, job_id)
+        case = next((c for c in cases if c.case_id == case_key), None)
+        if case is None:
+            raise EvaluationNotFound
+        standard = next(
+            c for c in job.snapshot["request"]["dataset"]["cases"] if c["case_id"] == case_key
+        )
+        generation = case.generation or {}
+        judgment = case.judgment or {}
+        observation = generation.get("observation", {})
+        checkpoint = case.checkpoint or {}
+        detail = generation.get("clarification", {})
+        import json
+
+        return CaseDetail.model_validate_json(
+            json.dumps(
+                {
+                    "case_id": case.case_id,
+                    "question": standard["question"],
+                    "status": case.status,
+                    "answer": generation.get("answer"),
+                    "error_code": case.error_code,
+                    "judge_error": judgment.get("error"),
+                    "judge": judgment.get("result"),
+                    "counts": observation.get("counts") or case.progress,
+                    "materials": observation.get("materials", []),
+                    "requested": detail.get("requested", bool(checkpoint)),
+                    "accepted": detail.get("accepted", "answer" in checkpoint),
+                    "resumed": detail.get("resumed", False),
+                }
+            )
+        )
+
+    async def compare(self, user_id, job_id, inputs):
+        import json
+
+        from minimew.evaluation.runtime_result import ArtifactV2, compare_v2
+
+        candidate, _ = await self.read(user_id, job_id)
+        baseline, _ = await self.read(user_id, inputs.baseline_id)
+        if (
+            candidate.status != "completed"
+            or baseline.status != "completed"
+            or not candidate.report
+            or not baseline.report
+        ):
+            raise EvaluationConflict
+        return compare_v2(
+            ArtifactV2.model_validate_json(json.dumps(candidate.report)),
+            ArtifactV2.model_validate_json(json.dumps(baseline.report)),
+            inputs.policy,
         )

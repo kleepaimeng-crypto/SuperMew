@@ -387,10 +387,45 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /** History */
+    get: operations["history_v1_evaluation_jobs_get"];
     put?: never;
     /** Create */
     post: operations["create_v1_evaluation_jobs_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evaluation-jobs/corpora": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Corpora */
+    get: operations["corpora_v1_evaluation_jobs_corpora_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evaluation-jobs/validate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Validate */
+    post: operations["validate_v1_evaluation_jobs_validate_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -442,6 +477,40 @@ export interface paths {
     get: operations["report_v1_evaluation_jobs__job_id__report_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evaluation-jobs/{job_id}/cases/{case_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Case Detail */
+    get: operations["case_detail_v1_evaluation_jobs__job_id__cases__case_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evaluation-jobs/{job_id}/compare": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Compare */
+    post: operations["compare_v1_evaluation_jobs__job_id__compare_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -636,6 +705,31 @@ export interface components {
        */
       requires_citations: boolean;
     };
+    /** CaseDetail */
+    CaseDetail: {
+      /** Case Id */
+      case_id: string;
+      /** Question */
+      question: string;
+      /** Status */
+      status: string;
+      /** Answer */
+      answer: string | null;
+      /** Error Code */
+      error_code: string | null;
+      /** Judge Error */
+      judge_error: string | null;
+      counts: components["schemas"]["Counts"] | null;
+      /** Materials */
+      materials: components["schemas"]["Material"][];
+      judge: components["schemas"]["JudgeResult"] | null;
+      /** Requested */
+      requested: boolean;
+      /** Accepted */
+      accepted: boolean;
+      /** Resumed */
+      resumed: boolean;
+    };
     /** CaseEvaluation */
     CaseEvaluation: {
       /** Case Id */
@@ -747,6 +841,39 @@ export interface components {
       start: number;
       /** End */
       end: number;
+    };
+    /** CompareRequest */
+    CompareRequest: {
+      /**
+       * Baseline Id
+       * Format: uuid
+       */
+      baseline_id: string;
+      policy?: components["schemas"]["GatePolicy"];
+    };
+    /** CorpusPage */
+    CorpusPage: {
+      /** Items */
+      items: components["schemas"]["CorpusView"][];
+      /** Next Offset */
+      next_offset: number | null;
+    };
+    /** CorpusView */
+    CorpusView: {
+      /**
+       * Corpus Id
+       * Format: uuid
+       */
+      corpus_id: string;
+      /** Source Ids */
+      source_ids: string[];
+      /** Corpus Fingerprint */
+      corpus_fingerprint: string;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
     };
     /** Counts */
     Counts: {
@@ -939,6 +1066,81 @@ export interface components {
       text: string;
       /** Citation Id */
       citation_id: string;
+    };
+    /** GatePolicy */
+    GatePolicy: {
+      /**
+       * Schema Version
+       * @default 1
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Allowed Modes
+       * @default [
+       *       "contract_smoke"
+       *     ]
+       */
+      allowed_modes: ("contract_smoke" | "controlled" | "live")[];
+      /**
+       * Required Metrics
+       * @default [
+       *       "material_coverage",
+       *       "outcome_match",
+       *       "citation_structure"
+       *     ]
+       */
+      required_metrics: (
+        | "material_coverage"
+        | "outcome_match"
+        | "citation_structure"
+        | "budget_ok"
+        | "semantic_correctness"
+      )[];
+      /**
+       * Thresholds
+       * @default [
+       *       {
+       *         "metric": "material_coverage",
+       *         "minimum": 1
+       *       },
+       *       {
+       *         "metric": "outcome_match",
+       *         "minimum": 1
+       *       },
+       *       {
+       *         "metric": "citation_structure",
+       *         "minimum": 1
+       *       }
+       *     ]
+       */
+      thresholds: components["schemas"]["Threshold"][];
+      /**
+       * Require Baseline
+       * @default false
+       */
+      require_baseline: boolean;
+      /**
+       * Permitted Changes
+       * @default []
+       */
+      permitted_changes: (
+        "implementation" | "dependencies" | "model" | "strategy" | "index"
+      )[];
+      /**
+       * Regression Metrics
+       * @default [
+       *       "material_coverage",
+       *       "outcome_match"
+       *     ]
+       */
+      regression_metrics: (
+        | "material_coverage"
+        | "outcome_match"
+        | "citation_structure"
+        | "budget_ok"
+        | "semantic_correctness"
+      )[];
     };
     /** GateResult */
     GateResult: {
@@ -1139,6 +1341,13 @@ export interface components {
       /** Finished At */
       finished_at: string | null;
     };
+    /** JobPage */
+    JobPage: {
+      /** Items */
+      items: components["schemas"]["JobSummary"][];
+      /** Next Offset */
+      next_offset: number | null;
+    };
     /** JobReceipt */
     JobReceipt: {
       /**
@@ -1195,6 +1404,25 @@ export interface components {
        * @default 112
        */
       total_model_limit: number;
+    };
+    /** JobSummary */
+    JobSummary: {
+      /**
+       * Job Id
+       * Format: uuid
+       */
+      job_id: string;
+      /** Dataset Id */
+      dataset_id: string;
+      /** Status */
+      status: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Decision */
+      decision: string | null;
     };
     /** JobView */
     JobView: {
@@ -1255,6 +1483,19 @@ export interface components {
        * Format: password
        */
       password: string;
+    };
+    /** Material */
+    Material: {
+      /** Source Id */
+      source_id: string;
+      /** Start */
+      start: number;
+      /** End */
+      end: number;
+      /** Material Id */
+      material_id: string;
+      /** Content Sha256 */
+      content_sha256: string;
     };
     /** MessageCompletedData */
     MessageCompletedData: {
@@ -2240,6 +2481,21 @@ export interface components {
        */
       created_at: string;
     };
+    /** Threshold */
+    Threshold: {
+      /**
+       * Metric
+       * @enum {string}
+       */
+      metric:
+        | "material_coverage"
+        | "outcome_match"
+        | "citation_structure"
+        | "budget_ok"
+        | "semantic_correctness";
+      /** Minimum */
+      minimum: number;
+    };
     /** TokenResponse */
     TokenResponse: {
       /** Access Token */
@@ -2430,6 +2686,23 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+    };
+    /** ValidatedJob */
+    ValidatedJob: {
+      /**
+       * Status
+       * @default valid
+       */
+      status: string;
+      /** Case Count */
+      case_count: number;
+      /** Total Model Limit */
+      total_model_limit: number;
+      /**
+       * Mode
+       * @default controlled
+       */
+      mode: string;
     };
     /** ValidationError */
     ValidationError: {
@@ -3320,6 +3593,38 @@ export interface operations {
       };
     };
   };
+  history_v1_evaluation_jobs_get: {
+    parameters: {
+      query?: {
+        offset?: number;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobPage"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   create_v1_evaluation_jobs_post: {
     parameters: {
       query?: never;
@@ -3342,6 +3647,71 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["JobReceipt"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  corpora_v1_evaluation_jobs_corpora_get: {
+    parameters: {
+      query?: {
+        offset?: number;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CorpusPage"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  validate_v1_evaluation_jobs_validate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["JobRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ValidatedJob"];
         };
       };
       /** @description Validation Error */
@@ -3435,6 +3805,73 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["JobReport"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  case_detail_v1_evaluation_jobs__job_id__cases__case_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+        case_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CaseDetail"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  compare_v1_evaluation_jobs__job_id__compare_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CompareRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ArtifactV2"];
         };
       };
       /** @description Validation Error */

@@ -4,7 +4,7 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BeforeValidator
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -14,6 +14,15 @@ from minimew.evaluation.protocol import Code, FrozenModel, Identifier
 from minimew.evaluation.runtime_protocol import JobRequest
 from minimew.evaluation.runtime_result import ArtifactV2
 from minimew.evaluation.store import EvaluationConflict, EvaluationNotFound, EvaluationStore
+from minimew.evaluation.workbench import (
+    CaseDetail,
+    CompareRequest,
+    CorpusPage,
+    CorpusView,
+    JobPage,
+    JobSummary,
+    ValidatedJob,
+)
 
 router = APIRouter(
     prefix="/v1/evaluation-jobs", tags=["evaluation"], dependencies=[Depends(no_store)]
@@ -87,6 +96,85 @@ async def create(
         raise HTTPException(503, "Evaluation storage unavailable") from None
 
 
+def json_request(model):
+    return BeforeValidator(
+        lambda value: (
+            model.model_validate_json(json.dumps(value)) if isinstance(value, dict) else value
+        )
+    )
+
+
+JsonComparison = Annotated[CompareRequest, json_request(CompareRequest)]
+
+
+async def workbench_call(operation):
+    try:
+        return await operation
+    except EvaluationNotFound:
+        raise HTTPException(404, "Evaluation resource not found") from None
+    except EvaluationConflict:
+        raise HTTPException(409, "Evaluation inputs conflict with persisted state") from None
+    except (SQLAlchemyError, OSError, TimeoutError):
+        raise HTTPException(503, "Evaluation storage unavailable") from None
+
+
+@router.get("", response_model=JobPage)
+async def history(
+    request: Request,
+    user: CurrentUser,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+):
+    jobs = await workbench_call(store(request).history(user.id, offset, limit))
+    return JobPage(
+        items=tuple(
+            JobSummary(
+                job_id=j.id,
+                dataset_id=j.snapshot["request"]["dataset"]["dataset_id"],
+                status=j.status,
+                created_at=j.created_at,
+                decision=j.report["decision"] if j.report else None,
+            )
+            for j in jobs[:limit]
+        ),
+        next_offset=offset + limit if len(jobs) > limit else None,
+    )
+
+
+@router.get("/corpora", response_model=CorpusPage)
+async def corpora(
+    request: Request,
+    user: CurrentUser,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
+):
+    rows = await workbench_call(store(request).corpora(user.id, offset, limit))
+    return CorpusPage(
+        items=tuple(
+            CorpusView.model_validate_json(
+                json.dumps(
+                    {
+                        "corpus_id": str(c.id),
+                        "source_ids": [b["source_id"] for b in c.payload["bindings"]],
+                        "corpus_fingerprint": c.payload["corpus_fingerprint"],
+                        "expires_at": c.payload["scope"]["expires_at"],
+                    }
+                )
+            )
+            for c in rows[:limit]
+        ),
+        next_offset=offset + limit if len(rows) > limit else None,
+    )
+
+
+@router.post("/validate", response_model=ValidatedJob)
+async def validate(data: JsonJobRequest, request: Request, user: CurrentUser):
+    await workbench_call(store(request).validate(user.id, data))
+    return ValidatedJob(
+        case_count=len(data.dataset.cases), total_model_limit=data.total_model_limit
+    )
+
+
 @router.get("/{job_id}", response_model=JobView)
 async def read(job_id: UUID, request: Request, user: CurrentUser):
     try:
@@ -131,3 +219,13 @@ async def report(job_id: UUID, request: Request, user: CurrentUser):
         raise HTTPException(404, "Evaluation job not found") from None
     except (SQLAlchemyError, OSError, TimeoutError):
         raise HTTPException(503, "Evaluation storage unavailable") from None
+
+
+@router.get("/{job_id}/cases/{case_id}", response_model=CaseDetail)
+async def case_detail(job_id: UUID, case_id: str, request: Request, user: CurrentUser):
+    return await workbench_call(store(request).case_detail(user.id, job_id, case_id))
+
+
+@router.post("/{job_id}/compare", response_model=ArtifactV2)
+async def compare(job_id: UUID, data: JsonComparison, request: Request, user: CurrentUser):
+    return await workbench_call(store(request).compare(user.id, job_id, data))

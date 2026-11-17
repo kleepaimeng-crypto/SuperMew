@@ -112,3 +112,24 @@ uv run --env-file .env --no-sync python scripts/check_evaluation.py
 真实验收使用独立临时数据库、文档与评测集合，依次启动三个Worker进程，在waiting/accepted边界保存后退出，
 验证同Case/同检查点续接、原文档版本不变及精确清理。`.artifacts/evaluation-check.json`保存最近一次实测摘要。
 开发数据库不会由验收脚本升级；应用部署/重启需另按当前运行状态进行。
+
+## C包工作台与第八章结章
+
+浏览器进入`/evaluations`，先从本账号ready且未过期的Corpus选择语料，再导入Dataset JSON对象和Scenario JSON数组。
+点击“校验输入”只核验不创建Job；通过后“创建并运行”会再次验证并冻结输入。Scenario字段沿`job-request-v2.json`中的Scenario定义。
+创建结果不明时可“重试原提交”，保留原body/幂等键；“新建实验”表示新提交意图。历史和URL可恢复已创建任务。
+页面每3秒轮询持久状态，显示取消中直到Worker确认已取消；切换页面不会取消评测。
+逐Case查看保存答卷、引用区间、澄清接收/续接、生成侧次数和Judge故障；“未评价”不会显示为0分。
+选择已完成的本账号实验作为baseline；明确允许变化的策略/模型/实现/依赖/索引变量，再由后端同一个compare_v2返回结论。
+
+接口新增历史分页、`/corpora`、`/validate`、`/{id}/cases/{case_id}`和`/{id}/compare`，均在原`/v1/evaluation-jobs`入口下，使用既有鉴权与no-store。
+没有新增DDL或语料准备Worker；运行前仍须安装包含B包0018的数据库结构，并单独启动Evaluation Worker。当前开发服务未由代码验收脚本部署/重启。
+
+```powershell
+uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_evaluation_workbench_pg.py
+uv run --env-file .env --no-sync python scripts/check_evaluation.py --browser
+```
+
+第二条显式验收会使用已有缓存本地模型、临时PG与自有Milvus范围，启动独立API/浏览器/Worker，完成两实验与比较、第三次取消及换账号隔离，随后精确清理。
+`.artifacts/evaluation-browser-check.json`记录本机最近一次验收；不隐式下载、不产生收费调用，也不把受控评分当作语义质量证明。
+第八章总结和模块职责见[章节结章](../../chapters/08-RAG评测闭环.md#第八章结章总结与实际代码框架2026-11-17)。

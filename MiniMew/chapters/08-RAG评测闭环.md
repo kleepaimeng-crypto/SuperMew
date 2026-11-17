@@ -612,3 +612,142 @@ API、Index Worker、Evaluation Worker是独立进程，PG/Milvus是基础设施
 8.4的Worker/报告API已直接依赖8.5的Judge协议与v2结果，必要测试也共同验证先存答卷再评分；本包实现无法按原小节分成两个各自完整可运行的提交。
 拟合并提交8.4–8.5的上述实现、迁移、测试、schema/OpenAPI生成物和学习交接；排除`.idea/MiniMew.iml`用户改动。
 用户已于2026-11-17明确选择“合并提交并推送（推荐）”，批准上述合并范围；本轮提交后核对personal/main与本地HEAD一致，IDE修改继续保留。
+
+## C包首次范围讨论（2026-11-17，仅设计）
+
+B包8.4–8.5已合并提交ed39134并推送personal/main，本轮核对本地HEAD与远端跟踪分支一致。用户“继续”进入8.6讨论，不视为C包编码开始反馈。
+
+### 工作台在整体中的位置
+
+工作台是已有持久评测能力的操作与查看入口。Vue视图负责交互，Pinia保存当前账号的界面状态，evaluation客户端负责HTTP，FastAPI鉴权并调用同一EvaluationStore/评分器，独立EvaluationWorker继续执行任务。前端不执行RAG、不计算另一套Gate。
+
+建议8.6按一条完整功能链集中实现，不逐页面重新授权：
+
+1. **准备与校验**：导入Dataset人工标准、独立Scenario受控脚本，选择已准备的自有Corpus，校验source身份、Case目录与预算；创建后冻结输入。首版资料准备方式有下述待选项。
+2. **任务管理**：创建、按账号分页列举历史、详情和取消；通过有限轮询读取PG事实。刷新从URL的Job ID恢复，切账号清除store并拒绝迟到响应；取消请求与已取消终态分开显示。
+3. **失败定位**：逐Case展示冻结问题、阶段、答卷、引用位置、澄清接收/续接、调用次数及稳定错误。生成失败和Judge未评价分别展示，不默认补0分。
+4. **报告与比较**：显示结构指标与受控Judge三项量表；显式选择baseline，后端调用同一compare_v2，展示不可比原因、差异与前后值。沿用controlled标签，不宣称真实模型质量。
+5. **验收与结章**：补齐必要API及生成契约、账号隔离/刷新/取消/报告比较的定向测试和浏览器链；保存第八章总结、实际代码框架和跨设备交接。结章不等于付费质量实验通过。
+
+### 沿用技术与必要补口
+
+沿用Vue 3/TypeScript/Pinia/既有HTTP封装、FastAPI/Pydantic、SQLAlchemy/PG及纯评分器，无须增加评测SaaS或新的RAG框架。
+当前B的API只支持创建、按ID查询、取消和报告；缺少Job历史列表、可选Corpus目录、冻结题目/Case细节、输入校验和网页比较接口。C应在现有evaluation正式入口补齐，同步OpenAPI/TS；不将现有四个接口描述为已支持整个工作台。
+语料准备仍是显式CLI，它需要核验/复制Milvus产物，不能为网页便利直接在HTTP事务中运行长任务。
+
+### 待决定的产品范围
+
+- **推荐先用已准备语料**：资料仍由现有manage prepare命令准备；网页选择ready且未过期Corpus，导入Dataset/Scenario、发起Job、查看/比较报告。复用B边界，集中完成工作台闭环。
+- **本包提供网页准备语料**：网页选择Version并发起后台语料准备；需要新增持久准备任务及Worker/进度/失败与重试流程，范围明显大于单纯表单。不能用请求内长操作或浏览器内存假进度替代。
+
+本轮只提出以上选择，尚未收到用户决定；不预填选择或完全理解，不创建C应用/测试/迁移/生成物，不部署或执行收费模型。B的231项是上一轮结果，本轮未重复运行。
+
+## C包范围选择与实施建议（2026-11-17，待开始）
+
+用户已明确选择“网页选择CLI已准备好的语料”，不再询问本包是否新增网页语料构建。本次仅确认范围，不视为编码开始授权。
+
+建议一次授权后连续完成8.6：
+
+- 已有Corpus目录：仅列当前用户拥有、ready且未过期的专属评测语料，显示固定来源身份；创建时由服务端再次核验。
+- 创建实验：导入Dataset和独立Scenario，解释前者是人工标准、后者是受控生成/评分脚本；用正式Pydantic协议校验对应关系，给出预算摘要并幂等创建Job。
+- 进度与定位：补齐Job历史与冻结Case详情；页面轮询已有持久状态，展示答卷、引用位置、澄清与错误，刷新恢复、切账号清理、拒绝旧响应。
+- 报告与baseline：结构指标和受控Judge分别展示；从当前用户已完成Job显式选择baseline，由后端同一compare_v2生成比较结果及不可比原因。
+- 交付验收：同步生成OpenAPI/TS，覆盖必要HTTP/PG与前端状态测试，验证浏览器创建→进度→报告→比较/取消链，保存第八章总结和真实代码框架，按8.6提交推送。
+
+沿用现有技术栈；无新增语料准备任务/Worker、模型下载、收费调用或评测SaaS。所需Corpus仍通过B包manage prepare显式准备。
+当前等待“开始第八章C包”等明确反馈；不主动补简单场景题，不预填用户完全理解。
+
+## C包8.6实现与验收（2026-11-17）
+
+用户明确“开始第八章C包”，按选定范围连续实现。语料仍由CLI准备；本包没有新增构建语料任务/Worker或收费模型入口。
+
+### 实现位置
+
+| 模块 | 在链路中的作用 |
+| --- | --- |
+| `api/evaluations.py` | 同一正式评测入口增加Corpus目录、输入校验、Job历史、Case详情与比较；身份/所有权在后端核验 |
+| `evaluation/workbench.py` | 公开投影与比较输入类型；不输出私有图、检查点、owner或整份gold |
+| `evaluation/store.py` | 创建与预校验共用相同Corpus核验；按用户查询ready/未过期目录、分页历史与已保存Case，比较调用同一compare_v2 |
+| `frontend/src/evaluations.ts` | 消费生成类型并验证使用的响应字段；状态/错误文案，不计算第二套分数 |
+| `frontend/src/stores/evaluations.ts` | 本账号目录/任务/报告状态、轮询、刷新恢复、401续期、原幂等键重试；身份/任务/Case/比较资格拒绝迟到响应 |
+| `frontend/src/views/EvaluationsView.vue` | 选择语料→导入Dataset/Scenario→校验预算→创建→定位Case→比较baseline；受控标签、未评价、错误与取消中分开 |
+| `frontend/src/router.ts`、`App.vue` | 账号保护的`/evaluations/:jobId?`与主导航；沿用现有工作区 |
+| `scripts/evaluation_browser.py`、`check_evaluation.py --browser` | 自有临时PG/源目录/集合上的真实API、网页与独立CPU Worker验收，并精确清理 |
+
+新接口均沿`/v1/evaluation-jobs`：GET根路径分页历史、GET`/corpora`、POST`/validate`、GET`/{id}/cases/{case_id}`、POST`/{id}/compare`。
+原创建/按ID读取/请求取消/报告接口保持；OpenAPI与TS从正式路由生成，没有新的数据库结构或DDL。
+
+网页导入Dataset对象及Scenario数组。预校验不创建Job；真正创建再次核验Corpus身份/有效期/指纹，并冻结输入。
+创建回包未知时保留原body和幂等键，显式重试原提交；成功后URL保存Job ID。刷新恢复从PG读取，页面每3秒有限轮询，HTTP自身有超时。
+关闭页面只清理本地请求/定时器，不取消Worker。取消请求先显示取消中，只有持久状态才显示已取消；较早发出的轮询不能覆盖取消请求回包。
+baseline与允许变化变量由用户明确选择，后端产生比较。选择条件变动即清除旧比较，并拒绝旧比较回包。
+
+### 验收记录
+
+- 新增4项真实PG工作台用例通过；B包7项PG原执行/资格用例本轮通过，合计11项。
+- 前端全量163项单测通过，之后新增取消与迟到轮询竞态1项并定向10项通过；去重164项（新增10、既有154），不累计重复运行。
+- A/B离线评测82项本轮通过；schema生成`--check`通过，六份旧schema/fixture/baseline未改。
+- 受控HTTP浏览器3项通过：390/1280创建刷新、Case/报告比较与取消；语料服务故障阻止创建、执行失败显示错误且不伪造报告。
+- 真实浏览器1项通过：真实PG/FastAPI/Vite/Milvus/缓存BGE-small与Base、独立Worker，两次网页创建并完成、刷新恢复/澄清续接、baseline比较、第三次取消、换账号后目录/任务隔离。收费0；临时库/专属集合/本次1个源候选精确清理。
+- 本包本轮共261个不同用例（新增18、既有243），重复测试不累计。前端typecheck/生产构建通过；Python定向Ruff/格式、Prettier和diff检查按最终交付状态核对。
+- 桌面/手机表单与报告已看渲染；发现并修正复选框继承全局输入样式的问题。独立界面review要求删除重复eyebrow标签，原四张截图复核resolved、ship（结论仅覆盖该修复项），保留既有视觉体系。
+- 未运行上级SuperMew/全后端门禁、收费模型/GPU/新模型下载或生产容量测试；未升级开发数据库、未重启现有开发API或部署。测试均使用隔离环境。
+
+本机证据：`.artifacts/evaluation-browser-check.json`、`.artifacts/evaluation-real-report.png`和`.artifacts/evaluation-review/`；属于测试产物，不提交。
+
+## 第八章结章总结与实际代码框架（2026-11-17）
+
+### 这章完成了什么
+
+在用户选定的“真实本地检索＋受控生成/评分”范围内，已形成可操作的评测闭环：固定标准与语料、运行实验、收集答案和执行事实、按同一评分器判断、显式比较baseline、从Case反查失败。
+A包8.1–8.3提供可离线重建的契约、评分和Gate；B包8.4–8.5提供持久Job/Case、共享计算、专属索引、澄清恢复及受控Judge；C包8.6提供操作与查看入口。
+本章工程闭环结章不表示完成真实生成模型的语义质量实验。那需要另外确定真实生成/Judge、人工抽样、额度和接受政策，不能用本章受控分数替代。
+
+### 四层职责
+
+```text
+人工实验输入
+  Dataset：题目、允许结果、来源身份/区间、人工评价标准
+  Scenario：独立受控策略/生成/Judge脚本，含明确触发的预设补充
+  Corpus：真实不可变Version映射、核验后的专属Milvus统计范围
+             ↓
+执行宿主（PostgreSQL事实）
+  API → EvaluationStore → Job快照/期限/owner → Case阶段
+  EvaluationWorker → shared RagContext + CaseIdentity
+             ↓
+共享知识计算（算法仍沿正式聊天链）
+  KnowledgeCalculation → 同一个LangGraph → Dense/BM25/RRF/合并/Base重排
+  ModelCaller/ExecutionBudget → EvidenceDirectory → grounded_answer
+  暂停：图/Evidence/预算入库 → 精确接收 → 原Case续接
+             ↓
+评分与消费
+  先保存答卷 → 独立JudgeInput → ObservationV2 → score_v2/compare_v2
+  ArtifactV2/Gate → 工作台或纯离线CLI
+```
+
+前三章的Thread/Run/Event仍属于聊天，EvaluationJob/Case是另一个宿主；两者共享计算逻辑，不共享可变执行状态。
+浏览器负责交互，PG保存事实，Worker负责执行，Milvus保存向量/文本索引；每个模块的职责不等于要独立部署一个进程。
+评测所需独立进程是API、Index Worker与Evaluation Worker，前端由Vite开发或构建后按部署方式托管。Redis不承担评测Job事实来源。
+
+### 为什么这样设计
+
+- **Dataset和Observation分开**：前者是预先制定的标准，后者是运行结果；不能修改标准去迎合结果，也不能从gold生成补充或答案。
+- **固定版本与专属语料**：确保来源内容可核验、BM25统计不受用户后来上传文件影响；构建失败不改变用户的发布版本。
+- **生成与Judge分阶段**：答卷先落库，之后评分侧才能读取gold；Judge故障是未评价或明确错误，不抹掉已经生成的答卷。
+- **指纹与baseline**：指纹说明条件是否相同，不是签名或质量证明；Dataset/语料/评分规则不一致时不能盲目给“提升”数字。允许的实验变量必须显式声明。
+- **持久恢复而非重跑**：只在已提交的waiting/accepted/generated边界续接；未知外部结果的generating/judging明确记录不确定，旧owner不能迟到写入。
+- **工作台复用后端评分**：网页和CLI看到同一评分协议；前端不维护一套偷偷不同的质量结论。
+
+### 代表性源码阅读顺序
+
+1. 从`frontend/src/views/EvaluationsView.vue`看输入和操作，再看`stores/evaluations.ts`如何调用后端并管理当前账号状态。
+2. 从`api/evaluations.py`跟进`evaluation/store.py`，理解Job创建冻结什么、Case保存在哪里、哪些公开字段不能包含私有执行数据。
+3. 从`evaluation/worker.py`看领取→共享计算→暂停/接收/续接→存答卷→Judge→汇总；在`knowledge.py`、`rag/context.py`和`rag/workflow.py`对照聊天入口复用关系。
+4. 从`evaluation/protocol.py`和`result_protocol.py`看标准/来源/观察/Judge的边界，再读`scoring.py`、`gate.py`、`runtime_result.py`中的分母、未评价和可比性。
+5. 最后看`evaluation/cli.py`/`versioned.py`与`scripts/check_evaluation.py`：前者离线消费，后者提供显式隔离的真实执行证据，不把静态fixtures标成live。
+
+### 当前完成边界
+
+第八章保留A v1兼容语义、v2单独版本、既有Run执行与权限约束；没有新增付费模型选择或新RAG框架。
+真实模型质量、实验自动归档/删除、网页准备Corpus和更大规模调度仍未实现；后续按具体需求授权，不把它们暗藏在已结章范围内。
+第九章尚未开始，需要先列子项与能力边界再讨论；用户理解以自然交流为准，没有预填“完全掌握”。

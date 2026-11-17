@@ -1306,6 +1306,166 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": ["evaluation"],
+        "summary": "History",
+        "operationId": "history_v1_evaluation_jobs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evaluation-jobs/corpora": {
+      "get": {
+        "tags": ["evaluation"],
+        "summary": "Corpora",
+        "operationId": "corpora_v1_evaluation_jobs_corpora_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorpusPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evaluation-jobs/validate": {
+      "post": {
+        "tags": ["evaluation"],
+        "summary": "Validate",
+        "operationId": "validate_v1_evaluation_jobs_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidatedJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/v1/evaluation-jobs/{job_id}": {
@@ -1429,6 +1589,117 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JobReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evaluation-jobs/{job_id}/cases/{case_id}": {
+      "get": {
+        "tags": ["evaluation"],
+        "summary": "Case Detail",
+        "operationId": "case_detail_v1_evaluation_jobs__job_id__cases__case_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evaluation-jobs/{job_id}/compare": {
+      "post": {
+        "tags": ["evaluation"],
+        "summary": "Compare",
+        "operationId": "compare_v1_evaluation_jobs__job_id__compare_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactV2"
                 }
               }
             }
@@ -1811,6 +2082,111 @@
         "required": ["case_id", "question", "allowed_outcomes"],
         "title": "Case"
       },
+      "CaseDetail": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "title": "Case Id"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "judge_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Error"
+          },
+          "counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Counts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/Material"
+            },
+            "type": "array",
+            "title": "Materials"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JudgeResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested": {
+            "type": "boolean",
+            "title": "Requested"
+          },
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted"
+          },
+          "resumed": {
+            "type": "boolean",
+            "title": "Resumed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "case_id",
+          "question",
+          "status",
+          "answer",
+          "error_code",
+          "judge_error",
+          "counts",
+          "materials",
+          "judge",
+          "requested",
+          "accepted",
+          "resumed"
+        ],
+        "title": "CaseDetail"
+      },
       "CaseEvaluation": {
         "properties": {
           "case_id": {
@@ -2067,6 +2443,82 @@
         "type": "object",
         "required": ["citation_id", "start", "end"],
         "title": "Citation"
+      },
+      "CompareRequest": {
+        "properties": {
+          "baseline_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Baseline Id"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/GatePolicy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["baseline_id"],
+        "title": "CompareRequest"
+      },
+      "CorpusPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CorpusView"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["items", "next_offset"],
+        "title": "CorpusPage"
+      },
+      "CorpusView": {
+        "properties": {
+          "corpus_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Corpus Id"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "corpus_fingerprint": {
+            "type": "string",
+            "title": "Corpus Fingerprint"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "corpus_id",
+          "source_ids",
+          "corpus_fingerprint",
+          "expires_at"
+        ],
+        "title": "CorpusView"
       },
       "Counts": {
         "properties": {
@@ -2508,6 +2960,103 @@
         ],
         "title": "Evidence"
       },
+      "GatePolicy": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "allowed_modes": {
+            "items": {
+              "type": "string",
+              "enum": ["contract_smoke", "controlled", "live"]
+            },
+            "type": "array",
+            "title": "Allowed Modes",
+            "default": ["contract_smoke"]
+          },
+          "required_metrics": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "material_coverage",
+                "outcome_match",
+                "citation_structure",
+                "budget_ok",
+                "semantic_correctness"
+              ]
+            },
+            "type": "array",
+            "title": "Required Metrics",
+            "default": [
+              "material_coverage",
+              "outcome_match",
+              "citation_structure"
+            ]
+          },
+          "thresholds": {
+            "items": {
+              "$ref": "#/components/schemas/Threshold"
+            },
+            "type": "array",
+            "title": "Thresholds",
+            "default": [
+              {
+                "metric": "material_coverage",
+                "minimum": 1.0
+              },
+              {
+                "metric": "outcome_match",
+                "minimum": 1.0
+              },
+              {
+                "metric": "citation_structure",
+                "minimum": 1.0
+              }
+            ]
+          },
+          "require_baseline": {
+            "type": "boolean",
+            "title": "Require Baseline",
+            "default": false
+          },
+          "permitted_changes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "implementation",
+                "dependencies",
+                "model",
+                "strategy",
+                "index"
+              ]
+            },
+            "type": "array",
+            "title": "Permitted Changes",
+            "default": []
+          },
+          "regression_metrics": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "material_coverage",
+                "outcome_match",
+                "citation_structure",
+                "budget_ok",
+                "semantic_correctness"
+              ]
+            },
+            "type": "array",
+            "title": "Regression Metrics",
+            "default": ["material_coverage", "outcome_match"]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GatePolicy"
+      },
       "GateResult": {
         "properties": {
           "schema_version": {
@@ -2866,6 +3415,32 @@
         ],
         "title": "IndexJobResponse"
       },
+      "JobPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["items", "next_offset"],
+        "title": "JobPage"
+      },
       "JobReceipt": {
         "properties": {
           "job_id": {
@@ -2974,6 +3549,49 @@
         "type": "object",
         "required": ["corpus_id", "dataset", "scenarios"],
         "title": "JobRequest"
+      },
+      "JobSummary": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "dataset_id": {
+            "type": "string",
+            "title": "Dataset Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "job_id",
+          "dataset_id",
+          "status",
+          "created_at",
+          "decision"
+        ],
+        "title": "JobSummary"
       },
       "JobView": {
         "properties": {
@@ -3128,6 +3746,45 @@
         "type": "object",
         "required": ["username", "password"],
         "title": "LoginRequest"
+      },
+      "Material": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Source Id"
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start"
+          },
+          "end": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "End"
+          },
+          "material_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{0,79}$",
+            "title": "Material Id"
+          },
+          "content_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "start",
+          "end",
+          "material_id",
+          "content_sha256"
+        ],
+        "title": "Material"
       },
       "MessageCompletedData": {
         "properties": {
@@ -4934,6 +5591,31 @@
         "required": ["id", "title", "created_at"],
         "title": "ThreadResponse"
       },
+      "Threshold": {
+        "properties": {
+          "metric": {
+            "type": "string",
+            "enum": [
+              "material_coverage",
+              "outcome_match",
+              "citation_structure",
+              "budget_ok",
+              "semantic_correctness"
+            ],
+            "title": "Metric"
+          },
+          "minimum": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Minimum"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["metric", "minimum"],
+        "title": "Threshold"
+      },
       "TokenResponse": {
         "properties": {
           "access_token": {
@@ -5248,6 +5930,32 @@
         "type": "object",
         "required": ["id", "username", "created_at"],
         "title": "UserResponse"
+      },
+      "ValidatedJob": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "valid"
+          },
+          "case_count": {
+            "type": "integer",
+            "title": "Case Count"
+          },
+          "total_model_limit": {
+            "type": "integer",
+            "title": "Total Model Limit"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "controlled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["case_count", "total_model_limit"],
+        "title": "ValidatedJob"
       },
       "ValidationError": {
         "properties": {
