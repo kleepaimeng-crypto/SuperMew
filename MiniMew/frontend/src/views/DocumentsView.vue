@@ -16,10 +16,38 @@ const documentId = computed(() =>
     ? route.params.documentId
     : undefined,
 );
+const projectId = computed(() =>
+  typeof route.query.project === "string" ? route.query.project : null,
+);
+const showArchived = computed(() => route.query.archived === "1");
+const projectQuery = computed(() => ({
+  ...(projectId.value ? { project: projectId.value } : {}),
+  ...(showArchived.value ? { archived: "1" } : {}),
+}));
+async function withdraw() {
+  if (window.confirm("下线后不再用于新检索，历史版本与引用仍保留。确认下线？"))
+    await documents.withdraw();
+}
+watch([projectId, showArchived], () => {
+  file.value = null;
+  if (fileInput.value) fileInput.value.value = "";
+  documents.setScope(projectId.value, showArchived.value);
+  documents.activate();
+  void documents.loadList(true);
+  void documents.selectDocument(documentId.value);
+});
+watch(
+  () => auth.user?.id,
+  () => {
+    file.value = null;
+    if (fileInput.value) fileInput.value.value = "";
+  },
+);
 const job = computed(() => documents.selected?.latest_job);
 const profile = computed(
   () => documents.latestVersion?.build_configuration.embedding,
 );
+documents.setScope(projectId.value, showArchived.value);
 documents.activate();
 void documents.loadList(true);
 watch(
@@ -45,7 +73,11 @@ async function submit(retry = false) {
     file.value = null;
     if (fileInput.value) fileInput.value.value = "";
     if (documentId.value === id) await documents.selectDocument(id);
-    else await router.push(`/documents/${id}`);
+    else
+      await router.push({
+        path: `/documents/${id}`,
+        query: projectQuery.value,
+      });
   }
 }
 async function logout() {
@@ -62,6 +94,19 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
 <template>
   <section class="document-workspace" aria-label="文档工作区">
     <aside class="document-sidebar" aria-label="我的文档">
+      <RouterLink v-if="projectId" :to="`/projects/${projectId}`"
+        >返回项目</RouterLink
+      >
+      <RouterLink
+        :to="{
+          path: '/documents',
+          query: {
+            ...(projectId ? { project: projectId } : {}),
+            ...(showArchived ? {} : { archived: '1' }),
+          },
+        }"
+        >{{ showArchived ? "查看可用文档" : "查看已下线文档" }}</RouterLink
+      >
       <div class="directory-heading">
         <h1>文档</h1>
         <button
@@ -72,7 +117,12 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
           刷新目录
         </button>
       </div>
-      <RouterLink class="primary new-document" to="/documents"
+      <RouterLink
+        class="primary new-document"
+        :to="{
+          path: '/documents',
+          query: projectId ? { project: projectId } : {},
+        }"
         >上传新文档</RouterLink
       >
       <p v-if="documents.loading && !documents.items.length" role="status">
@@ -93,7 +143,7 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
       <ul class="document-list">
         <li v-for="item in documents.items" :key="item.id">
           <RouterLink
-            :to="`/documents/${item.id}`"
+            :to="{ path: `/documents/${item.id}`, query: projectQuery }"
             :aria-current="documentId === item.id ? 'page' : undefined"
           >
             <strong>{{ item.title }}</strong
@@ -140,8 +190,14 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
           <p>每次更新保留独立版本，只有核验并发布成功的版本才可检索。</p>
         </header>
         <section class="version-section" aria-labelledby="published-heading">
-          <h3 id="published-heading">当前可用版本</h3>
-          <template v-if="documents.selected.current_version_id"
+          <h3 id="published-heading">
+            {{ documents.selected.deleted_at ? "历史版本" : "当前可用版本" }}
+          </h3>
+          <template
+            v-if="
+              documents.selected.current_version_id &&
+              !documents.selected.deleted_at
+            "
             ><p class="published-state">
               已发布<span v-if="documents.currentVersion">
                 · v{{ documents.currentVersion.version_number }}</span
@@ -155,6 +211,9 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
               新版未能发布，当前版本仍可检索。
             </p></template
           >
+          <p v-else-if="documents.selected.deleted_at">
+            已下线，历史版本保留，不再用于新检索。
+          </p>
           <p v-else>尚未发布。文件保存后，还需要完成索引构建与核验。</p>
         </section>
         <section
@@ -227,8 +286,18 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
           重试更新进度
         </button>
       </div>
+      <section v-if="documents.selected" class="document-lifecycle">
+        <p v-if="documents.selected.deleted_at" role="status">
+          文档已下线，不再用于新检索；历史版本和引用保留。
+        </p>
+        <button v-else :disabled="documents.uploading" @click="withdraw">
+          下线文档
+        </button>
+      </section>
       <form
-        v-if="!documentId || documents.selected"
+        v-if="
+          !documentId || (documents.selected && !documents.selected.deleted_at)
+        "
         class="document-upload"
         @submit.prevent="submit()"
       >

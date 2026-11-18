@@ -3,13 +3,13 @@
 import json
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from minimew.conversations import ConversationNotFound
 from minimew.evidence import AnswerMaterials, validate_materials
 from minimew.generated.run_event_v1 import RunStatus
-from minimew.models import AnswerRecord, Message, Run, Thread
+from minimew.models import AnswerRecord, Document, Message, Run, Thread
 
 
 class AnswerResponse(BaseModel):
@@ -18,6 +18,7 @@ class AnswerResponse(BaseModel):
     message_id: UUID
     status: RunStatus
     materials: AnswerMaterials | None
+    withdrawn_document_ids: list[UUID] = Field(default_factory=list, exclude_if=lambda v: not v)
 
 
 async def read_answer(session, user_id: UUID, thread_id: UUID, run_id: UUID):
@@ -53,6 +54,23 @@ async def read_answer(session, user_id: UUID, thread_id: UUID, run_id: UUID):
                 raise ValueError("Answer record without successful terminal")
             materials = AnswerMaterials.model_validate_json(json.dumps(record.materials))
             validate_materials(message.content, materials)
+        withdrawn = list(
+            (
+                await session.scalars(
+                    select(Document.id).where(
+                        Document.user_id == user_id,
+                        Document.deleted_at.is_not(None),
+                        Document.id.in_(
+                            [e.document_id for e in materials.evidence] if materials else []
+                        ),
+                    )
+                )
+            ).all()
+        )
         return AnswerResponse(
-            run_id=run.id, message_id=message.id, status=run.status, materials=materials
+            run_id=run.id,
+            message_id=message.id,
+            status=run.status,
+            materials=materials,
+            withdrawn_document_ids=withdrawn,
         )

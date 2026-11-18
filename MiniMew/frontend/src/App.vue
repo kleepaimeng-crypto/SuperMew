@@ -36,7 +36,8 @@ async function retry() {
       'workspace-shell':
         (route.path.startsWith('/threads') ||
           route.path.startsWith('/documents') ||
-          route.path.startsWith('/evaluations')) &&
+          route.path.startsWith('/evaluations') ||
+          route.path.startsWith('/projects')) &&
         auth.status === 'authenticated',
     }"
   >
@@ -50,6 +51,7 @@ async function retry() {
         aria-label="主导航"
       >
         <RouterLink to="/threads">对话</RouterLink>
+        <RouterLink to="/projects">项目</RouterLink>
         <RouterLink to="/documents">文档</RouterLink>
         <RouterLink to="/evaluations">评测</RouterLink>
         <RouterLink to="/account">账户</RouterLink>

@@ -259,6 +259,20 @@ def test_scope_filter_uses_full_fixed_identity_and_json_quoted_values():
     )
 
 
+def test_project_namespace_views_keep_layouts_separate_and_reject_unknown_layout():
+    from minimew.vector_store.manifest import HYBRID_LAYOUT
+
+    backend = MilvusBackend(VectorSettings(), Mock())
+    namespace = "minimew_project_" + uuid4().hex
+    scoped = backend.for_namespace(namespace)
+    assert backend.namespace is None
+    assert scoped.client is backend.client
+    assert scoped.collection("dense-cosine-v1") == namespace + "_dense"
+    assert scoped.collection(HYBRID_LAYOUT) == namespace + "_hybrid"
+    with pytest.raises(VectorError, match="VECTOR_BUILD_MISMATCH"):
+        scoped.collection("hybrid-bm25-v1")
+
+
 def test_client_is_dedicated_and_disables_transport_retry_with_rpc_deadline(monkeypatch):
     factory = Mock()
     monkeypatch.setitem(sys.modules, "pymilvus", SimpleNamespace(MilvusClient=factory))

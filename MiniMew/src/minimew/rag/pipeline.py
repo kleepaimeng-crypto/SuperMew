@@ -4,7 +4,7 @@ import math
 import time
 from dataclasses import replace
 
-from minimew.documents.retrieval import search_published
+from minimew.documents.retrieval import scoped_index, search_published
 from minimew.rag.fusion import fuse
 from minimew.rag.merging import complete, select
 from minimew.rag.protocol import (
@@ -23,48 +23,58 @@ class RagPipeline:
         self.sessions, self.runtime, self.retriever = sessions, runtime, retriever
 
     async def search(self, query, scope, user_id, policy=None, *, deadline=None):
+        from types import SimpleNamespace
+
+        runtime = self.runtime
+        if getattr(scope, "namespace", None) is not None:
+            runtime = SimpleNamespace(
+                index=scoped_index(runtime.index, scope.namespace),
+                sync=runtime.sync,
+                encoder=runtime.encoder,
+                reranker=runtime.reranker,
+            )
         policy = policy or RagPolicy()
         trace = RetrievalTrace(policy.strategy)
         started = time.monotonic()
-        vector = await self.runtime.sync(self.runtime.encoder.encode_query, query)
+        vector = await runtime.sync(runtime.encoder.encode_query, query)
         hybrid = policy.strategy == "hybrid" and all(
-            "bm25" in self.runtime.index.capabilities(m) for m in scope.targets
+            "bm25" in runtime.index.capabilities(m) for m in scope.targets
         )
         if policy.strategy == "hybrid" and not hybrid:
             trace.fallback = "HYBRID_LAYOUT_UNAVAILABLE"
         hits = await self.retriever(
             self.sessions,
-            self.runtime.index,
+            runtime.index,
             scope,
             user_id,
             vector,
             PROFILE,
             top_k=policy.recall_k if hybrid else 3,
-            offload=self.runtime.sync,
+            offload=runtime.sync,
         )
         trace.stages = {"dense_count": len(hits), "seconds": time.monotonic() - started}
         if hybrid:
             lexical = await self.retriever(
                 self.sessions,
-                self.runtime.index,
+                runtime.index,
                 scope,
                 user_id,
                 vector,
                 PROFILE,
                 top_k=policy.recall_k,
-                offload=self.runtime.sync,
+                offload=runtime.sync,
                 lexical_query=query,
             )
             candidates = fuse(hits, lexical, policy)
             trace.stages.update(bm25_count=len(lexical), fused_count=len(candidates))
-            groups = await complete(candidates, scope, self.runtime, policy, trace)
+            groups = await complete(candidates, scope, runtime, policy, trace)
             if policy.rerank and candidates:
                 trace.attempts = 1
                 pairs = tuple(c for g in groups for c in g.members)
                 rerank_started = time.monotonic()
                 try:
-                    values = await self.runtime.sync(
-                        self.runtime.reranker.score,
+                    values = await runtime.sync(
+                        runtime.reranker.score,
                         query,
                         [c.row["payload"]["embedding_text"] for c in pairs],
                         deadline=deadline,

@@ -65,6 +65,29 @@ class KnowledgeBrowserProvider:
         yield ProviderCompleted(ModelTurn("text", text))
 
 
+class ProjectBrowserProvider(KnowledgeBrowserProvider):
+    async def stream(self, request):
+        if request.purpose == "grade":
+            data = json.loads(request.messages[-1].content)
+            yield ProviderCompleted(
+                ModelTurn(
+                    "text",
+                    json.dumps(
+                        {
+                            "status": "sufficient",
+                            "supported": [m["citation_id"] for m in data["materials"]],
+                            "missing": [],
+                        }
+                    ),
+                )
+            )
+            return
+        if request.purpose == "answer":
+            assert any("项目手工记忆测试" in m.content for m in request.messages)
+        async for event in super().stream(request):
+            yield event
+
+
 def main():
     settings = Settings()
     assert os.environ.get("MINIMEW_CHAT_BROWSER_TESTS") == "1"
@@ -77,7 +100,11 @@ def main():
 
     knowledge = os.environ.get("MINIMEW_KNOWLEDGE_BROWSER_TESTS") == "1"
     adapter.DeepSeekProvider = lambda key: (
-        KnowledgeBrowserProvider() if knowledge else BrowserProvider()
+        ProjectBrowserProvider()
+        if os.environ.get("MINIMEW_PROJECT_BROWSER_TESTS") == "1"
+        else KnowledgeBrowserProvider()
+        if knowledge
+        else BrowserProvider()
     )
 
     @asynccontextmanager

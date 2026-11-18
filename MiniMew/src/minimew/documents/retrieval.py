@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 
 from minimew.documents.artifacts import read_artifact
 from minimew.documents.chunking import ChunkBuild
-from minimew.models import Document, DocumentVersion, IndexArtifact, IndexJob
+from minimew.models import Document, DocumentVersion, IndexArtifact, IndexJob, KnowledgeBase, Thread
 from minimew.vector_store.adapter import CandidateIndex, VerifiedCandidate
 from minimew.vector_store.manifest import CandidateManifest, VectorError, canonical
 
@@ -22,10 +22,21 @@ class RetrievalScope:
     targets: tuple[CandidateManifest, ...]
     expires_at: datetime
     directory: tuple[ChunkBuild, ...] = ()
+    namespace: str | None = None
 
 
-async def published_scope(sessions, user_id: UUID) -> RetrievalScope:
+async def published_scope(
+    sessions, user_id: UUID, *, thread_id: UUID | None = None
+) -> RetrievalScope:
     async with sessions() as session, session.begin():
+        project_id = None
+        if thread_id is not None:
+            thread = await session.scalar(
+                select(Thread).where(Thread.id == thread_id, Thread.user_id == user_id)
+            )
+            if thread is None:
+                raise PermissionError("Thread not owned")
+            project_id = thread.project_id
         # 一个 SELECT/MVCC 快照同时读取 current、版本和产物，避免跨次查询混版。
         rows = (
             await session.execute(
@@ -37,7 +48,16 @@ async def published_scope(sessions, user_id: UUID) -> RetrievalScope:
                     IndexArtifact,
                     (IndexArtifact.job_id == IndexJob.id) & (IndexArtifact.status == "published"),
                 )
-                .where(Document.user_id == user_id, DocumentVersion.status == "published")
+                .where(
+                    Document.user_id == user_id,
+                    DocumentVersion.status == "published",
+                    Document.deleted_at.is_(None),
+                    Document.knowledge_base_id.in_(
+                        select(KnowledgeBase.id).where(
+                            KnowledgeBase.user_id == user_id, KnowledgeBase.project_id == project_id
+                        )
+                    ),
+                )
                 .order_by(Document.id)
             )
         ).all()
@@ -57,7 +77,11 @@ async def published_scope(sessions, user_id: UUID) -> RetrievalScope:
             directory.append(TypeAdapter(ChunkBuild).validate_json(canonical(artifact.chunks)))
         # 严格短于旧 current 的一小时保留期，为已取得 scope 的请求留出完成窗口。
         return RetrievalScope(
-            user_id, tuple(targets), now + timedelta(minutes=55), tuple(directory)
+            user_id,
+            tuple(targets),
+            now + timedelta(minutes=55),
+            tuple(directory),
+            "minimew_project_" + project_id.hex if project_id else None,
         )
 
 
@@ -80,8 +104,31 @@ async def search_published(
     if now >= scope.expires_at:
         raise VectorError("INDEX_SCOPE_EXPIRED")
     deadline = time.monotonic() + (scope.expires_at - now).total_seconds()
+    index = scoped_index(index, scope.namespace)
+    # 评测使用独立副本，保留其冻结资料；聊天范围始终遵守文档下线。
+    evaluation = str(getattr(index.backend, "namespace", "")).startswith("minimew_eval_")
+
+    async def revoked():
+        if evaluation:
+            return set()
+        async with sessions() as session:
+            return set(
+                (
+                    await session.scalars(
+                        select(Document.id).where(
+                            Document.user_id == user_id,
+                            Document.deleted_at.is_not(None),
+                            Document.id.in_([m.scope.identity.document_id for m in scope.targets]),
+                        )
+                    )
+                ).all()
+            )
+
+    excluded = await revoked()
     hits = []
     for manifest in scope.targets:
+        if manifest.scope.identity.document_id in excluded:
+            continue
         if time.monotonic() >= deadline:
             raise VectorError("INDEX_SCOPE_EXPIRED")
         if lexical_query is None:
@@ -93,4 +140,35 @@ async def search_published(
                 index.lexical, VerifiedCandidate(manifest), lexical_query, top_k=top_k
             )
         hits.extend(rows)
+    excluded = await revoked()
+    denied_versions = {
+        str(m.scope.identity.version_id)
+        for m in scope.targets
+        if m.scope.identity.document_id in excluded
+    }
+    hits = [r for r in hits if str(r["payload"]["identity"]["version_id"]) not in denied_versions]
     return sorted(hits, key=lambda row: (-row["score"], row["chunk_id"]))[:top_k]
+
+
+def scoped_index(index, namespace):
+    if namespace is None or getattr(index.backend, "namespace", None) == namespace:
+        return index
+    return CandidateIndex(index.backend.for_namespace(namespace), index.batch_size)
+
+
+async def validate_delivery(sessions, user_id, document_ids):
+    """在工具交付点重验下线，覆盖耗时评判和Checkpoint恢复后的旧候选。"""
+    if not document_ids:
+        return
+    async with sessions() as session:
+        revoked = await session.scalar(
+            select(Document.id)
+            .where(
+                Document.user_id == user_id,
+                Document.id.in_(document_ids),
+                Document.deleted_at.is_not(None),
+            )
+            .limit(1)
+        )
+    if revoked is not None:
+        raise VectorError("INDEX_SCOPE_REVOKED")

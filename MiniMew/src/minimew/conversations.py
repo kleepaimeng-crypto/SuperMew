@@ -90,11 +90,15 @@ async def reserve_run(
             if not credentials_available:
                 raise ModelConfigurationUnavailable
             snapshot = await freeze_current_snapshot(session)
+            from minimew.projects import memory_snapshot
+
+            memories = await memory_snapshot(session, user_id, thread.project_id)
             run = Run(
                 thread_id=thread_id,
                 user_id=user_id,
                 idempotency_key=data.idempotency_key,
                 model_snapshot_json=snapshot.model_dump(mode="json"),
+                memory_snapshot=memories,
                 model_catalog_hash=snapshot.catalog_hash(),
             )
             session.add(run)

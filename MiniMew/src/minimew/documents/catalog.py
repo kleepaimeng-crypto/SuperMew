@@ -121,6 +121,7 @@ async def reserve_document(
     *,
     index_layout: str = "dense-cosine-v1",
     expected_current_version: UUID | None = None,
+    project_id: UUID | None = None,
 ) -> tuple[UploadReceipt, bool]:
     request_hash = hashlib.sha256(
         json.dumps(
@@ -134,18 +135,36 @@ async def reserve_document(
             update={"index_layout": index_layout, "parser": "markdown-txt-v2"}
         )
         initial = BuildConfiguration.model_validate(initial.model_dump())
+        from minimew.projects import owned_project
+
+        if document_id is not None:
+            target = await owned_document(session, user_id, document_id)
+            current_kb = await session.get(KnowledgeBase, target.knowledge_base_id)
+            if project_id is not None and current_kb.project_id != project_id:
+                raise DocumentNotFound
+            project_id = current_kb.project_id
+        if project_id is not None:
+            await owned_project(session, user_id, project_id)
         await session.execute(
             insert(KnowledgeBase)
             .values(
                 user_id=user_id,
+                project_id=project_id,
                 build_configuration=initial.model_dump(mode="json"),
                 build_fingerprint=initial.fingerprint(),
             )
-            .on_conflict_do_nothing(index_elements=[KnowledgeBase.user_id])
+            .on_conflict_do_nothing(
+                index_elements=[KnowledgeBase.user_id]
+                if project_id is None
+                else [KnowledgeBase.project_id],
+                index_where=KnowledgeBase.project_id.is_(None)
+                if project_id is None
+                else KnowledgeBase.project_id.is_not(None),
+            )
         )
         kb = await session.scalar(
             select(KnowledgeBase)
-            .where(KnowledgeBase.user_id == user_id)
+            .where(KnowledgeBase.user_id == user_id, KnowledgeBase.project_id == project_id)
             .with_for_update()
             .execution_options(populate_existing=True)
         )
@@ -161,6 +180,8 @@ async def reserve_document(
             await session.flush()
         else:
             document = await owned_document(session, user_id, document_id, lock=True)
+            if document.deleted_at is not None:
+                raise SubmissionConflict
             if expected_current_version is not None and (
                 document.current_version_id != expected_current_version
                 or document.pending_version_id is not None
@@ -251,12 +272,26 @@ async def reserve_document(
     return result, created
 
 
-async def list_documents(session, user_id, limit, offset) -> DocumentPage:
+async def list_documents(
+    session, user_id, limit, offset, *, project_id=None, archived=False
+) -> DocumentPage:
     async with session.begin():
+        if project_id is not None:
+            from minimew.projects import owned_project
+
+            await owned_project(session, user_id, project_id)
         rows = (
             await session.execute(
                 document_query()
-                .where(Document.user_id == user_id)
+                .where(
+                    Document.user_id == user_id,
+                    Document.knowledge_base_id.in_(
+                        select(KnowledgeBase.id).where(
+                            KnowledgeBase.user_id == user_id, KnowledgeBase.project_id == project_id
+                        )
+                    ),
+                    Document.deleted_at.is_not(None) if archived else Document.deleted_at.is_(None),
+                )
                 .order_by(Document.created_at.desc(), Document.id.desc())
                 .offset(offset)
                 .limit(limit + 1)
@@ -296,3 +331,33 @@ async def get_job(session, user_id, job_id) -> IndexJobResponse:
         if job is None:
             raise DocumentNotFound
         return IndexJobResponse.model_validate(job)
+
+
+async def withdraw(session, user_id, document_id):
+    from sqlalchemy import func
+
+    async with session.begin():
+        document = await owned_document(session, user_id, document_id, lock=True)
+        if document.deleted_at is not None:
+            return await read_document(session, user_id, document_id)
+        now = await session.scalar(select(func.clock_timestamp()))
+        document.deleted_at = now
+        document.publication_fence += 1
+        document.pending_version_id = None
+        jobs = (
+            await session.scalars(
+                select(IndexJob)
+                .where(IndexJob.document_id == document.id)
+                .order_by(IndexJob.id)
+                .with_for_update()
+            )
+        ).all()
+        for job in jobs:
+            if job.status in {"pending", "running", "staged"}:
+                job.status, job.finished_at = "cancelled", now
+                version = await session.get(DocumentVersion, job.version_id)
+                if version.status == "candidate":
+                    version.status = "superseded"
+            await retire_artifacts(session, job.id, grace_seconds=3600)
+        await session.flush()
+        return await read_document(session, user_id, document_id)

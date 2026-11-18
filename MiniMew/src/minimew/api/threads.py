@@ -37,14 +37,16 @@ async def history(
 
 
 class CreateThreadRequest(BaseModel):
-    # 当前只创建默认对话；不接受客户端指定 owner、ID 或标题。
+    # 客户端只选择项目，不能指定owner/ID/标题。
     model_config = ConfigDict(extra="forbid")
+    project_id: UUID | None = None
 
 
 class ThreadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     title: str
+    project_id: UUID | None = None
     created_at: datetime
 
 
@@ -58,7 +60,11 @@ async def create_thread(
     data: CreateThreadRequest, user: CurrentUser, session: SessionDependency
 ) -> ThreadResponse:
     async with session.begin():
-        thread = Thread(user_id=user.id, title="新对话")
+        if data.project_id is not None:
+            from minimew.projects import owned_project
+
+            await owned_project(session, user.id, data.project_id)
+        thread = Thread(user_id=user.id, project_id=data.project_id, title="新对话")
         session.add(thread)
         await session.flush()
         result = ThreadResponse.model_validate(thread)
@@ -72,12 +78,17 @@ async def list_threads(
     session: SessionDependency,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    project_id: UUID | None = None,
 ) -> ThreadListResponse:
     async with session.begin():
+        if project_id is not None:
+            from minimew.projects import owned_project
+
+            await owned_project(session, user.id, project_id)
         rows = (
             await session.scalars(
                 select(Thread)
-                .where(Thread.user_id == user.id)
+                .where(Thread.user_id == user.id, Thread.project_id == project_id)
                 .order_by(Thread.created_at.desc(), Thread.id.desc())
                 .offset(offset)
                 .limit(limit + 1)

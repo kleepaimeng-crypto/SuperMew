@@ -16,6 +16,8 @@ import { useAuthStore } from "./auth";
 
 export const useDocumentsStore = defineStore("documents", () => {
   const auth = useAuthStore();
+  const projectId = ref<string | null>(null),
+    archived = ref(false);
   const items = ref<Document[]>([]),
     selected = ref<Document | null>(null);
   const currentVersion = ref<Version | null>(null),
@@ -67,7 +69,15 @@ export const useDocumentsStore = defineStore("documents", () => {
         "";
     pendingUpload.value = null;
   }
-  watch(() => auth.user?.id, reset, { flush: "sync" });
+  watch(
+    () => auth.user?.id,
+    () => {
+      projectId.value = null;
+      archived.value = false;
+      reset();
+    },
+    { flush: "sync" },
+  );
   function context() {
     return { epoch, userId: auth.user?.id };
   }
@@ -149,7 +159,10 @@ export const useDocumentsStore = defineStore("documents", () => {
     const offset = restart ? 0 : (nextOffset.value ?? 0);
     try {
       const page = parsePage(
-        await call(ctx, `/v1/documents?limit=20&offset=${offset}`),
+        await call(
+          ctx,
+          `/v1/documents?limit=20&offset=${offset}${projectId.value ? "&project_id=" + projectId.value : ""}${archived.value ? "&archived=true" : ""}`,
+        ),
       );
       if (!valid(ctx) || listSequence !== order) return;
       if (page.next_offset !== null && page.next_offset <= offset)
@@ -259,7 +272,8 @@ export const useDocumentsStore = defineStore("documents", () => {
     try {
       const doc = parseDocument(await call(ctx, `/v1/documents/${id}`));
       if (!valid(ctx) || selection !== turn) return;
-      if (doc.id !== id) throw new Error("Document scope mismatch");
+      if (doc.id !== id || (doc.project_id ?? null) !== projectId.value)
+        throw new Error("Document scope mismatch");
       selected.value = doc;
       apply(doc, order);
       await versions(doc, ctx, turn);
@@ -328,6 +342,8 @@ export const useDocumentsStore = defineStore("documents", () => {
     const form = new FormData();
     form.append("file", intent.file);
     form.append("idempotency_key", intent.key);
+    if (projectId.value && !intent.target)
+      form.append("project_id", projectId.value);
     try {
       const result = parseReceipt(
         await call(
@@ -380,7 +396,39 @@ export const useDocumentsStore = defineStore("documents", () => {
     mounted = true;
     schedule();
   }
+  function setScope(id: string | null, showArchived = false) {
+    if (projectId.value !== id || archived.value !== showArchived) {
+      reset();
+      projectId.value = id;
+      archived.value = showArchived;
+    }
+  }
+  async function withdraw() {
+    const doc = selected.value,
+      ctx = context(),
+      turn = selection;
+    if (!doc || uploading.value) return;
+    uploading.value = true;
+    try {
+      const changed = parseDocument(
+        await call(ctx, `/v1/documents/${doc.id}`, "DELETE"),
+      );
+      if (!valid(ctx) || turn !== selection) return;
+      selected.value = changed;
+      apply(changed, ++sequence);
+      await loadList(true);
+    } catch {
+      if (valid(ctx))
+        detailError.value = "下线未确认，请刷新确认文档状态后重试。";
+    } finally {
+      if (valid(ctx)) uploading.value = false;
+    }
+  }
   return {
+    projectId,
+    archived,
+    setScope,
+    withdraw,
     items,
     selected,
     currentVersion,

@@ -9,6 +9,18 @@ const route = useRoute();
 const router = useRouter();
 const threads = useThreadsStore();
 const auth = useAuthStore();
+const projectId = computed(() =>
+  typeof route.query.project === "string" ? route.query.project : null,
+);
+const projectQuery = computed(() =>
+  projectId.value ? { project: projectId.value } : {},
+);
+threads.setProject(projectId.value);
+watch(projectId, (value) => {
+  threads.setProject(value);
+  void threads.loadList(true);
+  if (id.value) void threads.selectThread(id.value);
+});
 const title = computed(
   () =>
     threads.items.find((thread) => thread.id === threads.selected?.id)?.title ??
@@ -28,7 +40,11 @@ onUnmounted(() => threads.clearSelection());
 
 async function create() {
   const threadId = await threads.createThread();
-  if (threadId) await router.push(`/threads/${threadId}`);
+  if (threadId)
+    await router.push({
+      path: `/threads/${threadId}`,
+      query: projectQuery.value,
+    });
 }
 async function logout() {
   try {
@@ -44,7 +60,10 @@ async function logout() {
   <section class="thread-workspace">
     <aside class="thread-sidebar" aria-label="对话列表">
       <div class="sidebar-heading">
-        <h1>我的对话</h1>
+        <h1>{{ projectId ? "项目对话" : "我的对话" }}</h1>
+        <RouterLink v-if="projectId" :to="`/projects/${projectId}`"
+          >返回项目</RouterLink
+        >
         <button
           class="quiet-button"
           :disabled="threads.listLoading"
@@ -76,7 +95,7 @@ async function logout() {
         <ul class="thread-list">
           <li v-for="thread in threads.items" :key="thread.id">
             <RouterLink
-              :to="`/threads/${thread.id}`"
+              :to="{ path: `/threads/${thread.id}`, query: projectQuery }"
               :aria-current="
                 id.toLowerCase() === thread.id.toLowerCase()
                   ? 'page'

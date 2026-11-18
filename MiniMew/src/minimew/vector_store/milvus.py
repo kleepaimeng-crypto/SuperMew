@@ -42,14 +42,19 @@ class MilvusBackend:
         if namespace is not None:
             import re
 
-            if re.fullmatch(r"minimew_eval_[0-9a-f]{32}", namespace) is None:
+            if re.fullmatch(r"minimew_(eval|project)_[0-9a-f]{32}", namespace) is None:
                 raise ValueError("Server-owned evaluation namespace required")
         self.namespace = namespace
 
     def collection(self, layout):
+        default = collection_for(layout)
         if self.namespace is None:
-            return collection_for(layout)
+            return default
         return self.namespace + ("_hybrid" if layout == HYBRID_LAYOUT else "_dense")
+
+    def for_namespace(self, namespace):
+        # 独立不可变视图，共用有界RPC连接；不修改全局当前集合。
+        return MilvusBackend(self.settings, self.client, namespace=namespace)
 
     @classmethod
     def connect(cls, settings: VectorSettings, *, namespace=None) -> "MilvusBackend":

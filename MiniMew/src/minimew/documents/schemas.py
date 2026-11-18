@@ -21,6 +21,8 @@ class PublicModel(BaseModel):
 
 
 class DocumentResponse(PublicModel):
+    project_id: UUID | None = None
+    deleted_at: datetime | None = None
     id: UUID
     knowledge_base_id: UUID
     title: str

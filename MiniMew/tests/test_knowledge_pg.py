@@ -148,12 +148,18 @@ def test_candidate_invisible_and_scope_is_user_owned(client, tmp_path):
     second = upload(client, other_headers, key="other", content=b"B private knowledge").json()
 
     async def scenario(sessions):
+        from minimew.models import Thread
+
+        async with sessions() as session, session.begin():
+            owned = Thread(user_id=owner, title="scope fixture")
+            other_thread = Thread(user_id=other, title="other scope fixture")
+            session.add_all([owned, other_thread])
+            await session.flush()
+            tid, other_tid = owned.id, other_thread.id
         w = worker(sessions, tmp_path)
         service = KnowledgeService(sessions, Runtime(w.backend))
         registry = ToolRegistry((service.spec(),))
-        context = registry.bind_context(
-            ToolContext(owner, uuid4(), uuid4(), frozenset({CAPABILITY}))
-        )
+        context = registry.bind_context(ToolContext(owner, tid, uuid4(), frozenset({CAPABILITY})))
         try:
             assert (
                 await service.search(context, KnowledgeQuery(query="private"))
@@ -162,15 +168,13 @@ def test_candidate_invisible_and_scope_is_user_owned(client, tmp_path):
             assert (
                 await service.search(context, KnowledgeQuery(query="private"))
             ).status == "no_documents"
-            fresh = registry.bind_context(
-                ToolContext(owner, uuid4(), uuid4(), context.capabilities)
-            )
+            fresh = registry.bind_context(ToolContext(owner, tid, uuid4(), context.capabilities))
             result = await service.search(fresh, KnowledgeQuery(query="private"))
             assert result.status == "ok"
             assert {m.version_id for m in result.matches} == {UUID(first["version"]["id"])}
             assert "B private" not in result.model_dump_json()
             other_context = registry.bind_context(
-                ToolContext(other, uuid4(), uuid4(), context.capabilities)
+                ToolContext(other, other_tid, uuid4(), context.capabilities)
             )
             other_result = await service.search(other_context, KnowledgeQuery(query="private"))
             assert {m.version_id for m in other_result.matches} == {UUID(second["version"]["id"])}

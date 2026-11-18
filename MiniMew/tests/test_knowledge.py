@@ -38,6 +38,7 @@ class Runtime:
 
 
 def setup_service(monkeypatch):
+    monkeypatch.setattr(knowledge, "validate_delivery", AsyncMock())
     target = candidate()
     backend = FakeBackend()
     index = CandidateIndex(backend)

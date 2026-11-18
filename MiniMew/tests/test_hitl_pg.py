@@ -155,8 +155,8 @@ def test_pause_refresh_and_resume_same_run_tool_message_scope_snapshot_budget(
 
                 original_scope = knowledge.published_scope
 
-                async def short_scope(*args):
-                    scope = await original_scope(*args)
+                async def short_scope(*args, **kwargs):
+                    scope = await original_scope(*args, **kwargs)
                     async with sessions() as session:
                         now = await session.scalar(select(func.clock_timestamp()))
                     seconds = (
@@ -282,7 +282,7 @@ def test_pause_refresh_and_resume_same_run_tool_message_scope_snapshot_budget(
             assert client.post(path + "/resume", headers=headers, json=body).status_code == 409
             body["token"] = fresh["token"]
 
-            async def forbidden_scope(*args):
+            async def forbidden_scope(*args, **kwargs):
                 raise AssertionError("resume cannot reacquire published scope")
 
             monkeypatch.setattr("minimew.knowledge.published_scope", forbidden_scope)

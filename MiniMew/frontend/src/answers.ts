@@ -10,6 +10,7 @@ export interface AnswerView {
   state: "loading" | "loaded" | "error";
   materials: AnswerMaterials | null;
   error: string;
+  withdrawnDocIds?: string[];
 }
 export class AnswerProtocolError extends Error {}
 export const documentHeading = "## 文档依据";
@@ -36,7 +37,18 @@ export function parseAnswer(
   };
   if (
     !isRecord(value) ||
-    !keys(value, ["run_id", "message_id", "status", "materials"]) ||
+    !(
+      keys(value, ["run_id", "message_id", "status", "materials"]) ||
+      (keys(value, [
+        "run_id",
+        "message_id",
+        "status",
+        "materials",
+        "withdrawn_document_ids",
+      ]) &&
+        Array.isArray(value.withdrawn_document_ids) &&
+        value.withdrawn_document_ids.every(isUuid))
+    ) ||
     value.run_id !== message.run_id ||
     value.message_id !== message.id ||
     !isEventValue(value.status, "RunStatus") ||

@@ -4,7 +4,11 @@ import type { ChatMessage } from "../chat";
 import { answerBlocks, type AnswerView } from "../answers";
 
 const props = defineProps<{ message: ChatMessage; answer?: AnswerView }>();
-defineEmits<{ retry: [] }>();
+const emit = defineEmits<{ retry: []; refreshSource: [] }>();
+function toggleCitation(id: string) {
+  selected.value = selected.value === id ? null : id;
+  if (selected.value) emit("refreshSource");
+}
 const selected = ref<string | null>(null);
 const materials = computed(() =>
   props.answer?.state === "loaded" &&
@@ -41,9 +45,7 @@ watch(
               class="citation-button"
               :aria-label="`查看引用 ${part.citationId}`"
               :aria-expanded="selected === part.citationId"
-              @click="
-                selected = selected === part.citationId ? null : part.citationId
-              "
+              @click="toggleCitation(part.citationId!)"
             >
               {{ part.text }}</button
             ><span v-else>{{ part.text }}</span></template
@@ -51,6 +53,12 @@ watch(
         </div>
       </section>
       <section v-if="source" class="evidence-detail" aria-label="引用原文">
+        <p
+          v-if="answer?.withdrawnDocIds?.includes(source.document_id)"
+          role="status"
+        >
+          此文档已下线，以下是本次回答保存的历史引用。
+        </p>
         <div class="evidence-heading">
           <h4>{{ source.title_path.join(" / ") || "文档片段" }}</h4>
           <button type="button" class="quiet-button" @click="selected = null">

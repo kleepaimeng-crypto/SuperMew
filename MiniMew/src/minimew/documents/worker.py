@@ -30,7 +30,7 @@ from minimew.embeddings.adapter import LocalEmbeddingAdapter
 from minimew.embeddings.config import EmbeddingRuntimeSettings
 from minimew.embeddings.errors import EmbeddingError
 from minimew.embeddings.tokenizer import LocalTokenizer
-from minimew.models import IndexWorkerHeartbeat
+from minimew.models import IndexWorkerHeartbeat, KnowledgeBase
 from minimew.settings import Settings
 from minimew.vector_store.adapter import CandidateIndex
 from minimew.vector_store.config import VectorSettings
@@ -84,7 +84,13 @@ class _FencedBackend:
                 manifest = await self.repo.manifest(self.lease)
             if manifest is None or manifest.scope != self.scope:
                 raise OwnershipLost
-            return await asyncio.to_thread(getattr(self.worker.backend, name), *args, **kwargs)
+            kb = await session.get(KnowledgeBase, manifest.scope.identity.knowledge_base_id)
+            if kb is None:
+                raise OwnershipLost
+            backend = self.worker.backend
+            if kb.project_id is not None:
+                backend = backend.for_namespace("minimew_project_" + kb.project_id.hex)
+            return await asyncio.to_thread(getattr(backend, name), *args, **kwargs)
 
 
 class IndexWorker:
@@ -324,7 +330,7 @@ async def main(args):
     backend = worker = None
     try:
         async with engine.connect() as connection:
-            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0018":
+            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0019":
                 raise SystemExit("Run MiniMew alembic upgrade head before starting the worker")
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         if args.requeue_cleanup:

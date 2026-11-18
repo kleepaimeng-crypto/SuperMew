@@ -650,10 +650,8 @@ export const useChatStore = defineStore("chat", () => {
     };
     const task = (async () => {
       try {
-        const materials = parseAnswer(
-          await authorized(ctx, `${runPath(ctx, id)}/answer`),
-          message,
-        );
+        const response = await authorized(ctx, `${runPath(ctx, id)}/answer`);
+        const materials = parseAnswer(response, message);
         if (
           !current(ctx) ||
           displayMessages.value.find((m) => m.id === message.id)?.content !==
@@ -664,6 +662,11 @@ export const useChatStore = defineStore("chat", () => {
           messageId: message.id,
           content: message.content,
           state: "loaded",
+          ...(typeof response === "object" &&
+          response !== null &&
+          "withdrawn_document_ids" in response
+            ? { withdrawnDocIds: response.withdrawn_document_ids as string[] }
+            : {}),
           materials,
           error: "",
         };

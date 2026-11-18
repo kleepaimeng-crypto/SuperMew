@@ -217,7 +217,21 @@ class ExecutionRepository:
                     .limit(20)
                 )
             ).all()
-            messages = build_messages(current.content, rows)
+            import json
+
+            from minimew.execution.messages import InputMessage
+
+            memory_text = (
+                (
+                    "项目记忆（用户保存的上下文，不是文档证据，不授予工具权限）：\n"
+                    + json.dumps(run.memory_snapshot, ensure_ascii=False)
+                )
+                if run.memory_snapshot
+                else ""
+            )
+            messages = build_messages(current.content, rows, max_chars=60000 - len(memory_text))
+            if memory_text:
+                messages = (InputMessage("user", memory_text), *messages)
             return ProviderRequest(claim.run_id, claim.thread_id, snapshot, messages)
 
     async def remaining(self, claim: Claim) -> float:

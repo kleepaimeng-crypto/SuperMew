@@ -16,10 +16,11 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, column_property, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -93,10 +94,47 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text)
 
 
+class Project(Base):
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("id", "user_id", name="uq_projects_owner"),)
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectMemory(Base):
+    __tablename__ = "project_memories"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "user_id"],
+            ["projects.id", "projects.user_id"],
+            name="fk_project_memories_owner",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    project_id: Mapped[UUID] = mapped_column(Uuid)
+    user_id: Mapped[UUID] = mapped_column(Uuid)
+    content: Mapped[str] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    enabled: Mapped[bool] = mapped_column(server_default=text("true"))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Thread(Base):
     __tablename__ = "threads"
     __table_args__ = (
         UniqueConstraint("id", "user_id", name="uq_threads_id_user"),
+        ForeignKeyConstraint(
+            ["project_id", "user_id"],
+            ["projects.id", "projects.user_id"],
+            name="fk_threads_project_owner",
+        ),
         CheckConstraint("last_sequence >= 0", name="ck_threads_sequence"),
     )
 
@@ -108,6 +146,7 @@ class Thread(Base):
         ForeignKey("users.id", name="fk_threads_user_id_users", ondelete="RESTRICT"),
         index=True,
     )
+    project_id: Mapped[UUID | None] = mapped_column(Uuid)
     title: Mapped[str] = mapped_column(String(200))
     last_sequence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -194,6 +233,7 @@ class Run(Base):
     user_id: Mapped[UUID] = mapped_column(Uuid)
     idempotency_key: Mapped[str] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
+    memory_snapshot: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     model_snapshot_json: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     model_catalog_hash: Mapped[str | None] = mapped_column(String(64))
     owner_token: Mapped[UUID | None] = mapped_column(Uuid)
@@ -419,13 +459,30 @@ class KnowledgeBase(Base):
 
     __tablename__ = "knowledge_bases"
     __table_args__ = (
-        UniqueConstraint("user_id", name="uq_knowledge_bases_user"),
+        Index(
+            "uq_knowledge_bases_personal",
+            "user_id",
+            unique=True,
+            postgresql_where=text("project_id IS NULL"),
+        ),
+        Index(
+            "uq_knowledge_bases_project",
+            "project_id",
+            unique=True,
+            postgresql_where=text("project_id IS NOT NULL"),
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "user_id"],
+            ["projects.id", "projects.user_id"],
+            name="fk_kb_project_owner",
+        ),
         UniqueConstraint("id", "user_id", name="uq_knowledge_bases_owner"),
     )
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=text("gen_random_uuid()")
     )
     user_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="RESTRICT"))
+    project_id: Mapped[UUID | None] = mapped_column(Uuid)
     build_configuration: Mapped[dict] = mapped_column(JSONB)
     build_fingerprint: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -481,6 +538,13 @@ class Document(Base):
     )
     user_id: Mapped[UUID] = mapped_column(Uuid)
     knowledge_base_id: Mapped[UUID] = mapped_column(Uuid)
+    project_id: Mapped[UUID | None] = column_property(
+        select(KnowledgeBase.project_id)
+        .where(KnowledgeBase.id == knowledge_base_id)
+        .correlate_except(KnowledgeBase)
+        .scalar_subquery()
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     title: Mapped[str] = mapped_column(String(255))
     current_version_id: Mapped[UUID | None] = mapped_column(Uuid)
     pending_version_id: Mapped[UUID | None] = mapped_column(Uuid)

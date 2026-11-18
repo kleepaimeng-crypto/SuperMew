@@ -11,6 +11,7 @@ import { useAuthStore } from "./auth";
 
 export const useThreadsStore = defineStore("threads", () => {
   const auth = useAuthStore();
+  const projectId = ref<string | null>(null);
   const items = ref<Thread[]>([]);
   const selected = ref<Thread | null>(null);
   const nextOffset = ref<number | null>(null);
@@ -52,7 +53,14 @@ export const useThreadsStore = defineStore("threads", () => {
     listError.value = "";
     createError.value = "";
   }
-  watch(() => auth.user?.id, reset, { flush: "sync" });
+  watch(
+    () => auth.user?.id,
+    () => {
+      projectId.value = null;
+      reset();
+    },
+    { flush: "sync" },
+  );
 
   function context() {
     if (auth.status !== "authenticated" || !auth.accessToken || !auth.user)
@@ -117,7 +125,7 @@ export const useThreadsStore = defineStore("threads", () => {
       const page = parseThreadPage(
         await threadRequest(
           ctx,
-          `/v1/threads?limit=20&offset=${offset}`,
+          `/v1/threads?limit=20&offset=${offset}${projectId.value ? "&project_id=" + projectId.value : ""}`,
           "GET",
           undefined,
           controller.signal,
@@ -163,6 +171,8 @@ export const useThreadsStore = defineStore("threads", () => {
           controller.signal,
         ),
       );
+      if ((thread.project_id ?? null) !== projectId.value)
+        throw new ApiError(404);
       if (thread.id.toLowerCase() !== id.toLowerCase())
         throw new Error("Mismatched thread");
       if (current(ctx) && version === detailVersion) selected.value = thread;
@@ -192,7 +202,13 @@ export const useThreadsStore = defineStore("threads", () => {
     createError.value = "";
     try {
       const thread = parseThread(
-        await threadRequest(ctx, "/v1/threads", "POST", {}, controller.signal),
+        await threadRequest(
+          ctx,
+          "/v1/threads",
+          "POST",
+          projectId.value ? { project_id: projectId.value } : {},
+          controller.signal,
+        ),
       );
       if (!current(ctx)) return null;
       // 只有服务端确认后才显示；重载第一页使 offset 与最新列表重新对齐。
@@ -219,7 +235,15 @@ export const useThreadsStore = defineStore("threads", () => {
     }
   }
 
+  function setProject(id: string | null) {
+    if (projectId.value !== id) {
+      reset();
+      projectId.value = id;
+    }
+  }
   return {
+    projectId,
+    setProject,
     items,
     selected,
     nextOffset,

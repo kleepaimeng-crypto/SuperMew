@@ -51,6 +51,9 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.event_stream_options = StreamOptions(poll_interval=settings.event_poll_seconds)
     app.state.event_notifier = None
+    from minimew.projects import router as projects_router
+
+    app.include_router(projects_router)
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(threads_router)

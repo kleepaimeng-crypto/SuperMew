@@ -25,7 +25,20 @@ export function parseThread(value: unknown): Thread {
   ) {
     throw new Error("Invalid thread response");
   }
-  return { id: value.id, title: value.title, created_at: value.created_at };
+  if (
+    "project_id" in value &&
+    value.project_id !== null &&
+    (typeof value.project_id !== "string" || !isThreadId(value.project_id))
+  )
+    throw new Error("Invalid project ID");
+  return {
+    id: value.id,
+    title: value.title,
+    created_at: value.created_at,
+    ...("project_id" in value
+      ? { project_id: value.project_id as string | null }
+      : {}),
+  };
 }
 
 export function parseThreadPage(value: unknown, offset: number): ThreadPage {

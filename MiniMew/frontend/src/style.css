@@ -635,3 +635,17 @@ dd {
     flex-basis: 100%;
   }
 }
+@media (max-width: 600px) {
+  .workspace-nav {
+    max-width: 200px;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    justify-content: flex-end;
+  }
+  .masthead {
+    gap: 16px;
+  }
+  .brand {
+    flex-shrink: 0;
+  }
+}

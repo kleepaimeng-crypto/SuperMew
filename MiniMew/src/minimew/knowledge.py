@@ -12,7 +12,12 @@ from pydantic import Field, TypeAdapter, field_validator
 from sqlalchemy.exc import SQLAlchemyError
 
 from minimew.documents.chunking import Chunk, Section
-from minimew.documents.retrieval import RetrievalScope, published_scope, search_published
+from minimew.documents.retrieval import (
+    RetrievalScope,
+    published_scope,
+    search_published,
+    validate_delivery,
+)
 from minimew.embeddings.errors import EmbeddingError
 from minimew.evidence import EvidenceLimit, EvidenceSource
 from minimew.execution.diagnostics import capture, emit
@@ -191,6 +196,21 @@ class KnowledgeCalculation:
                 raise ToolFailure("KNOWLEDGE_RESULT_INVALID")
         else:
             draft, pending = self.prepare(context, result, scope)
+        # Case使用专属冻结副本；聊天在耗时计算/暂停恢复后仍须服从实时下线。
+        from minimew.execution.identity import ChatIdentity
+
+        if isinstance(context.execution_identity, ChatIdentity):
+            try:
+                await validate_delivery(
+                    self.sessions, context.user_id, {m.document_id for m in draft.matches}
+                )
+            except VectorError:
+                raise ToolFailure("KNOWLEDGE_SCOPE_INVALID") from None
+            except (SQLAlchemyError, OSError, TimeoutError) as error:
+                raise ToolFailure(
+                    "KNOWLEDGE_RETRIEVAL_FAILED",
+                    diagnostic=capture("retrieval", "delivery_validation_failed", error),
+                ) from None
         ledger.commit(pending)
         record = logger.warning if result.trace.fallback else logger.info
         record(
@@ -349,7 +369,9 @@ class KnowledgeService(KnowledgeCalculation):
 
         async def resolve_scope():
             if session.scope is None:
-                session.scope = await published_scope(self.sessions, context.user_id)
+                session.scope = await published_scope(
+                    self.sessions, context.user_id, thread_id=context.thread_id
+                )
             return session.scope
 
         computation = from_chat(context)

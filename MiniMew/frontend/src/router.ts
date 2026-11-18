@@ -5,12 +5,18 @@ import AuthView from "./views/AuthView.vue";
 import AccountView from "./views/AccountView.vue";
 import ThreadsView from "./views/ThreadsView.vue";
 import DocumentsView from "./views/DocumentsView.vue";
+import ProjectsView from "./views/ProjectsView.vue";
 import EvaluationsView from "./views/EvaluationsView.vue";
 
 export function makeRouter(pinia: Pinia) {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
+      {
+        path: "/projects/:projectId?",
+        component: ProjectsView,
+        meta: { requiresAuth: true },
+      },
       {
         path: "/evaluations/:jobId?",
         component: EvaluationsView,

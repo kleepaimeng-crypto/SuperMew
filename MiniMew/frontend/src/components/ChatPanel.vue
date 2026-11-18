@@ -115,6 +115,7 @@ function enter(event: KeyboardEvent) {
           :message="message"
           :answer="chat.answers[message.run_id]"
           @retry="chat.loadAnswer(message.run_id, true)"
+          @refresh-source="chat.loadAnswer(message.run_id, true)"
         />
         <div v-else class="message-body">{{ message.content }}</div>
         <template v-if="message.role === 'assistant'">

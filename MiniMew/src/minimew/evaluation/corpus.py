@@ -22,6 +22,7 @@ from minimew.models import (
     EvaluationJob,
     IndexArtifact,
     IndexJob,
+    KnowledgeBase,
 )
 from minimew.vector_store.adapter import CandidateIndex
 from minimew.vector_store.manifest import canonical
@@ -48,7 +49,11 @@ async def prepare(sessions, user_id, dataset, mapping, source_store, vector_sett
                         (IndexArtifact.job_id == IndexJob.id)
                         & (IndexArtifact.status == "published"),
                     )
-                    .where(DocumentVersion.id == version_id, Document.user_id == user_id)
+                    .where(
+                        DocumentVersion.id == version_id,
+                        Document.user_id == user_id,
+                        Document.deleted_at.is_(None),
+                    )
                 )
             ).one_or_none()
             if row is None:
@@ -86,9 +91,18 @@ async def prepare(sessions, user_id, dataset, mapping, source_store, vector_sett
         target = await asyncio.to_thread(
             MilvusBackend.connect, vector_settings, namespace=namespace
         )
-        source_index, target_index = CandidateIndex(source), CandidateIndex(target)
+        target_index = CandidateIndex(target)
         for manifest in targets:
-            await asyncio.to_thread(source_index.copy_to, manifest, target_index)
+            async with sessions() as session:
+                kb = await session.get(KnowledgeBase, manifest.scope.identity.knowledge_base_id)
+                if kb is None or kb.user_id != user_id:
+                    raise EvaluationNotFound
+                scoped_source = (
+                    source.for_namespace("minimew_project_" + kb.project_id.hex)
+                    if kb.project_id
+                    else source
+                )
+            await asyncio.to_thread(CandidateIndex(scoped_source).copy_to, manifest, target_index)
         async with sessions() as session, session.begin():
             saved = await session.get(EvaluationCorpus, corpus_id, with_for_update=True)
             saved.payload = {**saved.payload, "ready": True}

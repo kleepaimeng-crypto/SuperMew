@@ -120,9 +120,15 @@ class UploadLimitMiddleware:
         return await self.app(scope, limited_receive, private_send)
 
 
-async def accept_upload(request, file, key, user, session, settings, document_id=None):
+async def accept_upload(
+    request, file, key, user, session, settings, document_id=None, project_id=None
+):
     form = await request.form()
-    if set(form.keys()) != {"file", "idempotency_key"} or len(form.multi_items()) != 2:
+    if set(form.keys()) != (
+        {"file", "idempotency_key", "project_id"}
+        if project_id is not None
+        else {"file", "idempotency_key"}
+    ) or len(form.multi_items()) != (3 if project_id is not None else 2):
         raise HTTPException(422, "Invalid upload fields")
     with public_errors():
         source = validate_source(
@@ -140,6 +146,7 @@ async def accept_upload(request, file, key, user, session, settings, document_id
             settings.embedding_profile,
             document_id,
             index_layout=settings.document_index_layout,
+            project_id=project_id,
         )
 
 
@@ -161,8 +168,11 @@ async def upload_document(
     settings: SettingsDependency,
     file: UploadFileField,
     idempotency_key: SubmissionKey,
+    project_id: Annotated[UUID | None, Form()] = None,
 ) -> UploadReceipt:
-    result, created = await accept_upload(request, file, idempotency_key, user, session, settings)
+    result, created = await accept_upload(
+        request, file, idempotency_key, user, session, settings, project_id=project_id
+    )
     response.status_code = 202 if created else 200
     return result
 
@@ -196,9 +206,13 @@ async def documents(
     session: SessionDependency,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    project_id: UUID | None = None,
+    archived: bool = False,
 ) -> DocumentPage:
     with public_errors():
-        return await catalog.list_documents(session, user.id, limit, offset)
+        return await catalog.list_documents(
+            session, user.id, limit, offset, project_id=project_id, archived=archived
+        )
 
 
 @router.get("/documents/{document_id}", response_model=DocumentResponse)
@@ -226,3 +240,9 @@ async def job(job_id: UUID, user: DocumentUser, session: SessionDependency) -> I
 @router.get("/embedding-profiles", response_model=list[BuildConfiguration])
 async def embedding_profiles(user: DocumentUser) -> list[BuildConfiguration]:
     return [preset("bge-small-zh-v1.5"), preset("bge-m3")]
+
+
+@router.delete("/documents/{document_id}", response_model=DocumentResponse)
+async def withdraw_document(document_id: UUID, user: DocumentUser, session: SessionDependency):
+    with public_errors():
+        return await catalog.withdraw(session, user.id, document_id)

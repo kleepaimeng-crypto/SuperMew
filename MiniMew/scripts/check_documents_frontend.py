@@ -19,10 +19,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from minimew.database import create_engine
 from minimew.documents.artifacts import read_artifact
 from minimew.model_control import ModelConfiguration, set_current_model
-from minimew.models import Document, IndexArtifact, IndexJob, IndexWorkerHeartbeat
+from minimew.models import Document, IndexArtifact, IndexJob, IndexWorkerHeartbeat, KnowledgeBase
 from minimew.settings import Settings
 from minimew.vector_store.adapter import CandidateIndex
 from minimew.vector_store.config import VectorSettings
+from minimew.vector_store.manifest import HYBRID_LAYOUT
 from minimew.vector_store.milvus import MilvusBackend
 
 
@@ -41,7 +42,8 @@ async def stop(process):
 
 
 async def main():
-    knowledge = os.environ.get("MINIMEW_KNOWLEDGE_BROWSER_TESTS") == "1"
+    projects = os.environ.get("MINIMEW_PROJECT_BROWSER_TESTS") == "1"
+    knowledge = os.environ.get("MINIMEW_KNOWLEDGE_BROWSER_TESTS") == "1" or projects
     with socket.socket() as probe:
         try:
             probe.bind(("127.0.0.1", 5175))
@@ -63,12 +65,23 @@ async def main():
                 MINIMEW_CHAT_BROWSER_TESTS="1",
                 MINIMEW_DEEPSEEK_API_KEY="test-only-no-chat-network",
                 MINIMEW_KNOWLEDGE_ENABLED="true" if knowledge else "false",
+                MINIMEW_KNOWLEDGE_BROWSER_TESTS="1" if knowledge else "0",
                 MINIMEW_EXECUTION_SCAN_SECONDS="0.05",
                 MINIMEW_EVENT_POLL_SECONDS="0.05",
                 MINIMEW_CANCELLATION_POLL_SECONDS="0.05",
                 MINIMEW_INDEX_POLL_SECONDS="0.1",
                 HF_HUB_OFFLINE="1",
             )
+            if projects:
+                # 仅约束本次验收子进程，避免模型预热与Node默认堆同时挤占本机提交额度。
+                for key, value in {
+                    "NODE_OPTIONS": "--max-old-space-size=512",
+                    "OMP_NUM_THREADS": "2",
+                    "MKL_NUM_THREADS": "2",
+                    "OPENBLAS_NUM_THREADS": "2",
+                    "TOKENIZERS_PARALLELISM": "false",
+                }.items():
+                    environment.setdefault(key, value)
             engine = create_engine(Settings().model_copy(update={"db_name": database}))
             sessions = async_sessionmaker(engine, expire_on_commit=False)
             if knowledge:
@@ -144,7 +157,9 @@ async def main():
                         "run",
                         "test:e2e",
                         "--",
-                        "tests/knowledge-live.spec.ts"
+                        "tests/projects-live.spec.ts"
+                        if projects
+                        else "tests/knowledge-live.spec.ts"
                         if knowledge
                         else "tests/documents-live.spec.ts",
                     ],
@@ -157,13 +172,31 @@ async def main():
                     jobs = (await session.scalars(select(IndexJob))).all()
                     documents = (await session.scalars(select(Document))).all()
                     artifacts = (await session.scalars(select(IndexArtifact))).all()
-                assert len(jobs) == 2 and sorted(job.status for job in jobs) == (
-                    ["succeeded", "succeeded"] if knowledge else ["failed", "succeeded"]
+                assert len(jobs) == (3 if projects else 2) and sorted(
+                    job.status for job in jobs
+                ) == (
+                    ["succeeded"] * 3
+                    if projects
+                    else ["succeeded", "succeeded"]
+                    if knowledge
+                    else ["failed", "succeeded"]
                 )
-                assert len(documents) == 1 and documents[0].current_version_id is not None
+                assert len(documents) == (3 if projects else 1) and all(
+                    d.current_version_id is not None for d in documents
+                )
                 backend = await asyncio.to_thread(MilvusBackend.connect, VectorSettings())
                 for artifact in artifacts:
-                    await asyncio.to_thread(CandidateIndex(backend).verify, read_artifact(artifact))
+                    manifest = read_artifact(artifact)
+                    async with sessions() as session:
+                        kb = await session.get(
+                            KnowledgeBase, manifest.scope.identity.knowledge_base_id
+                        )
+                        target = (
+                            backend.for_namespace("minimew_project_" + kb.project_id.hex)
+                            if kb.project_id
+                            else backend
+                        )
+                    await asyncio.to_thread(CandidateIndex(target).verify, manifest)
                 report = {
                     "browser": "passed",
                     "real_cpu_milvus": True,
@@ -173,6 +206,7 @@ async def main():
                     "dev_database_consumed": False,
                     "paid_model_calls": 0,
                     "knowledge_ui": knowledge,
+                    "projects_ui": projects,
                 }
                 (folder / "report.json").write_text(json.dumps(report, indent=2) + "\n")
                 print(json.dumps(report))
@@ -190,10 +224,36 @@ async def main():
                         artifacts = (await session.scalars(select(IndexArtifact))).all()
                     if artifacts and backend is None:
                         backend = await asyncio.to_thread(MilvusBackend.connect, VectorSettings())
+                    owned_namespaces = set()
                     for artifact in artifacts:
+                        manifest = read_artifact(artifact)
+                        async with sessions() as session:
+                            kb = await session.get(
+                                KnowledgeBase, manifest.scope.identity.knowledge_base_id
+                            )
+                            target = (
+                                backend.for_namespace("minimew_project_" + kb.project_id.hex)
+                                if kb.project_id
+                                else backend
+                            )
+                            if kb.project_id:
+                                owned_namespaces.add(target.namespace)
                         await asyncio.to_thread(
-                            CandidateIndex(backend).delete_candidate, read_artifact(artifact).scope
+                            CandidateIndex(target).delete_candidate, manifest.scope
                         )
+                    for namespace in owned_namespaces:
+                        target = backend.for_namespace(namespace)
+                        for layout in ("dense-cosine-v1", HYBRID_LAYOUT):
+                            name = target.collection(layout)
+                            if await asyncio.to_thread(
+                                target._rpc, target.client.has_collection, collection_name=name
+                            ):
+                                await asyncio.to_thread(
+                                    target._rpc, target.client.drop_collection, collection_name=name
+                                )
+                            assert not await asyncio.to_thread(
+                                target._rpc, target.client.has_collection, collection_name=name
+                            )
                 finally:
                     if backend:
                         await asyncio.to_thread(backend.close)
