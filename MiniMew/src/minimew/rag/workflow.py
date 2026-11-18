@@ -11,6 +11,7 @@ from langgraph.types import Command, Send, interrupt
 
 from minimew.embeddings.errors import EmbeddingError
 from minimew.execution.diagnostics import capture, emit
+from minimew.execution.process import report_step
 from minimew.execution.provider import ProviderFailure
 from minimew.rag.protocol import MaterialGroup, RetrievalResult
 from minimew.rag.reasoning import Grade, Plan, Rewrite, grade_materials
@@ -61,16 +62,21 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
         aspects = state.get("aspects", ())
         if gaps:
             aspects = (*aspects, {"question": question, "status": "insufficient", "missing": gaps})
-        grade = (
-            await grade_materials(context.model_caller, question, draft, aspects)
-            if draft.matches
-            else Grade(status="insufficient", supported=(), missing=("未找到相关材料",))
-        )
-        missing = (*state.get("failed", ()), *gaps)
-        if len(missing) > 8:
-            missing = (*missing[:7], f"另有{len(missing) - 7}项代表材料/子任务缺口")
-        if missing and grade.status == "sufficient":
-            grade = grade.model_copy(update={"status": "insufficient", "missing": missing})
+        async with report_step(
+            context.process, "assessment", "assessment/" + state["phase"]
+        ) as stage:
+            grade = (
+                await grade_materials(context.model_caller, question, draft, aspects)
+                if draft.matches
+                else Grade(status="insufficient", supported=(), missing=("未找到相关材料",))
+            )
+            missing = (*state.get("failed", ()), *gaps)
+            if len(missing) > 8:
+                missing = (*missing[:7], f"另有{len(missing) - 7}项代表材料/子任务缺口")
+            if missing and grade.status == "sufficient":
+                grade = grade.model_copy(update={"status": "insufficient", "missing": missing})
+            if stage:
+                stage.finish(summary="证据评判结束", count=len(draft.matches), outcome=grade.status)
         return {
             "draft": draft,
             "pending": pending,
@@ -97,14 +103,17 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
 
     async def plan(state):
         budget.planner_used = True
-        result = await context.model_caller(
-            "plan", {"question": question, "missing": state["grade"].missing}, Plan
-        )
-        queries = tuple(q.strip() for q in result.questions)
-        if any(not q or len(q) > 1024 or "\x00" in q for q in queries) or len(set(queries)) != len(
-            queries
-        ):
-            raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+        async with report_step(context.process, "plan", "plan") as stage:
+            result = await context.model_caller(
+                "plan", {"question": question, "missing": state["grade"].missing}, Plan
+            )
+            queries = tuple(q.strip() for q in result.questions)
+            if any(not q or len(q) > 1024 or "\x00" in q for q in queries) or len(
+                set(queries)
+            ) != len(queries):
+                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            if stage:
+                stage.finish(summary="已拆解检索子问题", count=len(queries))
         return {"questions": queries}
 
     def dispatch(state):
@@ -112,37 +121,56 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
 
     async def child(state):
         async with slots:
-            try:
-                result = await retrieve(state["query"])
-                draft, _ = prepare(result)
-                grade = (
-                    await grade_materials(context.model_caller, state["query"], draft)
-                    if draft.matches
-                    else None
-                )
-                return {
-                    "pieces": (
-                        (
-                            state["index"],
-                            result,
-                            grade,
-                            keys(result, draft, grade.supported) if grade else frozenset(),
-                        ),
+            async with report_step(
+                context.process, "subquestion", f"child/{state['index']}", query=state["query"]
+            ) as stage:
+                try:
+                    result = await retrieve(
+                        state["query"], process=stage.reporter if stage else None, step_key="search"
                     )
-                }
+                    draft, _ = prepare(result)
+                    async with report_step(
+                        stage.reporter if stage else None, "assessment", "assessment"
+                    ) as grade_step:
+                        grade = (
+                            await grade_materials(context.model_caller, state["query"], draft)
+                            if draft.matches
+                            else None
+                        )
+                        if grade_step:
+                            grade_step.finish(
+                                summary="子问题证据评判结束",
+                                count=len(draft.matches),
+                                outcome=grade.status if grade else "insufficient",
+                            )
+                    if stage:
+                        stage.finish(summary="子问题检索结束", count=len(draft.matches))
+                    return {
+                        "pieces": (
+                            (
+                                state["index"],
+                                result,
+                                grade,
+                                keys(result, draft, grade.supported) if grade else frozenset(),
+                            ),
+                        )
+                    }
 
-            except (ProviderFailure, VectorError, EmbeddingError) as exc:
-                emit(
-                    logger,
-                    "rag_subtask_failed",
-                    context.run_id,
-                    exc.code,
-                    getattr(exc, "diagnostic", None) or capture("subtask", "subtask_failed", exc),
-                    thread_id=context.thread_id,
-                    identity=getattr(context, "execution_identity", None),
-                    subtask=state["index"] + 1,
-                )
-                return {"pieces": ((state["index"], None, exc.code, frozenset()),)}
+                except (ProviderFailure, VectorError, EmbeddingError) as exc:
+                    emit(
+                        logger,
+                        "rag_subtask_failed",
+                        context.run_id,
+                        exc.code,
+                        getattr(exc, "diagnostic", None)
+                        or capture("subtask", "subtask_failed", exc),
+                        thread_id=context.thread_id,
+                        identity=getattr(context, "execution_identity", None),
+                        subtask=state["index"] + 1,
+                    )
+                    if stage:
+                        stage.fail(exc.code)
+                    return {"pieces": ((state["index"], None, exc.code, frozenset()),)}
 
     def combine(original, extras, preferred=()):
         if context.repairs is not None:
@@ -217,14 +245,17 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
 
     async def rewrite(state):
         budget.rewrite_used = True
-        revised = await context.model_caller(
-            "rewrite", {"question": question, "missing": state["grade"].missing}, Rewrite
-        )
-        query = revised.query.strip()
-        anchors = re.findall(r"[A-Za-z0-9]+(?:[-./][A-Za-z0-9]+)*", question)
-        if not query or "\x00" in query or any(a.lower() not in query.lower() for a in anchors):
-            raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
-        result = await retrieve(query)
+        async with report_step(context.process, "rewrite", "rewrite") as stage:
+            revised = await context.model_caller(
+                "rewrite", {"question": question, "missing": state["grade"].missing}, Rewrite
+            )
+            query = revised.query.strip()
+            anchors = re.findall(r"[A-Za-z0-9]+(?:[-./][A-Za-z0-9]+)*", question)
+            if not query or "\x00" in query or any(a.lower() not in query.lower() for a in anchors):
+                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            if stage:
+                stage.finish(summary="已生成改写检索式")
+        result = await retrieve(query, process=context.process, step_key="rewrite-search")
         combined, representatives = combine(
             state["result"], [result], (state["supported"], frozenset())
         )
@@ -254,7 +285,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
             from minimew.execution.tools import ToolFailure
 
             raise ToolFailure("KNOWLEDGE_QUERY_TOO_LONG")
-        result = await retrieve(query)
+        result = await retrieve(query, process=context.process, step_key="clarified-search")
         return {
             "result": result,
             "phase": "clarified",

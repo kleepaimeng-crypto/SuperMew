@@ -27,6 +27,7 @@ class RagContext:
     checkpoint: dict | None = None
     trace_state: TraceState = field(default_factory=TraceState)
     progress: object | None = None
+    process: object | None = None
 
     def __post_init__(self):
         if not isinstance(self.execution_identity, (ChatIdentity, CaseIdentity)):
@@ -71,6 +72,7 @@ def from_chat(context):
                 "question",
                 "hitl",
                 "checkpoint",
+                "process",
             )
         },
     )

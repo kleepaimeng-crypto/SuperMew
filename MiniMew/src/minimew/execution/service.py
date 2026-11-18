@@ -23,6 +23,7 @@ from minimew.execution.messages import (
     valid_text,
     validate_turn,
 )
+from minimew.execution.process import ProcessReporter, report_step
 from minimew.execution.prompts import chat_instructions
 from minimew.execution.provider import (
     MAX_DELTA_CHARS,
@@ -317,6 +318,13 @@ class RunExecutor:
                 messages=resume["outer"]["messages"],
                 instructions=resume["outer"]["instructions"],
             )
+        context = replace(
+            context,
+            process=ProcessReporter(
+                request.run_id,
+                lambda data: self._record_process(claim, request, deadline, data),
+            ),
+        )
         request = self._with_instructions(request, context)
         if context.reasoning is not None:
             from minimew.execution.reasoning import RunModelCaller
@@ -347,7 +355,9 @@ class RunExecutor:
                         force_answer=True,
                         instructions=chat_instructions(context, request.tools, force_answer=True),
                     )
-                turn = await self._model_turn(claim, request, deadline, progress, budget)
+                turn = await self._model_turn(
+                    claim, request, deadline, progress, budget, context.process
+                )
             if turn.kind == "text":
                 if context.evidence.queried:
                     return await self._grounded_answer(
@@ -380,7 +390,15 @@ class RunExecutor:
                     await self._record_tool(claim, request, deadline, "tool.started", observation)
                 try:
                     async with asyncio.timeout_at(deadline) as timeout:
-                        content = await self.registry.invoke(call, context)
+                        content = await self.registry.invoke(
+                            call,
+                            replace(
+                                context,
+                                process=context.process.tool(call.call.id)
+                                if context.process
+                                else None,
+                            ),
+                        )
                 except PauseRequested as pause:
                     pause.outer = {
                         "messages": request.messages,
@@ -427,8 +445,22 @@ class RunExecutor:
             context,
             budget,
             lambda: self._check_active(claim, request, deadline),
-            lambda repair: self._model_turn(claim, repair, deadline, progress, budget),
+            lambda repair: self._model_turn(
+                claim, repair, deadline, progress, budget, context.process
+            ),
         )
+
+    async def _record_process(self, claim, request, deadline, data):
+        for attempt in range(2):
+            await self._check_active(claim, request, deadline)
+            try:
+                if not await self.repository.record_process(claim, data):
+                    raise OwnershipLost
+                return
+            except (SQLAlchemyError, OSError, TimeoutError):
+                if attempt or asyncio.get_running_loop().time() + 0.1 >= deadline:
+                    raise ExecutionStorageUnavailable from None
+                await asyncio.sleep(0.1)
 
     async def _record_tool(self, claim, request, deadline, event_type, data):
         for attempt in range(2):
@@ -456,14 +488,20 @@ class RunExecutor:
         except ValueError:
             raise ContextInvalid from None
 
-    async def _model_turn(self, claim, request, deadline, progress, budget) -> ModelTurn:
+    async def _model_turn(
+        self, claim, request, deadline, progress, budget, process=None
+    ) -> ModelTurn:
         for attempt in range(2):
             if attempt:
                 await self._check_active(claim, request, deadline)
             budget.require_model()
             budget.model_requests += 1
             try:
-                return await self._consume(claim, request, deadline, progress)
+                async with report_step(process, "model", f"model/{budget.model_requests}") as step:
+                    turn = await self._consume(claim, request, deadline, progress)
+                    if step:
+                        step.finish(summary="模型请求结束", count=1, outcome=turn.kind)
+                    return turn
             except ProviderFailure as failure:
                 if (
                     request.tools or request.private_output

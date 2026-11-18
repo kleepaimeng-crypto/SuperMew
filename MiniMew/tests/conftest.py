@@ -5,6 +5,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def test_jwt_settings(monkeypatch):
+    # 原生命周期用例保持原事件断言；过程专项显式恢复正式报告器。
+    monkeypatch.setattr("minimew.execution.service.ProcessReporter", lambda *args: None)
     monkeypatch.setenv("MINIMEW_JWT_SECRET", "test-only-signing-key-not-for-production-12345")
     monkeypatch.setenv("MINIMEW_REDIS_PASSWORD", "test-only-redis-not-for-production")
     monkeypatch.setenv("MINIMEW_DEEPSEEK_API_KEY", "test-only-never-call-network")

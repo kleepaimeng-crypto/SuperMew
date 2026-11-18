@@ -1,4 +1,5 @@
 import type {
+  ProcessStepData,
   ErrorCode,
   MessageStatus,
   RunEvent,
@@ -19,6 +20,7 @@ export interface RunProjection extends RunBinding {
   readonly cancelRequestedAt: string | null;
   readonly errorCode: ErrorCode | null;
   readonly tools: readonly ToolProjection[];
+  readonly steps: readonly ProcessStepData[];
   readonly waiting: {
     readonly checkpointId: string;
     readonly prompt: string;
@@ -67,6 +69,7 @@ export function createRunProjection(binding: RunBinding): RunProjection {
     cancelRequestedAt: null,
     errorCode: null,
     tools: [],
+    steps: [],
     waiting: null,
   };
 }
@@ -119,6 +122,45 @@ function transition(
   const cancelling = state.cancelRequestedAt !== null;
 
   switch (event.type) {
+    case "process.step": {
+      if (!running || !messagePending || cancelling) return null;
+      const step = event.data;
+      const old = state.steps.find((s) => s.step_id === step.step_id);
+      if (
+        step.tool_call_id &&
+        !state.tools.some(
+          (t) => t.id === step.tool_call_id && t.status === "running",
+        )
+      )
+        return null;
+      if (step.status === "running") {
+        if (
+          old ||
+          (step.parent_step_id &&
+            !state.steps.some(
+              (p) =>
+                p.step_id === step.parent_step_id &&
+                p.status === "running" &&
+                p.tool_call_id === step.tool_call_id,
+            ))
+        )
+          return null;
+        return { ...state, steps: [...state.steps, step] };
+      }
+      if (
+        !old ||
+        old.status !== "running" ||
+        old.kind !== step.kind ||
+        old.query !== step.query ||
+        old.parent_step_id !== step.parent_step_id ||
+        old.tool_call_id !== step.tool_call_id
+      )
+        return null;
+      return {
+        ...state,
+        steps: state.steps.map((p) => (p.step_id === step.step_id ? step : p)),
+      };
+    }
     case "hitl.required":
       return running && messagePending && !cancelling && state.waiting === null
         ? {

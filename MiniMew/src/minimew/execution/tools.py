@@ -80,6 +80,7 @@ class ToolContext:
     question: str = ""
     hitl: object | None = None
     checkpoint: dict | None = None
+    process: object | None = None
 
     @property
     def execution_identity(self):

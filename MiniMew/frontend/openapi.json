@@ -2429,7 +2429,7 @@
           },
           "chunker": {
             "type": "string",
-            "const": "structure-v1",
+            "enum": ["structure-v1", "structure-v2"],
             "title": "Chunker",
             "default": "structure-v1"
           },
@@ -4815,6 +4815,177 @@
         "required": ["answer"],
         "title": "ModelSnapshot"
       },
+      "ProcessSource": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["document_id", "version_id", "title"],
+        "title": "ProcessSource"
+      },
+      "ProcessStepData": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Step Id"
+          },
+          "parent_step_id": {
+            "type": "string",
+            "pattern": "^([0-9a-f]{32})?$",
+            "title": "Parent Step Id"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "maxLength": 128,
+            "title": "Tool Call Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "model",
+              "retrieval",
+              "dense",
+              "bm25",
+              "fusion",
+              "merge",
+              "rerank",
+              "assessment",
+              "rewrite",
+              "plan",
+              "subquestion"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed"],
+            "title": "Status"
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Query"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 1024,
+            "title": "Summary"
+          },
+          "count": {
+            "type": "integer",
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Count"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessSource"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Sources"
+          },
+          "outcome": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Outcome"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "maximum": 86400000.0,
+            "minimum": 0.0,
+            "title": "Elapsed Ms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step_id",
+          "parent_step_id",
+          "tool_call_id",
+          "kind",
+          "status",
+          "query",
+          "summary",
+          "count",
+          "sources",
+          "outcome",
+          "elapsed_ms"
+        ],
+        "title": "ProcessStepData"
+      },
+      "ProcessStepEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "process.step",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ProcessStepData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "ProcessStepEvent"
+      },
       "ProfileSnapshot": {
         "properties": {
           "profile_id": {
@@ -5641,6 +5812,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/RunResumedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ProcessStepEvent"
                 }
               ],
               "discriminator": {
@@ -5650,6 +5824,7 @@
                   "hitl.required": "#/components/schemas/HitlRequiredEvent",
                   "message.completed": "#/components/schemas/MessageCompletedEvent",
                   "message.delta": "#/components/schemas/MessageDeltaEvent",
+                  "process.step": "#/components/schemas/ProcessStepEvent",
                   "run.cancel_requested": "#/components/schemas/RunCancel_RequestedEvent",
                   "run.cancelled": "#/components/schemas/RunCancelledEvent",
                   "run.completed": "#/components/schemas/RunCompletedEvent",

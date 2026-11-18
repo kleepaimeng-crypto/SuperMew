@@ -447,6 +447,58 @@ class ExecutionRepository:
         except OwnershipLost:
             return False
 
+    async def record_process(self, claim: Claim, data: dict) -> bool:
+        """同一Run锁/owner下保存步骤；未知提交结果用同一payload幂等补写。"""
+        from minimew.generated.run_event_v1 import ProcessStepData
+
+        payload = ProcessStepData.model_validate(data).model_dump(mode="json")
+        try:
+            async with self.sessions() as session, session.begin():
+                run = await self._locked_run(session, claim.user_id, claim.thread_id, claim.run_id)
+                now = await session.scalar(select(func.clock_timestamp()))
+                if (
+                    run.status != "running"
+                    or run.owner_token != claim.owner_token
+                    or run.lease_until <= now
+                    or run.execution_deadline_at is None
+                    or run.execution_deadline_at <= now
+                ):
+                    return False
+                if run.cancel_requested_at is not None:
+                    raise CancellationRequested
+                rows = (
+                    await session.scalars(
+                        select(RunEventRecord).where(
+                            RunEventRecord.run_id == run.id,
+                            RunEventRecord.type == "process.step",
+                            RunEventRecord.data["step_id"].astext == payload["step_id"],
+                        )
+                    )
+                ).all()
+                same = next((r for r in rows if r.data["status"] == payload["status"]), None)
+                if same:
+                    if same.data != payload:
+                        raise ValueError("Process identity reused with different payload")
+                    return True
+                await append_event(session, run, "process.step", data)
+                await session.flush()
+                changed = await session.execute(
+                    update(Run)
+                    .where(
+                        Run.id == run.id,
+                        Run.status == "running",
+                        Run.owner_token == claim.owner_token,
+                        Run.lease_until > func.clock_timestamp(),
+                        Run.execution_deadline_at > func.clock_timestamp(),
+                    )
+                    .values(last_event_sequence=run.last_event_sequence)
+                )
+                if changed.rowcount != 1:
+                    raise OwnershipLost
+            return True
+        except OwnershipLost:
+            return False
+
     async def finish(
         self,
         claim: Claim,

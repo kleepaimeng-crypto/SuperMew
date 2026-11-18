@@ -11,6 +11,9 @@ type Schema = {
   properties?: Record<string, Schema>;
   additionalProperties?: boolean;
   minimum?: number;
+  maximum?: number;
+  maxItems?: number;
+  items?: Schema;
   minLength?: number;
   maxLength?: number;
   format?: string;
@@ -31,6 +34,9 @@ const supported = new Set([
   "properties",
   "additionalProperties",
   "minimum",
+  "maximum",
+  "items",
+  "maxItems",
   "minLength",
   "maxLength",
   "format",
@@ -41,7 +47,10 @@ const supported = new Set([
 function checkSchema(schema: Schema): void {
   if (Object.keys(schema).some((key) => !supported.has(key)))
     throw new Error("Unsupported event schema keyword");
-  if (schema.type && !["object", "string", "integer"].includes(schema.type))
+  if (
+    schema.type &&
+    !["object", "string", "integer", "array"].includes(schema.type)
+  )
     throw new Error("Unsupported event schema type");
   if (schema.format && !["uuid", "date-time"].includes(schema.format))
     throw new Error("Unsupported event schema format");
@@ -50,6 +59,7 @@ function checkSchema(schema: Schema): void {
   Object.values(schema.properties ?? {}).forEach(checkSchema);
   Object.values(schema.$defs ?? {}).forEach(checkSchema);
   schema.oneOf?.forEach(checkSchema);
+  if (schema.items) checkSchema(schema.items);
 }
 checkSchema(contract);
 
@@ -101,6 +111,22 @@ function matches(value: unknown, schema: Schema): boolean {
         value < schema.minimum))
   )
     return false;
+  if (
+    schema.type === "integer" &&
+    typeof value === "number" &&
+    schema.maximum !== undefined &&
+    value > schema.maximum
+  )
+    return false;
+  if (schema.type === "array") {
+    if (
+      !Array.isArray(value) ||
+      !schema.items ||
+      (schema.maxItems !== undefined && value.length > schema.maxItems)
+    )
+      return false;
+    if (!value.every((v) => matches(v, schema.items!))) return false;
+  }
   if (schema.type === "string") {
     if (typeof value !== "string") return false;
     const length = [...value].length;

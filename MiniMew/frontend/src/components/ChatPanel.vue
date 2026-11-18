@@ -177,6 +177,8 @@ function enter(event: KeyboardEvent) {
           <ToolActivity
             v-if="chat.runs[message.run_id]"
             :tools="chat.runs[message.run_id]!.projection.tools"
+            :steps="chat.runs[message.run_id]!.projection.steps"
+            :run-status="chat.runs[message.run_id]!.projection.runStatus"
             :loading="chat.runs[message.run_id]!.activityLoading"
             :loaded="chat.runs[message.run_id]!.activityLoaded"
             :error="chat.runs[message.run_id]!.activityError"

@@ -83,6 +83,36 @@ export interface HitlRequiredData {
 export interface HitlAcceptedData {
   checkpoint_id: string;
 }
+export type ProcessKind =
+  | "model"
+  | "retrieval"
+  | "dense"
+  | "bm25"
+  | "fusion"
+  | "merge"
+  | "rerank"
+  | "assessment"
+  | "rewrite"
+  | "plan"
+  | "subquestion";
+export interface ProcessSource {
+  document_id: string;
+  version_id: string;
+  title: string;
+}
+export interface ProcessStepData {
+  step_id: string;
+  parent_step_id: string;
+  tool_call_id: string;
+  kind: ProcessKind;
+  status: "running" | "completed" | "failed";
+  query: string;
+  summary: string;
+  count: number;
+  sources: ProcessSource[];
+  outcome: string;
+  elapsed_ms: number;
+}
 export interface RunEventBase {
   schema_version: 1;
   event_id: string;
@@ -147,6 +177,10 @@ export interface RunResumedEvent extends RunEventBase {
   type: "run.resumed";
   data: RunStartedData;
 }
+export interface ProcessStepEvent extends RunEventBase {
+  type: "process.step";
+  data: ProcessStepData;
+}
 export type RunEvent =
   | RunCreatedEvent
   | RunStartedEvent
@@ -161,4 +195,5 @@ export type RunEvent =
   | ToolFailedEvent
   | HitlRequiredEvent
   | HitlAcceptedEvent
-  | RunResumedEvent;
+  | RunResumedEvent
+  | ProcessStepEvent;

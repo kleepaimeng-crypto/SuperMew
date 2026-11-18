@@ -124,6 +124,7 @@ it("创建投影从事件起点开始，不持有共享可变状态", () => {
     cancelRequestedAt: null,
     errorCode: null,
     tools: [],
+    steps: [],
     waiting: null,
   });
   expect(first).toEqual(second);

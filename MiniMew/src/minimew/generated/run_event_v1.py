@@ -105,6 +105,41 @@ class HitlAcceptedData(ContractModel):
     checkpoint_id: UUID
 
 
+ProcessKind = Literal[
+    "model",
+    "retrieval",
+    "dense",
+    "bm25",
+    "fusion",
+    "merge",
+    "rerank",
+    "assessment",
+    "rewrite",
+    "plan",
+    "subquestion",
+]
+
+
+class ProcessSource(ContractModel):
+    document_id: UUID
+    version_id: UUID
+    title: str = Field(min_length=1, max_length=200)
+
+
+class ProcessStepData(ContractModel):
+    step_id: str = Field(pattern="^[0-9a-f]{32}$")
+    parent_step_id: str = Field(pattern="^([0-9a-f]{32})?$")
+    tool_call_id: str = Field(max_length=128)
+    kind: ProcessKind
+    status: Literal["running", "completed", "failed"]
+    query: str = Field(max_length=1024)
+    summary: str = Field(max_length=1024)
+    count: int = Field(ge=0, le=1000000)
+    sources: list[ProcessSource] = Field(max_length=6)
+    outcome: str = Field(max_length=64)
+    elapsed_ms: int = Field(ge=0, le=86400000)
+
+
 class RunEventBase(ContractModel):
     schema_version: Literal[1]
     event_id: UUID
@@ -191,6 +226,11 @@ class RunResumedEvent(RunEventBase):
     data: RunStartedData
 
 
+class ProcessStepEvent(RunEventBase):
+    type: Literal["process.step"]
+    data: ProcessStepData
+
+
 RunEvent = Annotated[
     RunCreatedEvent
     | RunStartedEvent
@@ -205,7 +245,8 @@ RunEvent = Annotated[
     | ToolFailedEvent
     | HitlRequiredEvent
     | HitlAcceptedEvent
-    | RunResumedEvent,
+    | RunResumedEvent
+    | ProcessStepEvent,
     Field(discriminator="type"),
 ]
 EVENT_ADAPTER = TypeAdapter(RunEvent)

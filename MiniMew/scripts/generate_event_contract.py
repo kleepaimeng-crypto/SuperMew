@@ -14,9 +14,26 @@ def field_type(spec, *, python):
         if set(spec) != {"$ref"} or not spec["$ref"].startswith("#/$defs/"):
             raise ValueError("Unsupported contract reference")
         return spec["$ref"].split("/")[-1]
-    allowed = {"type", "const", "enum", "format", "minimum", "minLength", "maxLength", "pattern"}
+    allowed = {
+        "type",
+        "const",
+        "enum",
+        "format",
+        "minimum",
+        "minLength",
+        "maxLength",
+        "pattern",
+        "maximum",
+        "items",
+        "maxItems",
+    }
     if set(spec) - allowed:
         raise ValueError("Unsupported field keywords; update generator and tests")
+    if spec.get("type") == "array":
+        item = field_type(spec["items"], python=python)
+        if set(spec) != {"type", "items", "maxItems"}:
+            raise ValueError("Bounded array required")
+        return f"list[{item}]" if python else f"{item}[]"
     if "const" in spec or "enum" in spec:
         values = spec.get("enum", [spec.get("const")])
         literals = ", ".join(repr(v) for v in values)
@@ -45,6 +62,8 @@ def object_fields(spec, *, python):
         kind = field_type(prop, python=python)
         bounds = {
             "minimum": "ge",
+            "maximum": "le",
+            "maxItems": "max_length",
             "minLength": "min_length",
             "maxLength": "max_length",
             "pattern": "pattern",

@@ -5,6 +5,7 @@ import time
 from dataclasses import replace
 
 from minimew.documents.retrieval import scoped_index, search_published
+from minimew.execution.process import report_step
 from minimew.rag.fusion import fuse
 from minimew.rag.merging import complete, select
 from minimew.rag.protocol import (
@@ -22,7 +23,36 @@ class RagPipeline:
     def __init__(self, sessions, runtime, *, retriever=search_published):
         self.sessions, self.runtime, self.retriever = sessions, runtime, retriever
 
-    async def search(self, query, scope, user_id, policy=None, *, deadline=None):
+    async def search(
+        self,
+        query,
+        scope,
+        user_id,
+        policy=None,
+        *,
+        deadline=None,
+        process=None,
+        step_key="retrieval",
+    ):
+        async with report_step(process, "retrieval", step_key, query=query) as step:
+            result = await self._search(
+                query,
+                scope,
+                user_id,
+                policy,
+                deadline=deadline,
+                process=step.reporter if step else None,
+            )
+            if step:
+                step.finish(
+                    summary="已保留检索材料",
+                    count=len(result.rows),
+                    sources=process_sources(result.rows, scope),
+                    outcome=result.trace.fallback or "ok",
+                )
+            return result
+
+    async def _search(self, query, scope, user_id, policy=None, *, deadline=None, process=None):
         from types import SimpleNamespace
 
         runtime = self.runtime
@@ -42,73 +72,126 @@ class RagPipeline:
         )
         if policy.strategy == "hybrid" and not hybrid:
             trace.fallback = "HYBRID_LAYOUT_UNAVAILABLE"
-        hits = await self.retriever(
-            self.sessions,
-            runtime.index,
-            scope,
-            user_id,
-            vector,
-            PROFILE,
-            top_k=policy.recall_k if hybrid else 3,
-            offload=runtime.sync,
-        )
-        trace.stages = {"dense_count": len(hits), "seconds": time.monotonic() - started}
-        if hybrid:
-            lexical = await self.retriever(
+        async with report_step(process, "dense", "dense") as stage:
+            hits = await self.retriever(
                 self.sessions,
                 runtime.index,
                 scope,
                 user_id,
                 vector,
                 PROFILE,
-                top_k=policy.recall_k,
+                top_k=policy.recall_k if hybrid else 3,
                 offload=runtime.sync,
-                lexical_query=query,
             )
-            candidates = fuse(hits, lexical, policy)
+            if stage:
+                stage.finish(
+                    summary="向量召回完成", count=len(hits), sources=process_sources(hits, scope)
+                )
+        trace.stages = {"dense_count": len(hits), "seconds": time.monotonic() - started}
+        if hybrid:
+            async with report_step(process, "bm25", "bm25") as stage:
+                lexical = await self.retriever(
+                    self.sessions,
+                    runtime.index,
+                    scope,
+                    user_id,
+                    vector,
+                    PROFILE,
+                    top_k=policy.recall_k,
+                    offload=runtime.sync,
+                    lexical_query=query,
+                )
+                if stage:
+                    stage.finish(
+                        summary="关键词召回完成",
+                        count=len(lexical),
+                        sources=process_sources(lexical, scope),
+                    )
+            async with report_step(process, "fusion", "fusion") as stage:
+                candidates = fuse(hits, lexical, policy)
+                if stage:
+                    stage.finish(summary="召回融合完成", count=len(candidates))
             trace.stages.update(bm25_count=len(lexical), fused_count=len(candidates))
-            groups = await complete(candidates, scope, runtime, policy, trace)
+            async with report_step(process, "merge", "merge") as stage:
+                groups = await complete(candidates, scope, runtime, policy, trace)
+                if stage:
+                    stage.finish(
+                        summary="同节材料补全完成", count=sum(len(g.members) for g in groups)
+                    )
             if policy.rerank and candidates:
-                trace.attempts = 1
-                pairs = tuple(c for g in groups for c in g.members)
-                rerank_started = time.monotonic()
-                try:
-                    values = await runtime.sync(
-                        runtime.reranker.score,
-                        query,
-                        [c.row["payload"]["embedding_text"] for c in pairs],
-                        deadline=deadline,
-                    )
-                    if len(values) != len(pairs) or not all(math.isfinite(v) for v in values):
-                        raise RerankError("RERANK_INVALID_OUTPUT")
-                    scores = {c.key: s for c, s in zip(pairs, values)}
-                    groups = tuple(
-                        replace(
-                            g,
-                            members=tuple(replace(c, rerank=scores[c.key]) for c in g.members),
-                            seeds=tuple(replace(c, rerank=scores[c.key]) for c in g.seeds),
+                async with report_step(process, "rerank", "rerank") as stage:
+                    trace.attempts = 1
+                    pairs = tuple(c for g in groups for c in g.members)
+                    rerank_started = time.monotonic()
+                    try:
+                        values = await runtime.sync(
+                            runtime.reranker.score,
+                            query,
+                            [c.row["payload"]["embedding_text"] for c in pairs],
+                            deadline=deadline,
                         )
-                        for g in groups
-                    )
-                    groups = tuple(
-                        sorted(
-                            groups,
-                            key=lambda g: (
-                                -max(c.rerank for c in g.members),
-                                -max(c.rrf or 0 for c in g.members),
-                                g.members[0].key,
-                            ),
+                        if len(values) != len(pairs) or not all(math.isfinite(v) for v in values):
+                            raise RerankError("RERANK_INVALID_OUTPUT")
+                        scores = {c.key: s for c, s in zip(pairs, values)}
+                        groups = tuple(
+                            replace(
+                                g,
+                                members=tuple(replace(c, rerank=scores[c.key]) for c in g.members),
+                                seeds=tuple(replace(c, rerank=scores[c.key]) for c in g.seeds),
+                            )
+                            for g in groups
                         )
-                    )
-                except RerankError as exc:
-                    if exc.code == "RERANK_DEADLINE_EXCEEDED":
-                        from minimew.execution.tools import ToolFailure
+                        groups = tuple(
+                            sorted(
+                                groups,
+                                key=lambda g: (
+                                    -max(c.rerank for c in g.members),
+                                    -max(c.rrf or 0 for c in g.members),
+                                    g.members[0].key,
+                                ),
+                            )
+                        )
+                    except RerankError as exc:
+                        if exc.code == "RERANK_DEADLINE_EXCEEDED":
+                            from minimew.execution.tools import ToolFailure
 
-                        raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
-                    trace.fallback = exc.code
-                trace.stages["rerank_seconds"] = time.monotonic() - rerank_started
+                            raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
+                        trace.fallback = exc.code
+                    trace.stages["rerank_seconds"] = time.monotonic() - rerank_started
+                    if stage:
+                        stage.finish(
+                            summary="重排结束", count=len(pairs), outcome=trace.fallback or "ok"
+                        )
             trace.stages["seconds"] = time.monotonic() - started
             return RetrievalResult(select(groups, policy.final_k, trace), trace)
         return RetrievalResult(
             tuple(MaterialGroup((Candidate(row, dense=row["score"]),)) for row in hits), trace
         )
+
+
+def process_sources(rows, scope):
+    """只公开当前返回候选的有界来源；不序列化向量、原文或整个scope。"""
+    sources = {}
+    for row in rows:
+        payload = row["payload"]
+        identity = payload["identity"]
+        document_id, version_id = identity["document_id"], identity["version_id"]
+        key = str(document_id), str(version_id)
+        if key in sources or len(sources) >= 6:
+            continue
+        title = "文档 " + str(document_id)[:8]
+        for build in getattr(scope, "directory", ()):
+            section = next(
+                (x for x in build.sections if str(x.section_id) == str(payload["section_id"])), None
+            )
+            if section and section.title_path:
+                title = " / ".join(section.title_path)
+                break
+        from uuid import UUID
+
+        sources[key] = {
+            "document_id": UUID(str(document_id)),
+            "version_id": UUID(str(version_id)),
+            "title": title[:200],
+        }
+    return tuple(sources.values())

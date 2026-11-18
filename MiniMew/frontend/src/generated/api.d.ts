@@ -717,9 +717,9 @@ export interface components {
       /**
        * Chunker
        * @default structure-v1
-       * @constant
+       * @enum {string}
        */
-      chunker: "structure-v1";
+      chunker: "structure-v1" | "structure-v2";
       /** Chunk Tokens */
       chunk_tokens: number;
       /** Overlap Tokens */
@@ -1840,6 +1840,99 @@ export interface components {
       repairs?: components["schemas"]["RepairPolicy"] | null;
       hitl?: components["schemas"]["HitlPolicy"] | null;
     };
+    /** ProcessSource */
+    ProcessSource: {
+      /**
+       * Document Id
+       * Format: uuid
+       */
+      document_id: string;
+      /**
+       * Version Id
+       * Format: uuid
+       */
+      version_id: string;
+      /** Title */
+      title: string;
+    };
+    /** ProcessStepData */
+    ProcessStepData: {
+      /** Step Id */
+      step_id: string;
+      /** Parent Step Id */
+      parent_step_id: string;
+      /** Tool Call Id */
+      tool_call_id: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind:
+        | "model"
+        | "retrieval"
+        | "dense"
+        | "bm25"
+        | "fusion"
+        | "merge"
+        | "rerank"
+        | "assessment"
+        | "rewrite"
+        | "plan"
+        | "subquestion";
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "running" | "completed" | "failed";
+      /** Query */
+      query: string;
+      /** Summary */
+      summary: string;
+      /** Count */
+      count: number;
+      /** Sources */
+      sources: components["schemas"]["ProcessSource"][];
+      /** Outcome */
+      outcome: string;
+      /** Elapsed Ms */
+      elapsed_ms: number;
+    };
+    /** ProcessStepEvent */
+    ProcessStepEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "process.step";
+      data: components["schemas"]["ProcessStepData"];
+    };
     /** ProfileSnapshot */
     ProfileSnapshot: {
       /**
@@ -2336,6 +2429,7 @@ export interface components {
         | components["schemas"]["HitlRequiredEvent"]
         | components["schemas"]["HitlAcceptedEvent"]
         | components["schemas"]["RunResumedEvent"]
+        | components["schemas"]["ProcessStepEvent"]
       )[];
       /** Next Cursor */
       next_cursor: number;

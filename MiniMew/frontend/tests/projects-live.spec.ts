@@ -7,6 +7,13 @@ test("真实项目/文档索引隔离、手工记忆与下线历史引用", asyn
     "Owned project runner only",
   );
   test.setTimeout(240000);
+  page.on("response", (r) => {
+    if (r.status() >= 400)
+      console.log("HTTP", r.status(), new URL(r.url()).pathname);
+  });
+  page.on("requestfailed", (r) =>
+    console.log("NETWORK", new URL(r.url()).pathname, r.failure()?.errorText),
+  );
   page.on("dialog", (dialog) => dialog.accept());
   const username = "project_" + Date.now();
   await page.goto("/register");
@@ -67,6 +74,44 @@ test("真实项目/文档索引隔离、手工记忆与下线历史引用", asyn
   await expect(answer.getByRole("region", { name: "引用原文" })).toContainText(
     "论文项目制度",
   );
+  await answer.locator(".tool-activity summary").click();
+  await expect(answer.locator(".process-steps")).toContainText("餐费");
+  await expect(answer.locator(".process-steps")).toContainText("向量召回");
+  await expect(answer.locator(".process-steps")).toContainText("论文项目制度");
+  await page.screenshot({
+    path: info.outputPath("process-desktop.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 850 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("process-mobile.png"),
+    fullPage: true,
+  });
+  await answer
+    .locator(".process-steps")
+    .getByText("向量召回", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath("mobile-steps.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await answer
+    .locator(".process-steps")
+    .getByText("向量召回", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath("desktop-steps.png"),
+    fullPage: true,
+  });
+  await page.reload();
+  await answer.locator(".tool-activity summary").click();
+  await expect(answer.locator(".process-steps")).toContainText("论文项目制度");
   await page.goto("/projects");
   const second = await project("报销项目");
   await page.getByRole("link", { name: "管理项目文档" }).click();

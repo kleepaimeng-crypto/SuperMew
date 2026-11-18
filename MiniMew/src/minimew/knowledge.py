@@ -22,6 +22,7 @@ from minimew.embeddings.errors import EmbeddingError
 from minimew.evidence import EvidenceLimit, EvidenceSource
 from minimew.execution.diagnostics import capture, emit
 from minimew.execution.messages import valid_text
+from minimew.execution.process import report_step
 from minimew.execution.tools import ToolContext, ToolFailure, ToolModel, ToolSpec
 from minimew.rag.pipeline import RagPipeline
 from minimew.rag.protocol import MaterialGroup, RetrievalResult
@@ -94,6 +95,11 @@ class KnowledgeCalculation:
             if scope.user_id != context.user_id:
                 raise ToolFailure("TOOL_PERMISSION_DENIED")
             if not scope.targets:
+                async with report_step(
+                    context.process, "retrieval", "initial", query=arguments.query
+                ) as step:
+                    if step:
+                        step.finish(summary="当前范围没有已发布文档", outcome="no_documents")
                 return KnowledgeResult(status="no_documents")
             if context.reasoning is not None and context.checkpoint is None:
                 context.run_budget.take_retrieval()
@@ -112,6 +118,8 @@ class KnowledgeCalculation:
                     context.user_id,
                     context.rag_policy,
                     deadline=context.deadline,
+                    process=context.process,
+                    step_key="initial",
                 )
             context.trace_state.last_trace = result.trace
         except EmbeddingError as error:
@@ -158,14 +166,20 @@ class KnowledgeCalculation:
         if context.reasoning is not None:
             from minimew.rag.workflow import run_workflow
 
-            async def retrieve(query):
+            async def retrieve(query, *, process=None, step_key="followup"):
                 context.run_budget.take_retrieval()
                 if context.progress is not None:
                     await context.progress()
                 extra = await RagPipeline(
                     self.sessions, self.runtime, retriever=search_published
                 ).search(
-                    query, scope, context.user_id, context.rag_policy, deadline=context.deadline
+                    query,
+                    scope,
+                    context.user_id,
+                    context.rag_policy,
+                    deadline=context.deadline,
+                    process=process,
+                    step_key=step_key,
                 )
                 if extra.trace.fallback:
                     emit(

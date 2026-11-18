@@ -51,7 +51,8 @@
         "tool.failed",
         "hitl.required",
         "hitl.accepted",
-        "run.resumed"
+        "run.resumed",
+        "process.step"
       ]
     },
     "timestamp": {
@@ -349,6 +350,117 @@
           "format": "uuid"
         }
       }
+    },
+    "ProcessKind": {
+      "type": "string",
+      "enum": [
+        "model",
+        "retrieval",
+        "dense",
+        "bm25",
+        "fusion",
+        "merge",
+        "rerank",
+        "assessment",
+        "rewrite",
+        "plan",
+        "subquestion"
+      ]
+    },
+    "ProcessSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "version_id",
+        "title"
+      ],
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "version_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "ProcessStepData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "parent_step_id",
+        "tool_call_id",
+        "kind",
+        "status",
+        "query",
+        "summary",
+        "count",
+        "sources",
+        "outcome",
+        "elapsed_ms"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "parent_step_id": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{32})?$"
+        },
+        "tool_call_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "kind": {
+          "$ref": "#/$defs/ProcessKind"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "running",
+            "completed",
+            "failed"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/ProcessSource"
+          }
+        },
+        "outcome": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
+        }
+      }
     }
   },
   "oneOf": [
@@ -489,6 +601,16 @@
         },
         "data": {
           "$ref": "#/$defs/RunStartedData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "process.step"
+        },
+        "data": {
+          "$ref": "#/$defs/ProcessStepData"
         }
       }
     }
