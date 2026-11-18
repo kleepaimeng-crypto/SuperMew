@@ -13,6 +13,7 @@ from minimew.execution.messages import (
     ToolDefinition,
     validate_messages,
 )
+from minimew.execution.project_context import ProjectContext
 from minimew.model_control import ModelSnapshot
 
 
@@ -28,8 +29,13 @@ class ProviderRequest:
     private_output: bool = False
     force_answer: bool = False
     case_identity: CaseIdentity | None = None
+    project_context: ProjectContext | None = None
 
     def __post_init__(self):
+        if self.project_context is not None and (
+            not isinstance(self.project_context, ProjectContext) or self.case_identity is not None
+        ):
+            raise ValueError("Project chat context requires a chat request")
         if self.case_identity is not None and (
             not isinstance(self.case_identity, CaseIdentity)
             or self.run_id is not None

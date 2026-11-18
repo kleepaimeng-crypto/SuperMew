@@ -12,10 +12,11 @@ from sqlalchemy.orm import aliased
 
 from minimew.conversations import ConversationNotFound, owned_thread, run_messages, run_response
 from minimew.evidence import AnswerMaterials, validate_materials
-from minimew.execution.context import build_messages
+from minimew.execution.context import ContextInvalid, build_messages
 from minimew.execution.control import CancellationRequested, OwnershipLost
 from minimew.execution.journal import append_event
 from minimew.execution.messages import MAX_OUTPUT_CHARS, valid_text
+from minimew.execution.project_context import load_project_context
 from minimew.execution.provider import (
     MAX_DELTA_CHARS,
     ProviderRequest,
@@ -232,7 +233,15 @@ class ExecutionRepository:
             messages = build_messages(current.content, rows, max_chars=60000 - len(memory_text))
             if memory_text:
                 messages = (InputMessage("user", memory_text), *messages)
-            return ProviderRequest(claim.run_id, claim.thread_id, snapshot, messages)
+            try:
+                project_context = await load_project_context(
+                    session, claim.user_id, claim.thread_id
+                )
+            except ValueError:
+                raise ContextInvalid from None
+            return ProviderRequest(
+                claim.run_id, claim.thread_id, snapshot, messages, project_context=project_context
+            )
 
     async def remaining(self, claim: Claim) -> float:
         """仅返回已激活的活动预算；短租约不能冒充计算时限。"""

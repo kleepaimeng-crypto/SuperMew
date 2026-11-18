@@ -353,7 +353,12 @@ class RunExecutor:
                     request = replace(
                         request,
                         force_answer=True,
-                        instructions=chat_instructions(context, request.tools, force_answer=True),
+                        instructions=chat_instructions(
+                            context,
+                            request.tools,
+                            project=request.project_context,
+                            force_answer=True,
+                        ),
                     )
                 turn = await self._model_turn(
                     claim, request, deadline, progress, budget, context.process
@@ -433,7 +438,9 @@ class RunExecutor:
                 request = replace(
                     request,
                     messages=(*request.messages, assistant, *results),
-                    instructions=chat_instructions(context, request.tools),
+                    instructions=chat_instructions(
+                        context, request.tools, project=request.project_context
+                    ),
                 )
             except ValueError:
                 raise ContextInvalid from None
@@ -477,7 +484,12 @@ class RunExecutor:
     @staticmethod
     def _with_instructions(request, context):
         try:
-            return replace(request, instructions=chat_instructions(context, request.tools))
+            return replace(
+                request,
+                instructions=chat_instructions(
+                    context, request.tools, project=request.project_context
+                ),
+            )
         except ValueError:
             raise ContextInvalid from None
 
