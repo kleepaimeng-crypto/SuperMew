@@ -87,7 +87,7 @@ test("失败与成功降级分别解释，历史过程可读", async ({ page }, 
     return route.fulfill({ json: { items: [thread], next_offset: null } });
   });
   await page.goto("/threads/" + ids.thread);
-  await page.locator(".tool-activity summary").click();
+  await expect(page.locator(".tool-activity")).toHaveAttribute("open", "");
   await expect(page.locator(".process-steps")).toContainText("本阶段未完成");
   await expect(page.locator(".process-steps")).toContainText(
     "重排未完成，保留召回顺序",

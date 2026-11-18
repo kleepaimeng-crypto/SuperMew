@@ -26,14 +26,23 @@ const acceptedMissing = computed(
 watch(
   () =>
     chat.displayMessages
-      .map((message) => `${message.id}:${message.content}`)
+      .map(
+        (message) =>
+          `${message.id}:${message.content}:${message.status}:${JSON.stringify(liveSteps(message.run_id))}`,
+      )
       .join("\n"),
-  async () => {
-    if (!nearEnd.value) return;
-    await nextTick();
-    if (feed.value) feed.value.scrollTop = feed.value.scrollHeight;
-  },
+  followFeed,
 );
+function liveSteps(id: string) {
+  const view = chat.runs[id];
+  return view && !terminal(chat.runStatus(view)) ? view.projection.steps : [];
+}
+async function followFeed() {
+  if (!nearEnd.value) return;
+  await nextTick();
+  if (feed.value) feed.value.scrollTop = feed.value.scrollHeight;
+}
+
 async function send() {
   nearEnd.value = true;
   if (await chat.submit()) void threads.loadList(true);
@@ -110,14 +119,35 @@ function enter(event: KeyboardEvent) {
         <div class="message-author">
           {{ message.role === "user" ? "你" : "MiniMew" }}
         </div>
+        <ToolActivity
+          v-if="message.role === 'assistant' && chat.runs[message.run_id]"
+          :tools="chat.runs[message.run_id]!.projection.tools"
+          :steps="chat.runs[message.run_id]!.projection.steps"
+          :run-status="
+            chat.runs[message.run_id]!.projection.cursor
+              ? chat.runs[message.run_id]!.projection.runStatus
+              : chat.runs[message.run_id]!.run.status
+          "
+          :loading="chat.runs[message.run_id]!.activityLoading"
+          :loaded="chat.runs[message.run_id]!.activityLoaded"
+          :error="chat.runs[message.run_id]!.activityError"
+          @load="chat.loadActivity(message.run_id)"
+          @layout="followFeed"
+        />
         <AnswerBody
-          v-if="message.role === 'assistant'"
+          v-if="
+            message.role === 'assistant' &&
+            (message.status !== 'pending' ||
+              !chat.runs[message.run_id]?.projection.steps.length)
+          "
           :message="message"
           :answer="chat.answers[message.run_id]"
           @retry="chat.loadAnswer(message.run_id, true)"
           @refresh-source="chat.loadAnswer(message.run_id, true)"
         />
-        <div v-else class="message-body">{{ message.content }}</div>
+        <div v-if="message.role === 'user'" class="message-body">
+          {{ message.content }}
+        </div>
         <template v-if="message.role === 'assistant'">
           <RunFailure
             :failure="chat.failureInfo(message.run_id)"
@@ -174,16 +204,6 @@ function enter(event: KeyboardEvent) {
               {{ chat.runs[message.run_id]!.resumeError }}
             </p>
           </form>
-          <ToolActivity
-            v-if="chat.runs[message.run_id]"
-            :tools="chat.runs[message.run_id]!.projection.tools"
-            :steps="chat.runs[message.run_id]!.projection.steps"
-            :run-status="chat.runs[message.run_id]!.projection.runStatus"
-            :loading="chat.runs[message.run_id]!.activityLoading"
-            :loaded="chat.runs[message.run_id]!.activityLoaded"
-            :error="chat.runs[message.run_id]!.activityError"
-            @load="chat.loadActivity(message.run_id)"
-          />
           <div class="message-meta">
             <span role="status">{{ chat.statusLabel(message.run_id) }}</span>
             <button

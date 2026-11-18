@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import type { ProcessStepData, RunStatus } from "../generated/run-event-v1";
 import type { ToolProjection } from "../events/runEventReducer";
 import { errorPresentation } from "../runErrors";
@@ -24,9 +24,42 @@ const kinds: Record<string, string> = {
   plan: "拆解问题",
   subquestion: "子问题",
 };
-const current = computed(() =>
-  [...(props.steps ?? [])].reverse().find((s) => s.status === "running"),
+const active = computed(() =>
+  ["pending", "running", "waiting_input", "resume_pending"].includes(
+    props.runStatus ?? "",
+  ),
 );
+const expanded = ref(false);
+watch(
+  () => props.runStatus,
+  (status) => {
+    if (status === "succeeded") expanded.value = false;
+    else if (status) expanded.value = true;
+  },
+  { immediate: true },
+);
+function description(step: ProcessStepData) {
+  if (step.status === "failed") return "本阶段未完成";
+  if (step.status === "completed")
+    return step.summary || `${kinds[step.kind]}结束`;
+  const actions: Record<string, string> = {
+    model: "正在请求模型",
+    retrieval: "正在检索相关资料",
+    dense: "正在匹配语义相关片段",
+    bm25: "正在匹配关键词",
+    fusion: "正在合并检索结果",
+    merge: "正在补全同节材料",
+    rerank: "正在重排候选片段",
+    assessment: "正在评判材料是否足够",
+    rewrite: "正在改写检索问题",
+    plan: "正在拆解检索问题",
+    subquestion: "正在处理子问题",
+  };
+  if (props.runStatus === "waiting_input") return "已暂停，等待补充信息";
+  if (["failed", "cancelled"].includes(props.runStatus ?? ""))
+    return "本阶段已停止";
+  return actions[step.kind] ?? kinds[step.kind]!;
+}
 function state(step: ProcessStepData) {
   if (step.status === "failed") return "未完成";
   if (step.status === "completed")
@@ -74,7 +107,7 @@ function outcomeText(step: ProcessStepData) {
     (step.kind === "rerank" ? "重排未完成，保留召回顺序" : "阶段采用降级结果")
   );
 }
-const emit = defineEmits<{ load: [] }>();
+const emit = defineEmits<{ load: []; layout: [] }>();
 const names: Record<string, string> = { knowledge_search: "查询知识库" };
 const labels: Record<ToolProjection["status"], string> = {
   running: "执行中",
@@ -84,22 +117,25 @@ const labels: Record<ToolProjection["status"], string> = {
   interrupted: "执行中断",
 };
 function toggled(event: Event) {
-  if ((event.target as HTMLDetailsElement).open) emit("load");
+  expanded.value = (event.target as HTMLDetailsElement).open;
+  if (expanded.value) emit("load");
+  if (active.value || !expanded.value) emit("layout");
 }
 </script>
 
 <template>
-  <p
-    v-if="current && runStatus === 'running'"
-    role="status"
-    class="process-current"
-  >
-    {{ kinds[current.kind]
-    }}<span v-if="current.query">：{{ current.query }}</span>
-  </p>
-  <details class="tool-activity" @toggle="toggled">
+  <details class="tool-activity" :open="expanded" @toggle="toggled">
     <summary>
-      执行过程<span v-if="tools.length"> · {{ tools.length }}次工具调用</span>
+      {{
+        active
+          ? runStatus === "waiting_input"
+            ? "等待补充"
+            : "执行中"
+          : "执行过程"
+      }}
+      <span v-if="steps?.length"> · {{ steps.length }}个步骤</span>
+      <span v-else-if="tools.length"> · {{ tools.length }}次工具调用</span>
+      <span v-if="runStatus === 'succeeded'"> · 已完成</span>
     </summary>
     <p v-if="loading" role="status">正在加载执行过程…</p>
     <ol v-if="steps?.length" class="process-steps">
@@ -117,13 +153,16 @@ function toggled(event: Event) {
             ></span
           >
         </div>
-        <p v-if="step.query">查询：{{ step.query }}</p>
-        <p v-if="step.summary">
-          {{ step.summary }}<span v-if="step.count"> · {{ step.count }}项</span>
+        <p class="step-description">
+          {{ description(step)
+          }}<span v-if="step.count"> · {{ step.count }}项</span>
         </p>
+        <p v-if="step.query">查询：{{ step.query }}</p>
         <p
           v-if="
-            step.outcome && !['ok', 'text', 'tool_calls'].includes(step.outcome)
+            step.status !== 'failed' &&
+            step.outcome &&
+            !['ok', 'text', 'tool_calls'].includes(step.outcome)
           "
         >
           结果：{{ outcomeText(step) }}
@@ -136,7 +175,7 @@ function toggled(event: Event) {
         </ul>
       </li>
     </ol>
-    <ol v-if="tools.length">
+    <ol v-if="tools.length && !steps?.length">
       <li v-for="tool in tools" :key="tool.id">
         <span>{{ names[tool.name] || tool.name }}</span>
         <span
@@ -153,6 +192,9 @@ function toggled(event: Event) {
         </p>
       </li>
     </ol>
+    <p v-else-if="active && !steps?.length">
+      请求已接收，执行步骤会依次显示在这里。
+    </p>
     <p v-else-if="loaded && !steps?.length">这次回答没有已保存的工具记录。</p>
     <p v-else-if="!loading && !error && !steps?.length">
       工具执行后会在这里显示记录。
@@ -167,11 +209,6 @@ function toggled(event: Event) {
 </template>
 
 <style scoped>
-.process-current {
-  font-size: 13px;
-  color: #294e39;
-  overflow-wrap: anywhere;
-}
 .process-steps > li {
   display: block;
   max-width: 100%;
@@ -194,8 +231,10 @@ function toggled(event: Event) {
 
 .tool-activity {
   margin-top: 12px;
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1.7;
   color: #536552;
+  margin-bottom: 18px;
 }
 summary {
   cursor: pointer;
@@ -219,7 +258,7 @@ li {
   gap: 20px;
   max-width: 420px;
   padding: 7px 0;
-  border-bottom: 1px solid #dde2dc;
+  border-bottom: 1px solid #e5e9e3;
 }
 .tool-failure-reason {
   flex-basis: 100%;
