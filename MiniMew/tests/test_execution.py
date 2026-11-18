@@ -10,24 +10,26 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from minimew.execution.context import ContextInvalid, build_messages
+from minimew.execution.context import HISTORY_NOTICE, ContextInvalid, build_messages
 from minimew.generated.run_event_v1 import EVENT_ADAPTER
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_input_history_uses_complete_recent_pairs_and_keeps_current():
-    messages = build_messages("now", [("new", "answer"), ("old", "response")], max_chars=12)
+    messages = build_messages(
+        "now", [("new", "answer"), ("old", "response")], max_chars=12 + len(HISTORY_NOTICE)
+    )
     assert [(m.role, m.content) for m in messages] == [
         ("user", "new"),
-        ("assistant", "answer"),
+        ("assistant", HISTORY_NOTICE + "answer"),
         ("user", "now"),
     ]
     assert [m.content for m in build_messages("now", [("new", "answer"), ("old", "response")])] == [
         "old",
-        "response",
+        HISTORY_NOTICE + "response",
         "new",
-        "answer",
+        HISTORY_NOTICE + "answer",
         "now",
     ]
     assert [

@@ -44,6 +44,48 @@ async def collect(data, provider=None):
     return [event async for event in provider.stream(data)]
 
 
+def test_executor_sends_first_turn_system_rules_and_preserves_auto_choice(
+    transport, model_configuration
+):
+    from uuid import uuid4
+
+    from test_execution_retry import Repository
+    from test_tools import spec
+
+    from minimew.execution.prompts import CHAT_INSTRUCTIONS
+    from minimew.execution.service import RunExecutor
+    from minimew.execution.tools import ToolRegistry
+
+    async def response(req):
+        body = json.loads(req.content)
+        assert body["messages"][0]["role"] == "system"
+        assert CHAT_INSTRUCTIONS in body["messages"][0]["content"]
+        assert '"knowledge_status": "not_searched"' in body["messages"][0]["content"]
+        assert body["messages"][-1] == {"role": "user", "content": "now"}
+        assert body["tool_choice"] == "auto"
+        return sse(chunk("普通回答，未检索。"), chunk(finish="stop"))
+
+    requests, clients = transport(response)
+
+    async def scenario():
+        repo = Repository(request(model_configuration))
+
+        async def forbidden(*args):
+            raise AssertionError("A direct model answer must not execute tools")
+
+        executor = RunExecutor(
+            repo,
+            adapter.DeepSeekProvider(SecretStr("test-key")),
+            registry=ToolRegistry((spec(forbidden),)),
+            capabilities=frozenset({"documents.read"}),
+        )
+        assert await executor.execute(uuid4(), repo.data.thread_id, repo.data.run_id) == "succeeded"
+        repo.record_tool.assert_not_awaited()
+
+    asyncio.run(scenario())
+    assert len(requests) == 1 and all(client.is_closed for client in clients)
+
+
 def test_fragmented_arguments_buffer_entire_turn_and_preserve_call_identity(
     transport, model_configuration
 ):

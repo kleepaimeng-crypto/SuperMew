@@ -159,7 +159,8 @@ def test_executor_passes_run_owned_materials_and_has_no_correction_round(
                     ModelTurn("tool_calls", "", (ToolCall("c", NAME, '{"query":"餐费"}'),))
                 )
             else:
-                assert data.instructions == ANSWER_INSTRUCTIONS
+                assert ANSWER_INSTRUCTIONS in data.instructions
+                assert '"knowledge_status": "searched_with_evidence"' in data.instructions
                 value = json.loads(data.messages[-1].content)
                 assert value["matches"][0]["citation_id"] == "E1"
                 yield ProviderCompleted(

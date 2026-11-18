@@ -53,7 +53,10 @@ def test_retry_reuses_claim_request_and_snapshot(model_configuration):
         provider = FakeProvider(answer)
         assert await execute(repo, provider) == "succeeded"
         assert len(provider.requests) == 2
-        assert provider.requests[0] is provider.requests[1] is repo.data
+        assert provider.requests[0] is provider.requests[1]
+        assert provider.requests[0].snapshot is repo.data.snapshot
+        assert provider.requests[0].messages == repo.data.messages
+        assert provider.requests[0].instructions  # 首轮规则在执行前统一组装。
         repo.claim.assert_awaited_once()
         repo.request.assert_awaited_once()
         repo.append_delta.assert_awaited_once_with(repo.claimed, "answer")

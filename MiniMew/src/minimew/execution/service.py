@@ -10,12 +10,12 @@ from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from minimew.evidence import ANSWER_INSTRUCTIONS, AnswerResult
+from minimew.evidence import AnswerResult
 from minimew.execution.budget import ExecutionBudget as RunBudget
 from minimew.execution.context import ContextInvalid
 from minimew.execution.control import ExecutionStorageUnavailable
 from minimew.execution.diagnostics import capture, emit
-from minimew.execution.grounded import grounded_answer
+from minimew.execution.grounded import direct_answer, grounded_answer
 from minimew.execution.messages import (
     MAX_OUTPUT_CHARS,
     InputMessage,
@@ -23,6 +23,7 @@ from minimew.execution.messages import (
     valid_text,
     validate_turn,
 )
+from minimew.execution.prompts import chat_instructions
 from minimew.execution.provider import (
     MAX_DELTA_CHARS,
     Provider,
@@ -316,6 +317,7 @@ class RunExecutor:
                 messages=resume["outer"]["messages"],
                 instructions=resume["outer"]["instructions"],
             )
+        request = self._with_instructions(request, context)
         if context.reasoning is not None:
             from minimew.execution.reasoning import RunModelCaller
 
@@ -343,9 +345,7 @@ class RunExecutor:
                     request = replace(
                         request,
                         force_answer=True,
-                        instructions=request.instructions
-                        + "\n检索探索阶段已结束。不要再调用工具；基于已有材料输出最终回答，"
-                        "未被资料验证或预算内未完成验证的内容必须明确说明。",
+                        instructions=chat_instructions(context, request.tools, force_answer=True),
                     )
                 turn = await self._model_turn(claim, request, deadline, progress, budget)
             if turn.kind == "text":
@@ -353,7 +353,7 @@ class RunExecutor:
                     return await self._grounded_answer(
                         claim, request, turn, context, deadline, progress, budget
                     )
-                return AnswerResult(turn.content)
+                return direct_answer(turn.content)
             await self._check_active(claim, request, deadline)
             if request.force_answer:
                 raise ProviderFailure(
@@ -415,20 +415,7 @@ class RunExecutor:
                 request = replace(
                     request,
                     messages=(*request.messages, assistant, *results),
-                    instructions=ANSWER_INSTRUCTIONS
-                    + (
-                        "工具assessment是材料覆盖评判；明确交代不足、歧义与冲突，"
-                        "不可把有命中当作足够回答，不可把模型补充当成资料事实。"
-                        if context.reasoning is not None
-                        else ""
-                    )
-                    + (
-                        "文档分区直接从带实际依据引用的事实段落开始，不要单独写无引用导语。"
-                        if context.repairs is not None
-                        else ""
-                    )
-                    if context.evidence.queried
-                    else request.instructions,
+                    instructions=chat_instructions(context, request.tools),
                 )
             except ValueError:
                 raise ContextInvalid from None
@@ -454,6 +441,13 @@ class RunExecutor:
                 if attempt or asyncio.get_running_loop().time() + 0.1 >= deadline:
                     raise ExecutionStorageUnavailable from None
                 await asyncio.sleep(0.1)
+
+    @staticmethod
+    def _with_instructions(request, context):
+        try:
+            return replace(request, instructions=chat_instructions(context, request.tools))
+        except ValueError:
+            raise ContextInvalid from None
 
     @staticmethod
     def _with_messages(request, messages):

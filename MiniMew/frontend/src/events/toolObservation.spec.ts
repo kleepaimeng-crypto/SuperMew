@@ -85,3 +85,31 @@ it("公开工具失败保留稳定code，不展示参数或原始结果", () => 
     event("tool.started", 3, { ...tool, tool_name: "<script>" }),
   ).toThrow();
 });
+
+it("正文中的检索声明和引用不会生成工具执行记录", () => {
+  let state = apply(
+    running(),
+    event("message.delta", 3, {
+      message_id: ids.assistant,
+      content: "本次已经检索知识库，依据[E1]。",
+    }),
+  );
+  expect(state.tools).toEqual([]);
+  state = apply(
+    state,
+    event("message.completed", 4, {
+      message_id: ids.assistant,
+      status: "failed",
+      content: "本次已经检索知识库，依据[E1]。",
+    }),
+  );
+  state = apply(
+    state,
+    event("run.failed", 5, {
+      status: "failed",
+      error_code: "PROVIDER_INVALID_RESPONSE",
+    }),
+  );
+  expect(state.tools).toEqual([]);
+  expect(state.runStatus).toBe("failed");
+});
