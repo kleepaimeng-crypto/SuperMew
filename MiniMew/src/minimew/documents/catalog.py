@@ -132,7 +132,11 @@ async def reserve_document(
     ).hexdigest()
     async with session.begin():
         initial = preset(default_profile).model_copy(
-            update={"index_layout": index_layout, "parser": "markdown-txt-v2"}
+            update={
+                "index_layout": index_layout,
+                "parser": "markdown-txt-v2",
+                "chunker": "structure-v2",
+            }
         )
         initial = BuildConfiguration.model_validate(initial.model_dump())
         from minimew.projects import owned_project
@@ -174,6 +178,12 @@ async def reserve_document(
                 raise SubmissionConflict
             document = await owned_document(session, user_id, previous.document_id, lock=True)
             return await receipt(session, document, previous.version_id, previous.job_id), False
+        # 仅推进之后创建的 Version；已有 Version/Job 的冻结构建配置不变。
+        current_build = read_build(kb.build_configuration, kb.build_fingerprint)
+        if current_build.chunker == "structure-v1":
+            current_build = current_build.model_copy(update={"chunker": "structure-v2"})
+            kb.build_configuration = current_build.model_dump(mode="json")
+            kb.build_fingerprint = current_build.fingerprint()
         if document_id is None:
             document = Document(user_id=user_id, knowledge_base_id=kb.id, title=source.filename)
             session.add(document)

@@ -116,11 +116,12 @@ class IndexWorker:
         self.jobs, self.cleanup = IndexJobRepository(sessions), IndexCleanupRepository(sessions)
         self.fingerprints = {
             factory(PROFILE.id)
-            .model_copy(update={"source_format": fmt, "parser": parser})
+            .model_copy(update={"source_format": fmt, "parser": parser, "chunker": chunker})
             .fingerprint()
             for fmt in ("markdown", "text")
             for factory in (preset, hybrid_preset)
             for parser in ("markdown-txt-v1", "markdown-txt-v2")
+            for chunker in ("structure-v1", "structure-v2")
         }
         self.stop = asyncio.Event()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minimew-index")

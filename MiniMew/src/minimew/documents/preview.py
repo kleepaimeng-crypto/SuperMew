@@ -31,6 +31,7 @@ def build_preview(path: Path, tokenizer: BudgetTokenizer) -> tuple[BuildConfigur
             **preset("bge-small-zh-v1.5").model_dump(mode="json"),
             "source_format": source.format,
             "parser": "markdown-txt-v2",
+            "chunker": "structure-v2",
         }
     )
     # 仅供检查：身份固定标注 local-preview，不能作为数据库登记/鉴权的证据。

@@ -129,6 +129,36 @@ def test_pending_invisible_worker_publish_and_owner_scope(client, tmp_path):
     )
 
 
+def test_long_table_upload_publishes_row_chunks_with_original_spans(client, tmp_path):
+    headers, owner = account(client)
+    rows = [f"|类型{i}|" + "说明" * 24 + "|" for i in range(10)]
+    content = ("# 数据类型\n|类型|说明|\n|---|---|\n" + "\n".join(rows) + "\n").encode()
+    value = upload(client, headers, content=content).json()
+    assert value["version"]["build_configuration"]["chunker"] == "structure-v2"
+
+    async def scenario(sessions):
+        w = worker(sessions, tmp_path)
+        try:
+            assert await w.run_once()
+            scope = await published_scope(sessions, owner)
+            chunks = scope.directory[0].chunks
+            assert len(chunks) > 1
+            assert (
+                "".join(chunk.source_text for chunk in chunks) == content.decode().split("\n", 1)[1]
+            )
+            assert chunks[0].table_header is None
+            assert all(chunk.table_header == "|类型|说明|\n|---|---|\n" for chunk in chunks[1:])
+            assert all(chunk.token_count <= 384 for chunk in chunks)
+        finally:
+            w.pool.shutdown(wait=True)
+
+    asyncio.run(database_call(scenario))
+    assert (
+        client.get("/v1/index-jobs/" + value["job"]["id"], headers=headers).json()["status"]
+        == "succeeded"
+    )
+
+
 def test_staged_reclaim_reuses_manifest_without_encoding(client, tmp_path):
     headers, _ = account(client)
     value = upload(client, headers).json()

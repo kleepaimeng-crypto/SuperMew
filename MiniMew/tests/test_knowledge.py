@@ -81,6 +81,18 @@ def test_result_contains_original_text_and_version_location_without_storage_inte
     assert search.await_args.kwargs["offload"] == runtime.sync
 
 
+def test_split_table_header_reaches_tool_result_without_changing_cited_source(monkeypatch):
+    _, registry, context, _, _, search, hits = setup_service(monkeypatch)
+    row = {**hits[0], "payload": {**hits[0]["payload"], "table_header": "|类型|说明|\n|---|---|\n"}}
+    search.return_value = [row]
+    result = json.loads(asyncio.run(invoke(registry, context)))
+    match = result["matches"][0]
+    assert match["table_header"] == row["payload"]["table_header"]
+    assert match["text"] == row["payload"]["source_text"]
+    assert context.evidence.items[0].text == match["text"]
+    assert "table_header" not in context.evidence.items[0].model_dump()
+
+
 def test_one_scope_per_run_and_new_run_gets_fresh_scope(monkeypatch):
     _, registry, context, runtime, scoped, search, hits = setup_service(monkeypatch)
 

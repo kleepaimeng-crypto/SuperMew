@@ -490,9 +490,9 @@ uv run --no-sync python scripts/check_chunking.py
 
 原文定位单位是 UTF-8 原始解码字符串的 **Unicode code point**：`start/end` 为 0-based `[start,end)`，行号为 1-based 且包含末行。原文不做 BOM 去除、换行归一化或 Token 解码重建；BOM 不作为正文编码，Markdown 解析器的行范围映射回原始 CRLF/CR/LF。字符位置不是 UTF-8 字节偏移，也不是浏览器 UTF-16 下标；后续跨端引用应按明确单位换算或使用行号。`source_text` 恒等于该原文位置的切片，`embedding_text` 单独添加所属标题路径，不能拿后者的位置回指源文。
 
-Markdown 使用 CommonMark 顶层结构并启用普通管道表格，不渲染 HTML、执行代码或读取链接；TXT 按空白行分段，不猜标题。标题仅作为上下文，段落/列表优先按结构组织，长段落先沿句子/换行，再沿 Token 原文位置拆；最终输入计入标题和特殊 Token，满足 384 预算。同节 overlap 最多 48 个正文 Token，必要时减少以保证前进；不跨章节、代码块或表格机械重叠。代码及普通表格保持完整，嵌套代码/表格所在外层结构也按完整块处理。
+Markdown 使用 CommonMark 顶层结构并启用普通管道表格，不渲染 HTML、执行代码或读取链接；TXT 按空白行分段，不猜标题。标题仅作为上下文，段落/列表优先按结构组织，长段落先沿句子/换行，再沿 Token 原文位置拆；最终输入计入标题和特殊 Token，满足 384 预算。同节 overlap 最多 48 个正文 Token，必要时减少以保证前进；不跨章节、代码块或表格机械重叠。新上传使用 `structure-v2`：普通管道表格完整时保持原样，超预算时按完整数据行拆分，后续片段的编码文本和知识工具结果带原表头；`source_text` 与引用位置仍对应原文连续切片。代码及嵌套代码/表格所在外层结构仍按完整块处理；旧 Version/Job 的 `structure-v1` 构建规则不变。
 
-代码/表格超预算返回 `DOCUMENT_BLOCK_TOO_LARGE`，标题自身超预算返回 `DOCUMENT_TITLE_TOO_LONG`，仅标题无正文返回 `DOCUMENT_NO_CONTENT`；不会丢弃超长部分、移除标题后继续或假称分块成功。来源缺失/损坏返回 `DOCUMENT_SOURCE_UNAVAILABLE`，原始内容 hash 不匹配返回 `DOCUMENT_SOURCE_HASH_MISMATCH`。配置/Tokenizer 身份不匹配返回 `DOCUMENT_BUILD_CONFIG_MISMATCH`。这些失败不等于“知识库没有知识”。
+代码块、单个表格行连同表头超预算时返回 `DOCUMENT_BLOCK_TOO_LARGE`，标题自身超预算返回 `DOCUMENT_TITLE_TOO_LONG`，仅标题无正文返回 `DOCUMENT_NO_CONTENT`；不会丢弃超长部分、移除标题后继续或假称分块成功。来源缺失/损坏返回 `DOCUMENT_SOURCE_UNAVAILABLE`，原始内容 hash 不匹配返回 `DOCUMENT_SOURCE_HASH_MISMATCH`。配置/Tokenizer 身份不匹配返回 `DOCUMENT_BUILD_CONFIG_MISMATCH`。这些失败不等于“知识库没有知识”。旧失败任务不会自动重跑；修复部署后需上传新版。
 
 chunk 身份覆盖用户/知识库/文档/版本、源 hash、构建 fingerprint、序号、位置与正文/编码文本 hash。相同身份/输入/配置重复构建结果稳定；不同版本、归属或配置不混用。章节记录保存父节关系及原文范围；**当前不会自动把父节适用条件或远处例外拼进每个子块**，后续检索仍需按预算补足上下文。
 
@@ -1042,7 +1042,7 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 - [SuperMew 正式领域语言](../CONTEXT.md)
 - [SuperMew 当前能力](../README.md)
 
-## 九阶段路线
+## 十阶段路线
 
 | 阶段 | 实现范围 | 验收标准 |
 | --- | --- | --- |
@@ -1055,6 +1055,7 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 | 7. HITL 与故障恢复 | Checkpoint、暂停、同一 Run 恢复、取消竞态、lease/fencing、过期 owner 处理 | 人工回答后继续原执行；旧 owner 不能写入；终态只产生一次 |
 | 8. RAG 评测闭环 | Dataset、fingerprint、Observation、Gate、baseline、Evaluation Job/Worker、工作台 | 同一数据与配置可比较结果；评测复用正式 RAG；失败案例可追踪 |
 | 9. 扩展能力与交付 | Skill、模型与能力控制面完整 UI、Web Research、只读 SQL、Sandbox、生产部署 | 权限拒绝发生在执行前；API、Indexing Worker、Evaluation Worker 可独立运行；真实基础设施检查通过 |
+| 10. 界面架构与体验优化 | 以对话为中心的工作区、个人/项目会话层级、新会话首发创建、文档与评测一级入口 | 登录后直接开始对话；工作区归属清楚；桌面与移动主要流程可用；详见[第十章计划](chapters/10-界面架构与体验优化.md) |
 
 ## 学习方式
 
@@ -1072,7 +1073,7 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 → 讲解代码并复盘
 ```
 
-不会一次生成九阶段代码。文档中的技术与步骤是待逐阶段讨论的方案，不表示依赖已安装或实现已完成。
+不会一次生成十阶段代码。文档中的技术与步骤是待逐阶段讨论的方案，不表示依赖已安装或实现已完成。
 
 章节计划、结章文字总结与源码职责梳理仍保留；工程提速不减少必要功能或验证，也不要求逐个补答旧基础题。
 

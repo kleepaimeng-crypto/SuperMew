@@ -33,13 +33,14 @@ class CharacterTokenizer:
         return [(i, i + 1) for i, char in enumerate(text) if not char.isspace()]
 
 
-def configuration(source_format="markdown", size=48, overlap=8):
+def configuration(source_format="markdown", size=48, overlap=8, chunker="structure-v1"):
     return BuildConfiguration.model_validate(
         {
             **preset("bge-small-zh-v1.5").model_dump(mode="json"),
             "source_format": source_format,
             "chunk_tokens": size,
             "overlap_tokens": overlap,
+            "chunker": chunker,
         }
     )
 
@@ -49,12 +50,12 @@ def parse(text, source_format="markdown"):
     return parse_source(content, source_format, hashlib.sha256(content).hexdigest())
 
 
-def chunk(text, source_format="markdown", size=48, overlap=8):
+def chunk(text, source_format="markdown", size=48, overlap=8, chunker="structure-v1"):
     parsed = parse(text, source_format)
     return parsed, build_chunks(
         parsed,
         IDENTITY,
-        configuration(source_format, size, overlap),
+        configuration(source_format, size, overlap, chunker),
         CharacterTokenizer(),
     )
 
@@ -204,9 +205,39 @@ def test_tokenizer_must_match_frozen_embedding_profile():
 @pytest.mark.parametrize(
     "block", ["```\n" + "甲" * 100 + "\n```", "|名|值|\n|---|---|\n|餐费|" + "甲" * 100 + "|"]
 )
-def test_oversized_code_or_table_fails_instead_of_silent_split(block):
+def test_legacy_oversized_code_or_table_fails_instead_of_silent_split(block):
     with pytest.raises(DocumentBuildError, match="DOCUMENT_BLOCK_TOO_LARGE"):
         chunk("# 标题\n" + block)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_oversized_table_splits_by_complete_rows_with_header_context(newline):
+    lines = ["|类型|说明|", "|---|---|"] + [f"|第{i}类|说明文字{i}说明文字|" for i in range(8)]
+    lines[5] = lines[5].replace("说明文字3", "说明文字3\u2028")
+    text = "# 数据类型" + newline + newline.join(lines) + newline
+    parsed, result = chunk(text, size=64, chunker="structure-v2")
+    rows = result.chunks
+    assert len(rows) > 1
+    header = newline.join(lines[:2]) + newline
+    table = next(block for block in parsed.blocks if block.kind == "table")
+    assert "".join(row.source_text for row in rows) == parsed.excerpt(table.span)
+    assert rows[0].source_text.startswith(header)
+    assert rows[0].table_header is None
+    for row in rows[1:]:
+        assert row.table_header == header
+        assert row.embedding_text == "数据类型\n" + header + row.source_text
+        assert row.source_text.startswith("|第")
+    assert all(row.token_count <= 64 for row in rows)
+    assert all(row.source_text == text[row.span.start : row.span.end] for row in rows)
+    assert all(a.span.end == b.span.start for a, b in zip(rows, rows[1:]))
+    assert result == build_chunks(
+        parsed, IDENTITY, configuration(size=64, chunker="structure-v2"), CharacterTokenizer()
+    )
+
+
+def test_oversized_single_table_row_still_fails_without_truncation():
+    with pytest.raises(DocumentBuildError, match="DOCUMENT_BLOCK_TOO_LARGE"):
+        chunk("# 标题\n|名|值|\n|---|---|\n|餐费|" + "甲" * 100 + "|", chunker="structure-v2")
 
 
 def test_nested_code_is_not_silently_split_as_an_ordinary_list():

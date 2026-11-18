@@ -50,6 +50,7 @@ class Chunk:
     content_sha256: str
     embedding_sha256: str
     token_count: int
+    table_header: str | None = None
 
 
 @dataclass(frozen=True)
@@ -92,11 +93,12 @@ def build_chunks(
     )
     chunks: list[Chunk] = []
 
-    def emit(section_index: int, start: int, end: int) -> None:
+    def emit(section_index: int, start: int, end: int, *, table_header: str | None = None) -> None:
         section = sections[section_index]
         source = parsed.text[start:end]
         prefix = " → ".join(section.title_path)
-        encoded = f"{prefix}\n{source}" if prefix else source
+        context = (table_header or "") + source
+        encoded = f"{prefix}\n{context}" if prefix else context
         count = tokenizer.count(build.embedding.document_prefix + encoded)
         if count > build.chunk_tokens:
             raise DocumentBuildError("DOCUMENT_CHUNK_TOO_LARGE")
@@ -118,8 +120,40 @@ def build_chunks(
                 content_sha,
                 encoded_sha,
                 count,
+                table_header,
             )
         )
+
+    def split_table(section_index: int, block: SourceSpan, prefix: str) -> None:
+        lines = [
+            match.group()
+            for match in re.finditer(r"[^\r\n]*(?:\r\n|\r|\n|$)", parsed.excerpt(block))
+            if match.end() > match.start()
+        ]
+        if len(lines) < 3:
+            raise DocumentBuildError("DOCUMENT_BLOCK_TOO_LARGE")
+        header = "".join(lines[:2])
+        header_end = block.start + len(header)
+        if tokenizer.count(prefix + header) > build.chunk_tokens:
+            raise DocumentBuildError("DOCUMENT_BLOCK_TOO_LARGE")
+        start, end = block.start, header_end
+        for line in lines[2:]:
+            next_end = end + len(line)
+            context = "" if start == block.start else header
+            if tokenizer.count(prefix + context + parsed.text[start:next_end]) > build.chunk_tokens:
+                if end == header_end and start == block.start:
+                    raise DocumentBuildError("DOCUMENT_BLOCK_TOO_LARGE")
+                emit(
+                    section_index, start, end, table_header=header if start != block.start else None
+                )
+                start = end
+                if (
+                    tokenizer.count(prefix + header + parsed.text[start:next_end])
+                    > build.chunk_tokens
+                ):
+                    raise DocumentBuildError("DOCUMENT_BLOCK_TOO_LARGE")
+            end = next_end
+        emit(section_index, start, end, table_header=header if start != block.start else None)
 
     def split_run(section_index: int, spans: list[SourceSpan]) -> None:
         if not spans:
@@ -197,6 +231,9 @@ def build_chunks(
             if tokenizer.count(prefix) > build.chunk_tokens:
                 raise DocumentBuildError("DOCUMENT_TITLE_TOO_LONG")
             if tokenizer.count(prefix + parsed.excerpt(block.span)) > build.chunk_tokens:
+                if build.chunker == "structure-v2" and block.kind == "table":
+                    split_table(current, block.span, prefix)
+                    continue
                 raise DocumentBuildError("DOCUMENT_BLOCK_TOO_LARGE")
             emit(current, block.span.start, block.span.end)
         else:

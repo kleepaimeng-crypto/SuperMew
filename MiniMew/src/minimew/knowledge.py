@@ -52,6 +52,7 @@ class KnowledgeQuery(ToolModel):
 
 
 class KnowledgeMatch(EvidenceSource):
+    table_header: str | None = Field(default=None, exclude_if=lambda value: value is None)
     score: float
     score_kind: Literal["dense_cosine", "rrf", "rerank_raw"] = "dense_cosine"
     stage_scores: dict[str, float] = Field(default_factory=dict)
@@ -247,7 +248,9 @@ class KnowledgeCalculation:
             for row in RetrievalResult((group,), result.trace).rows:
                 match = self.project(row, scope)
                 source = EvidenceSource(
-                    **match.model_dump(exclude={"score", "score_kind", "stage_scores"})
+                    **match.model_dump(
+                        exclude={"score", "score_kind", "stage_scores", "table_header"}
+                    )
                 )
                 try:
                     evidence = ledger.propose(source, trial_pending)
@@ -323,6 +326,7 @@ class KnowledgeCalculation:
                 end_line=chunk.span.end_line,
                 content_sha256=chunk.content_sha256,
                 text=chunk.source_text,
+                table_header=chunk.table_header,
                 score=float(row["score"]),
                 score_kind=row.get("score_kind", "dense_cosine"),
                 stage_scores=row.get("stage_scores", {}),

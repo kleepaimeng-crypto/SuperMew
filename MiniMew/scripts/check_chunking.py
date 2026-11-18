@@ -21,6 +21,7 @@ def main() -> int:
         {
             **preset("bge-small-zh-v1.5").model_dump(mode="json"),
             "source_format": "markdown",
+            "chunker": "structure-v2",
         }
     )
     texts = {
@@ -29,6 +30,9 @@ def main() -> int:
         .decode("utf-8"),
         "long_crlf": "\ufeff# 制度\r\n## 餐费\r\n"
         + "员工因公出差期间，每日餐费上限150元，报销须附发票。" * 100,
+        "long_table": "# 数据类型\n|类型|说明|\n|---|---|\n"
+        + "\n".join(f"|类型{i}|" + "说明" * 24 + "|" for i in range(10))
+        + "\n",
     }
     identity = BuildIdentity(
         *(uuid5(NAMESPACE_URL, f"minimew:check-chunking:{i}") for i in range(4))
