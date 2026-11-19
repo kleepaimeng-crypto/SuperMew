@@ -101,7 +101,10 @@ const outcomes: Record<string, string> = {
   no_documents: "无已发布文档",
 };
 function outcomeText(step: ProcessStepData) {
-  if (step.status === "failed") return "本阶段未完成";
+  if (step.status === "failed")
+    return step.outcome.startsWith("PROVIDER_")
+      ? errorPresentation(step.outcome, step.kind).reason
+      : "本阶段未完成";
   return (
     outcomes[step.outcome] ||
     (step.kind === "rerank" ? "重排未完成，保留召回顺序" : "阶段采用降级结果")
@@ -160,7 +163,8 @@ function toggled(event: Event) {
         <p v-if="step.query">查询：{{ step.query }}</p>
         <p
           v-if="
-            step.status !== 'failed' &&
+            (step.status !== 'failed' ||
+              step.outcome.startsWith('PROVIDER_')) &&
             step.outcome &&
             !['ok', 'text', 'tool_calls'].includes(step.outcome)
           "

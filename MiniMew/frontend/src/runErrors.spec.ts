@@ -4,8 +4,45 @@ import { ids, run, started, event, time } from "../tests/fixtures/chat";
 import { createRunProjection, reduceRunEvent } from "./events/runEventReducer";
 import { errorPresentation, failureForRun } from "./runErrors";
 import type { ErrorCode } from "./generated/run-event-v1";
+import type { ProcessStepData } from "./generated/run-event-v1";
 
 const codes = JSON.parse(source).$defs.ErrorCode.enum as ErrorCode[];
+it("证据评判失败使用真实阶段解释，实时和历史重放一致", () => {
+  const step: ProcessStepData = {
+    step_id: "a".repeat(32),
+    parent_step_id: "",
+    tool_call_id: "c",
+    kind: "assessment",
+    status: "failed",
+    query: "",
+    summary: "",
+    count: 0,
+    sources: [],
+    outcome: "PROVIDER_INVALID_RESPONSE",
+    elapsed_ms: 100,
+  };
+  const projection = {
+    ...createRunProjection({
+      threadId: ids.thread,
+      runId: ids.run,
+      assistantMessageId: ids.assistant,
+    }),
+    steps: [step],
+    runStatus: "failed" as const,
+    errorCode: "PROVIDER_INVALID_RESPONSE" as const,
+  };
+  const live = failureForRun(run, projection);
+  const history = failureForRun(
+    { ...run, status: "failed", error_code: "PROVIDER_INVALID_RESPONSE" },
+    projection,
+  );
+  expect(live).toEqual(history);
+  expect(live?.reason).toContain("证据评判");
+  expect(live?.code).toBe("PROVIDER_INVALID_RESPONSE");
+  expect(errorPresentation("PROVIDER_INVALID_RESPONSE").reason).toContain(
+    "模型回答",
+  );
+});
 it.each(codes)("错误%s有受控中文说明和正确操作边界", (code) => {
   const presentation = errorPresentation(code);
   expect(presentation.code).toBe(code);

@@ -16,6 +16,7 @@ from minimew.api.runs import router as runs_router
 from minimew.api.threads import router as threads_router
 from minimew.auth_http import AuthHttpMiddleware
 from minimew.database import create_engine
+from minimew.execution.diagnostics import diagnostic_log
 from minimew.execution.dispatcher import execution_lifespan
 from minimew.execution.outbox import notification_lifespan
 from minimew.execution.streaming import StreamOptions
@@ -32,16 +33,17 @@ def create_app() -> FastAPI:
         engine = create_engine(settings)
         app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
         try:
-            app.state.dummy_password_hash = await run_in_threadpool(
-                hash_password, secrets.token_urlsafe(32)
-            )
-            async with notification_lifespan(app.state.session_factory, settings) as notifier:
-                app.state.event_notifier = notifier
-                try:
-                    async with execution_lifespan(app.state.session_factory, settings):
-                        yield
-                finally:
-                    app.state.event_notifier = None
+            with diagnostic_log(settings.diagnostic_log_dir):
+                app.state.dummy_password_hash = await run_in_threadpool(
+                    hash_password, secrets.token_urlsafe(32)
+                )
+                async with notification_lifespan(app.state.session_factory, settings) as notifier:
+                    app.state.event_notifier = notifier
+                    try:
+                        async with execution_lifespan(app.state.session_factory, settings):
+                            yield
+                    finally:
+                        app.state.event_notifier = None
         finally:
             await engine.dispose()
 

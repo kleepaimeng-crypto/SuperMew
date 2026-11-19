@@ -493,6 +493,19 @@
           "title": "Rewrite Tokens",
           "type": "integer"
         },
+        "structured_output": {
+          "anyOf": [
+            {
+              "const": "json-repair-v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Structured Output"
+        },
         "tool_limit": {
           "const": 6,
           "default": 6,

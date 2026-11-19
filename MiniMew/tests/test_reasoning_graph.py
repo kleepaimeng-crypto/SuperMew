@@ -7,7 +7,6 @@ from test_knowledge import invoke, setup_service
 
 from minimew.execution.provider import ProviderFailure
 from minimew.execution.service import RunBudget
-from minimew.execution.tools import ToolFailure
 from minimew.rag.reasoning import Grade, Plan, ReasoningPolicy, Rewrite
 
 
@@ -54,7 +53,7 @@ def test_graph_uses_actual_draft_keeps_original_and_bounded_private_state(monkey
         model_caller=model,
     )
     if mode == "failure":
-        with pytest.raises(ToolFailure):
+        with pytest.raises(ProviderFailure, match="PROVIDER_ERROR"):
             asyncio.run(invoke(registry, context))
         assert context.evidence.items == ()
     else:
@@ -83,7 +82,7 @@ def test_rewrite_cannot_drop_identifier(monkeypatch):
         run_budget=RunBudget(reasoning=True),
         model_caller=model,
     )
-    with pytest.raises(ToolFailure):
+    with pytest.raises(ProviderFailure, match="PROVIDER_INVALID_RESPONSE"):
         asyncio.run(invoke(registry, context, query="E1024"))
     assert context.evidence.items == ()
 

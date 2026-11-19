@@ -1,4 +1,4 @@
-import type { ErrorCode } from "./generated/run-event-v1";
+import type { ErrorCode, ProcessStepData } from "./generated/run-event-v1";
 import type { ChatRun } from "./chat";
 import type { RunProjection } from "./events/runEventReducer";
 import { isEventValue } from "./events/runEventContract";
@@ -29,8 +29,16 @@ const reasons: Record<ErrorCode, string> = {
   HITL_EXPIRED: "补充信息的等待期限已结束，原任务无法继续。",
   HITL_CHECKPOINT_INVALID: "原任务的恢复状态未通过校验，无法安全继续。",
 };
+const roleNames: Partial<Record<ProcessStepData["kind"], string>> = {
+  assessment: "证据评判",
+  plan: "问题拆解",
+  rewrite: "检索改写",
+};
 
-export function errorPresentation(code: unknown) {
+export function errorPresentation(
+  code: unknown,
+  stage?: ProcessStepData["kind"],
+) {
   const known = isEventValue(code, "ErrorCode");
   const safeCode = known ? (code as ErrorCode) : null;
   let action =
@@ -44,11 +52,18 @@ export function errorPresentation(code: unknown) {
       "请先检查模型配置，再重新提问；已创建任务的模型快照不会被自动改写。";
   else if (!known)
     action = "请同步历史；若仍无法确认原因，请提供本次任务编号协助排查。";
+  const role = stage ? roleNames[stage] : undefined;
+  const roleReason =
+    role && safeCode === "PROVIDER_INVALID_RESPONSE"
+      ? `${role}返回的结果未通过校验，本次回答未完成。`
+      : null;
   return {
     code: safeCode ?? "UNKNOWN_ERROR",
-    reason: safeCode
-      ? reasons[safeCode]
-      : "本次执行未能完成，错误类型暂时无法识别。",
+    reason:
+      roleReason ??
+      (safeCode
+        ? reasons[safeCode]
+        : "本次执行未能完成，错误类型暂时无法识别。"),
     action,
   };
 }
@@ -59,8 +74,10 @@ export function failureForRun(
   projection: RunProjection,
 ): FailureView | null {
   if (["succeeded", "cancelled"].includes(run.status)) return null;
-  if (run.status === "failed") return errorPresentation(run.error_code);
-  return projection.runStatus === "failed"
-    ? errorPresentation(projection.errorCode)
-    : null;
+  if (run.status !== "failed" && projection.runStatus !== "failed") return null;
+  const code = run.status === "failed" ? run.error_code : projection.errorCode;
+  const failed = [...projection.steps]
+    .reverse()
+    .find((step) => step.status === "failed" && step.outcome === code);
+  return errorPresentation(code, failed?.kind);
 }

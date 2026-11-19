@@ -510,4 +510,7 @@ async def serve():
 
 
 if __name__ == "__main__":
-    asyncio.run(serve())
+    from minimew.execution.diagnostics import diagnostic_log
+
+    with diagnostic_log(Settings().diagnostic_log_dir):
+        asyncio.run(serve())

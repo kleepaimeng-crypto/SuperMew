@@ -119,7 +119,7 @@ def test_internal_model_diagnostic_survives_tool_boundary(caplog, model_configur
     )
     entry = next(r for r in records(caplog) if r["event"] == "execution_failure_handled")
     assert entry["stage"] == "grade" and entry["tool_call_id"] == "grade_call"
-    assert entry["code"] == "TOOL_EXECUTION_FAILED"
+    assert entry["code"] == "PROVIDER_ERROR"
     assert SECRET not in caplog.text
 
 

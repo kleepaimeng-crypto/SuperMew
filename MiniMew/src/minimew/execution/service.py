@@ -159,6 +159,7 @@ class RunExecutor:
         except ProviderFailure as failure:
             error = failure.code
             diagnostic = failure.diagnostic or capture("answer_model", "provider_failed", failure)
+            failed_tool = getattr(failure, "tool_call_id", None)
         except ToolFailure as failure:
             error = failure.code
             diagnostic = failure.diagnostic or capture("tool", "tool_failed", failure)
@@ -416,7 +417,7 @@ class RunExecutor:
                     raise
                 except TimeoutError:
                     raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
-                except ToolFailure as failure:
+                except (ToolFailure, ProviderFailure) as failure:
                     failure.tool_call_id = call.call.id
                     await self._record_tool(
                         claim,

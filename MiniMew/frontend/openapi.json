@@ -5259,6 +5259,18 @@
             "const": 256,
             "title": "Rewrite Tokens",
             "default": 256
+          },
+          "structured_output": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "json-repair-v1"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Output"
           }
         },
         "additionalProperties": false,

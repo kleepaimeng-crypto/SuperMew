@@ -2118,6 +2118,8 @@ export interface components {
        * @constant
        */
       rewrite_tokens: 256;
+      /** Structured Output */
+      structured_output?: "json-repair-v1" | null;
     };
     /** RegisterRequest */
     RegisterRequest: {

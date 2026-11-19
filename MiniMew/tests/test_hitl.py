@@ -135,7 +135,7 @@ def test_knowledge_graph_pause_does_not_commit_evidence_or_repeat_initial_search
 
     from minimew.execution.provider import ProviderFailure
     from minimew.execution.service import RunBudget
-    from minimew.execution.tools import ToolContext, ToolFailure
+    from minimew.execution.tools import ToolContext
     from minimew.hitl.policy import PauseRequested
     from minimew.rag.reasoning import Grade, ReasoningPolicy, RepairPolicy
 
@@ -165,7 +165,7 @@ def test_knowledge_graph_pause_does_not_commit_evidence_or_repeat_initial_search
 
     async def scenario():
         if mode == "provider_error":
-            with pytest.raises(ToolFailure):
+            with pytest.raises(ProviderFailure):
                 await invoke(registry, context)
             assert not context.evidence.items
             return

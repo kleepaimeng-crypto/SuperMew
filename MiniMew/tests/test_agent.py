@@ -67,7 +67,10 @@ def test_two_calls_feedback_same_run_snapshot_and_no_intermediate_public_text(mo
 
         provider = FakeProvider(answer)
         assert await run(executor(repo, provider, handler), repo, user) == "succeeded"
-        assert seen == ["餐费", "住宿"] and contexts[0] is contexts[1]
+        assert seen == ["餐费", "住宿"]
+        assert contexts[0].run_id == contexts[1].run_id == repo.data.run_id
+        assert contexts[0].evidence is contexts[1].evidence
+        assert contexts[0].tool_sessions is contexts[1].tool_sessions
         assert len(provider.requests) == 2
         repo.claim.assert_awaited_once()
         repo.append_delta.assert_not_awaited()

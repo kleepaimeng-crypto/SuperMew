@@ -2,8 +2,12 @@
 
 import json
 import logging
+import os
 import traceback
-from dataclasses import asdict, dataclass
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, replace
+from datetime import UTC, datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 
@@ -15,6 +19,48 @@ class Diagnostic:
     stack: tuple[dict, ...] = ()
     cause_code: str | None = None
     counts: dict[str, int] | None = None
+    issues: tuple[dict, ...] = ()
+
+
+def validation_detail(stage, error, schema):
+    fields = set(schema.model_fields)
+    issues = tuple(
+        {
+            "field": ".".join(
+                str(part) if isinstance(part, int) or part in fields else "<extra>"
+                for part in item["loc"]
+            ),
+            "rule": item["type"],
+        }
+        for item in error.errors(include_input=False, include_context=False, include_url=False)[:8]
+    )
+    return replace(capture(stage, "schema_validation_failed", error), issues=issues)
+
+
+@contextmanager
+def diagnostic_log(directory: Path):
+    """每进程独立滚动文件；只接收受控诊断，不采集HTTP Header或普通日志。"""
+    directory.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        directory / f"execution-{os.getpid()}.jsonl",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    handler.addFilter(lambda record: record.msg == "execution_diagnostic %s")
+
+    class JsonFormatter(logging.Formatter):
+        def format(self, record):
+            return record.getMessage().removeprefix("execution_diagnostic ")
+
+    handler.setFormatter(JsonFormatter())
+    logger = logging.getLogger("minimew")
+    logger.addHandler(handler)
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
 
 
 def capture(stage, reason, error=None, *, cause_code=None):
@@ -44,7 +90,12 @@ def emit(
     subtask=None,
     identity=None,
 ):
-    record = {"event": event, "code": code, **asdict(diagnostic)}
+    record = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "event": event,
+        "code": code,
+        **asdict(diagnostic),
+    }
     if run_id is not None:
         record["run_id"] = str(run_id)
     if identity is not None:

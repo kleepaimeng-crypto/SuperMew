@@ -4,7 +4,8 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def test_jwt_settings(monkeypatch):
+def test_jwt_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("MINIMEW_DIAGNOSTIC_LOG_DIR", str(tmp_path / "logs"))
     # 原生命周期用例保持原事件断言；过程专项显式恢复正式报告器。
     monkeypatch.setattr("minimew.execution.service.ProcessReporter", lambda *args: None)
     monkeypatch.setenv("MINIMEW_JWT_SECRET", "test-only-signing-key-not-for-production-12345")

@@ -233,6 +233,7 @@ class ToolRegistry:
             result = await prepared.spec.handler(context, prepared.arguments)
         except (
             ToolFailure,
+            ProviderFailure,
             CancellationRequested,
             OwnershipLost,
             ExecutionStorageUnavailable,
@@ -240,15 +241,12 @@ class ToolRegistry:
         ):
             raise
         except Exception as error:
-            detail = error.diagnostic if isinstance(error, ProviderFailure) else None
             raise ToolFailure(
                 "TOOL_EXECUTION_FAILED",
-                diagnostic=detail
-                or capture(
+                diagnostic=capture(
                     "tool",
                     "handler_failed",
                     error,
-                    cause_code=error.code if isinstance(error, ProviderFailure) else None,
                 ),
             ) from None
         try:

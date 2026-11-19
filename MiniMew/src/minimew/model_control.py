@@ -69,7 +69,11 @@ async def freeze_current_snapshot(session: AsyncSession) -> ModelSnapshot:
         raise ModelConfigurationUnavailable
     try:
         configuration = ModelConfiguration.model_validate(profile.configuration)
-        reasoning = ReasoningPolicy() if ReasoningSettings().enabled else None
+        reasoning = (
+            ReasoningPolicy(structured_output="json-repair-v1")
+            if ReasoningSettings().enabled
+            else None
+        )
         repairs = (
             RepairPolicy(finalization="reserved-v1")
             if reasoning is not None and RepairSettings().enabled

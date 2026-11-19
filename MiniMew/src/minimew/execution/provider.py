@@ -30,8 +30,13 @@ class ProviderRequest:
     force_answer: bool = False
     case_identity: CaseIdentity | None = None
     project_context: ProjectContext | None = None
+    json_output: bool = False
 
     def __post_init__(self):
+        if type(self.json_output) is not bool or (
+            self.json_output and (self.purpose not in {"grade", "plan", "rewrite"} or self.tools)
+        ):
+            raise ValueError("JSON output is reserved for internal structured roles")
         if self.project_context is not None and (
             not isinstance(self.project_context, ProjectContext) or self.case_identity is not None
         ):

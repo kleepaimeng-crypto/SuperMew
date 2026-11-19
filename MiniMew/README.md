@@ -330,6 +330,8 @@ uv run --env-file .env --no-sync python scripts/check_rag_suite.py --write-repai
 
 ### 执行异常反馈（第六章后专项）
 
+新建工作冻结`reasoning.structured_output=json-repair-v1`：内部评判/拆解/改写使用JSON输出，遇到无效响应在原预算内最多重新评判一次，复用同一批资料。失败保留原Provider错误码到tool.failed和Run终态，界面按实际阶段解释。API/Evaluation Worker重启后将受控诊断保存到`.artifacts/logs/execution-<pid>.jsonl`；可用`MINIMEW_DIAGNOSTIC_LOG_DIR`更改目录，按Run ID查询。旧任务不改写或自动重跑。职责、上限与验证见[内部评判响应与错误透传修复](chapters/06-内部评判响应与错误透传修复.md)。
+
 失败回答显示中文原因，可展开错误码和任务编号；工具过程也展示tool.failed原因。实时SSE与刷新后的持久Run共用映射，连接中断、引用/过程读取故障及取消保持各自状态。同步历史不会重跑旧任务；提示重新提问时会创建新任务。
 
 服务端`execution_diagnostic`记录Run、阶段、稳定reason和安全堆栈（文件/函数/行号），不记录异常文本、源码行、locals、原始凭据或模型正文。`execution_failure_handled`表示失败已处理，持久终态以原Run/Event为准；终态写入失败会另有`execution_terminal_write_failed`。例如未引用导语可定位为`answer_validation/document_paragraph_missing_citation`，公开码仍为PROVIDER_INVALID_RESPONSE；本专项不放宽引用校验。

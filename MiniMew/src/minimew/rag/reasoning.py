@@ -21,6 +21,9 @@ class ReasoningPolicy(BaseModel):
     grade_tokens: Literal[1024] = 1024
     plan_tokens: Literal[512] = 512
     rewrite_tokens: Literal[256] = 256
+    structured_output: Literal["json-repair-v1"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class RepairSettings(BaseSettings):
@@ -74,11 +77,20 @@ async def grade_materials(caller, question, draft, aspects=()):
             supported=(),
             missing=("模型预算已为最终回答及格式纠正预留，材料充分性未完成验证",),
         )
-    ids = {m.citation_id for m in draft.matches}
-    if not set(result.supported) <= ids or (
-        result.status == "sufficient" and (not result.supported or result.missing)
-    ):
-        from minimew.execution.provider import ProviderFailure
-
-        raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+    validate_grade(result, {m.citation_id for m in draft.matches})
     return result
+
+
+def validate_grade(result: Grade, ids: set[str]):
+    from minimew.execution.diagnostics import Diagnostic
+    from minimew.execution.provider import ProviderFailure
+
+    reason = (
+        "unknown_evidence_reference"
+        if not set(result.supported) <= ids
+        else "inconsistent_assessment"
+        if result.status == "sufficient" and (not result.supported or result.missing)
+        else None
+    )
+    if reason:
+        raise ProviderFailure("PROVIDER_INVALID_RESPONSE", diagnostic=Diagnostic("grade", reason))

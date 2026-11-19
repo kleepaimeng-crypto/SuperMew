@@ -200,7 +200,10 @@ class DeepSeekProvider:
                 use_responses_api=False,
                 stream_usage=True,
                 output_version="v0",
-                extra_body={"thinking": {"type": "disabled"}},
+                extra_body={
+                    "thinking": {"type": "disabled"},
+                    **({"response_format": {"type": "json_object"}} if request.json_output else {}),
+                },
                 expected_tools=frozenset(tool.name for tool in request.tools),
             )
             messages = []
@@ -258,13 +261,29 @@ class DeepSeekProvider:
                                 yield ProviderDelta(text[start : start + MAX_DELTA_CHARS])
                     finish = chunk.response_metadata.get("finish_reason")
                     if finish is not None:
+                        if finish == "length":
+                            raise ProviderFailure(
+                                "PROVIDER_INVALID_RESPONSE",
+                                diagnostic=capture(request.purpose, "output_truncated"),
+                            )
                         if finish_reason is not None or finish not in ("stop", "tool_calls"):
-                            raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                            raise ProviderFailure(
+                                "PROVIDER_INVALID_RESPONSE",
+                                diagnostic=capture(request.purpose, "invalid_finish_reason"),
+                            )
                         if finish == "tool_calls" and not request.tools:
                             raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
                         finish_reason = finish
             if finish_reason is None:
-                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                raise ProviderFailure(
+                    "PROVIDER_INVALID_RESPONSE",
+                    diagnostic=capture(request.purpose, "missing_completion"),
+                )
+            if finish_reason == "stop" and not "".join(parts).strip():
+                raise ProviderFailure(
+                    "PROVIDER_INVALID_RESPONSE",
+                    diagnostic=capture(request.purpose, "empty_model_output"),
+                )
             turn = model.completed_turn("".join(parts), finish_reason)
         except openai.APITimeoutError as failure:
             raise ProviderFailure(
