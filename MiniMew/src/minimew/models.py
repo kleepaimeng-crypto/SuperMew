@@ -105,6 +105,51 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ModelCredential(Base):
+    __tablename__ = "model_credentials"
+    __table_args__ = (UniqueConstraint("id", "user_id", name="uq_model_credentials_owner"),)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    model_id: Mapped[UUID] = mapped_column(Uuid)
+    encrypted_value: Mapped[str] = mapped_column(Text)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AccountModelConfiguration(Base):
+    __tablename__ = "account_model_configurations"
+    __table_args__ = (
+        UniqueConstraint("id", "user_id", name="uq_account_models_owner"),
+        ForeignKeyConstraint(
+            ["credential_id", "user_id"],
+            ["model_credentials.id", "model_credentials.user_id"],
+            name="fk_account_models_credential_owner",
+        ),
+        CheckConstraint("revision > 0", name="ck_account_models_revision"),
+        CheckConstraint("jsonb_typeof(configuration)='object'", name="ck_account_models_object"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(80))
+    revision: Mapped[int] = mapped_column(Integer)
+    configuration: Mapped[dict] = mapped_column(JSONB)
+    credential_id: Mapped[UUID] = mapped_column(Uuid)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AccountModelPreference(Base):
+    __tablename__ = "account_model_preferences"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["model_id", "user_id"],
+            ["account_model_configurations.id", "account_model_configurations.user_id"],
+            name="fk_account_preferences_model_owner",
+        ),
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    model_id: Mapped[UUID | None] = mapped_column(Uuid)
+    knowledge_enabled: Mapped[bool] = mapped_column(server_default=text("true"))
+
+
 class ProjectMemory(Base):
     __tablename__ = "project_memories"
     __table_args__ = (
@@ -232,6 +277,11 @@ class Run(Base):
             "jsonb_typeof(skill_snapshot)='object' AND jsonb_typeof(skill_request)='object')",
             name="ck_runs_skill_snapshot",
         ),
+        ForeignKeyConstraint(
+            ["credential_id", "user_id"],
+            ["model_credentials.id", "model_credentials.user_id"],
+            name="fk_runs_credential_owner",
+        ),
     )
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=text("gen_random_uuid()")
@@ -241,6 +291,8 @@ class Run(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
     memory_snapshot: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    credential_id: Mapped[UUID | None] = mapped_column(Uuid)
+    knowledge_enabled: Mapped[bool] = mapped_column(server_default=text("true"))
     skill_request: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     skill_snapshot: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     model_snapshot_json: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))

@@ -19,7 +19,7 @@ from test_tools import Result, call, spec
 from test_tools import context as tool_context
 
 from minimew.evidence import EvidenceSource
-from minimew.execution.deepseek import DeepSeekProvider
+from minimew.execution.chat_provider import ChatProvider
 from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta
 from minimew.execution.reasoning import RunModelCaller
@@ -214,7 +214,7 @@ def test_real_sdk_receives_no_tool_choice_for_forced_answer(transport, model_con
 
     async def scenario():
         repo = Repository(request(model_configuration))
-        e = executor(repo, DeepSeekProvider(SecretStr("test-key")), lambda c, a: Result(text="x"))
+        e = executor(repo, ChatProvider(SecretStr("test-key")), lambda c, a: Result(text="x"))
         context = e.registry.bind_context(tool_context())
         req = replace(repo.data, tools=e.registry.visible(context), force_answer=True)
         events = [event async for event in e.provider.stream(req)]

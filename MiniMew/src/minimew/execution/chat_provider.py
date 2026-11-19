@@ -1,4 +1,4 @@
-"""DeepSeek 的 LangChain Adapter；返回公开模型回合，不拥有工具执行、持久化或重试。"""
+"""统一Chat Completions适配；正文、工具和私有续接分离，不拥有重试或Run状态。"""
 
 import asyncio
 import math
@@ -13,7 +13,7 @@ import httpx2
 import openai
 from httpx2 import TimeoutException, TransportError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_deepseek import ChatDeepSeek
+from langchain_openai import ChatOpenAI
 from langsmith import tracing_context
 from pydantic import Field, PrivateAttr, SecretStr
 
@@ -44,10 +44,27 @@ class _ToolFragments:
     size: int = 0
 
 
-class _AnswerChatDeepSeek(ChatDeepSeek):
+class _AnswerChat(ChatOpenAI):
     expected_tools: frozenset[str] = Field(default_factory=frozenset, exclude=True, repr=False)
     _fragments: dict[int, _ToolFragments] = PrivateAttr(default_factory=dict)
     _wire_finished: bool = PrivateAttr(default=False)
+    preserve_reasoning: bool = Field(default=False, exclude=True, repr=False)
+    _reasoning: str = PrivateAttr(default="")
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        if not self.preserve_reasoning and "max_completion_tokens" in payload:
+            payload["max_tokens"] = payload.pop("max_completion_tokens")
+        if self.preserve_reasoning:
+            for message, wire in zip(
+                self._convert_input(input_).to_messages(), payload["messages"], strict=True
+            ):
+                if isinstance(message, AIMessage) and message.tool_calls:
+                    # Kimi要求同工具回合续接原推理；只在私有内部消息保留，不输出Journal。
+                    wire["reasoning_content"] = message.additional_kwargs.get(
+                        "reasoning_content", ""
+                    )
+        return payload
 
     def _accept_tools(self, calls):
         if not isinstance(calls, list) or (calls and not self.expected_tools):
@@ -102,6 +119,7 @@ class _AnswerChatDeepSeek(ChatDeepSeek):
                     ToolCall(value.id, value.name, "".join(value.parts))
                     for _, value in sorted(self._fragments.items())
                 ),
+                self._reasoning or None,
             )
         else:
             raise ValueError("Finish reason and tool payload disagree")
@@ -130,6 +148,14 @@ class _AnswerChatDeepSeek(ChatDeepSeek):
                 raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
             if delta.get("tool_calls") is not None:
                 self._accept_tools(delta["tool_calls"])
+            reasoning = delta.get("reasoning_content")
+            if self.preserve_reasoning and reasoning:
+                if (
+                    not valid_text(reasoning, MAX_ARGUMENT_CHARS)
+                    or len(self._reasoning) + len(reasoning) > MAX_ARGUMENT_CHARS
+                ):
+                    raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+                self._reasoning += reasoning
             if choice.get("finish_reason") is not None:
                 self._wire_finished = True
         return super()._convert_chunk_to_generation_chunk(
@@ -149,23 +175,43 @@ def retry_after_seconds(headers) -> float:
     return max(0, seconds) if math.isfinite(seconds) else 0
 
 
-class DeepSeekProvider:
-    def __init__(self, api_key: SecretStr):
+class ChatProvider:
+    def __init__(self, api_key: SecretStr, *, credentials=None):
         self._api_key = api_key
+        self._credentials = credentials
 
     async def stream(self, request):
         configuration = request.snapshot.answer.configuration
+        family = configuration.adapter or "deepseek"
+        key = self._api_key
+        if request.credential_id is not None:
+            from minimew.model_control import ModelConfigurationUnavailable
+
+            try:
+                if self._credentials is None:
+                    raise ModelConfigurationUnavailable
+                key = await self._credentials(
+                    request.account_id, request.credential_id, configuration.base_url
+                )
+            except ModelConfigurationUnavailable:
+                raise ProviderFailure() from None
+        from minimew.account_models.network import PublicTransport, public_url
+
+        try:
+            public_url(configuration.base_url)
+        except ValueError:
+            raise ProviderFailure() from None
         url = urlsplit(configuration.base_url)
         if (
-            url.scheme != "https"
-            or url.hostname != "api.deepseek.com"
-            or url.port not in (None, 443)
-            or url.path.rstrip("/") not in ("", "/v1")
+            (
+                family == "deepseek"
+                and (url.hostname != "api.deepseek.com" or url.path.rstrip("/") not in ("", "/v1"))
+            )
             or url.username is not None
             or url.password is not None
             or url.query
             or url.fragment
-            or not self._api_key.get_secret_value().strip()
+            or not key.get_secret_value().strip()
         ):
             raise ProviderFailure()
         resources = AsyncExitStack()
@@ -173,9 +219,11 @@ class DeepSeekProvider:
         try:
             # SDK 3 使用 httpx2；自有客户端关闭重定向及宿主代理/身份注入。
             sync_http = resources.enter_context(httpx2.Client(trust_env=False))
-            async_http = await resources.enter_async_context(httpx2.AsyncClient(trust_env=False))
+            async_http = await resources.enter_async_context(
+                httpx2.AsyncClient(trust_env=False, transport=PublicTransport())
+            )
             parameters = dict(
-                api_key=self._api_key.get_secret_value(),
+                api_key=key.get_secret_value(),
                 organization="",
                 project="",
                 base_url=configuration.base_url,
@@ -184,11 +232,11 @@ class DeepSeekProvider:
             )
             sync_client = openai.OpenAI(**parameters, http_client=sync_http)
             async_client = openai.AsyncOpenAI(**parameters, http_client=async_http)
-            model = _AnswerChatDeepSeek(
+            model = _AnswerChat(
                 model=configuration.model_name,
-                api_key=self._api_key,
+                api_key=key,
                 base_url=configuration.base_url,
-                temperature=configuration.temperature,
+                temperature=None if family == "kimi" else configuration.temperature,
                 max_tokens=configuration.max_output_tokens,
                 n=1,
                 timeout=configuration.timeout_seconds,
@@ -201,10 +249,17 @@ class DeepSeekProvider:
                 stream_usage=True,
                 output_version="v0",
                 extra_body={
-                    "thinking": {"type": "disabled"},
+                    **(
+                        {"thinking": {"type": "disabled"}}
+                        if family == "deepseek"
+                        else {"enable_thinking": False}
+                        if family == "qwen"
+                        else {}
+                    ),
                     **({"response_format": {"type": "json_object"}} if request.json_output else {}),
                 },
                 expected_tools=frozenset(tool.name for tool in request.tools),
+                preserve_reasoning=family == "kimi",
             )
             messages = []
             if request.instructions:
@@ -229,6 +284,9 @@ class DeepSeekProvider:
                                 }
                                 for call in message.tool_calls
                             ],
+                            additional_kwargs={"reasoning_content": message.reasoning_content}
+                            if message.reasoning_content is not None
+                            else {},
                         )
                     )
             bound = (

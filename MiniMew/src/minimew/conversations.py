@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from minimew.conversation_schemas import CreateRunRequest, MessagePage, MessageResponse, RunResponse
 from minimew.execution.journal import append_event
-from minimew.model_control import ModelConfigurationUnavailable, freeze_current_snapshot
+from minimew.account_models.service import freeze_account
 from minimew.models import Message, Run, Thread
 from minimew.skills.catalog import load_skill
 from minimew.skills.schemas import parse_snapshot, summary
@@ -75,6 +75,7 @@ async def reserve_run(
     data: CreateRunRequest,
     *,
     credentials_available: bool = True,
+    settings=None,
 ) -> tuple[RunResponse, bool]:
     async with session.begin():
         thread = await owned_thread(session, user_id, thread_id, lock=True)
@@ -97,9 +98,10 @@ async def reserve_run(
             result, created = run_response(existing, messages), False
         else:
             # 已有幂等结果优先；凭据是否就绪只影响新的工作。
-            if not credentials_available:
-                raise ModelConfigurationUnavailable
-            snapshot = await freeze_current_snapshot(session)
+            from minimew.settings import Settings
+            snapshot, credential_id, knowledge_enabled = await freeze_account(
+                session, user_id, settings or Settings(), credentials_available
+            )
             from minimew.projects import memory_snapshot
 
             memories = await memory_snapshot(session, user_id, thread.project_id)
@@ -111,6 +113,8 @@ async def reserve_run(
                 model_snapshot_json=snapshot.model_dump(mode="json"),
                 memory_snapshot=memories,
                 model_catalog_hash=snapshot.catalog_hash(),
+                credential_id=credential_id,
+                knowledge_enabled=knowledge_enabled,
                 skill_request=data.skill.model_dump(mode="json", exclude_none=True)
                 if data.skill
                 else {},

@@ -11,7 +11,7 @@ from test_execution_retry import Repository
 from test_knowledge import setup_service
 from test_tool_provider import tool_frame
 
-from minimew.execution.deepseek import DeepSeekProvider
+from minimew.execution.chat_provider import ChatProvider
 from minimew.execution.service import RunExecutor
 
 
@@ -48,7 +48,7 @@ def test_sdk_receives_knowledge_schema_and_paired_original_material(
         repo = Repository(request(model_configuration))
         executor = RunExecutor(
             repo,
-            DeepSeekProvider(SecretStr("test-key")),
+            ChatProvider(SecretStr("test-key")),
             registry=registry,
             capabilities=context.capabilities,
         )

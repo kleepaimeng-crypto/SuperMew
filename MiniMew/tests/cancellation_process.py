@@ -29,9 +29,9 @@ def main():
     assert settings.db_name.startswith("minimew_test_")
     assert len(settings.db_name.removeprefix("minimew_test_")) == 32
     if settings.model_credentials_available:
-        import minimew.execution.deepseek as adapter
+        import minimew.execution.chat_provider as adapter
 
-        adapter.DeepSeekProvider = lambda key: WaitingProvider()
+        adapter.ChatProvider = lambda key, **kwargs: WaitingProvider()
 
     @asynccontextmanager
     async def offline_notifications(sessions, settings):

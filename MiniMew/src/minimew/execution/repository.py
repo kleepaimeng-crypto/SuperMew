@@ -251,6 +251,9 @@ class ExecutionRepository:
                 messages,
                 project_context=project_context,
                 skill=skill,
+                credential_id=run.credential_id,
+                account_id=run.user_id,
+                knowledge_enabled=run.knowledge_enabled,
             )
 
     async def remaining(self, claim: Claim) -> float:

@@ -11,7 +11,7 @@ from execution_helpers import FakeProvider
 from test_deepseek import chunk, request, wire
 from test_deepseek import transport as transport
 
-from minimew.execution.deepseek import DeepSeekProvider
+from minimew.execution.chat_provider import ChatProvider
 from minimew.execution.diagnostics import Diagnostic, diagnostic_log, emit
 from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderFailure
@@ -226,7 +226,7 @@ def test_json_mode_is_sent_to_real_sdk_only_for_internal_roles(transport, model_
     data = replace(request(model_configuration), purpose="grade", json_output=True)
 
     async def scenario():
-        values = [v async for v in DeepSeekProvider(SecretStr("test-key")).stream(data)]
+        values = [v async for v in ChatProvider(SecretStr("test-key")).stream(data)]
         assert values[-1].turn.content == VALID
 
     asyncio.run(scenario())
@@ -255,7 +255,7 @@ def test_provider_classifies_truncated_and_blank_responses(
 
     async def scenario():
         with pytest.raises(ProviderFailure) as error:
-            async for _ in DeepSeekProvider(SecretStr("test-key")).stream(
+            async for _ in ChatProvider(SecretStr("test-key")).stream(
                 replace(request(model_configuration), purpose="grade", json_output=True)
             ):
                 pass

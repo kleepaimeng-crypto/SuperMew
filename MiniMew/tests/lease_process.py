@@ -12,7 +12,7 @@ from pathlib import Path
 import uvicorn
 
 import minimew.app as app_module
-import minimew.execution.deepseek as provider_module
+import minimew.execution.chat_provider as provider_module
 from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta
 from minimew.execution.repository import ExecutionRepository
@@ -38,7 +38,7 @@ def main():
                 await asyncio.Event().wait()
             yield ProviderCompleted(ModelTurn("text", "late-answer"))
 
-    provider_module.DeepSeekProvider = lambda key: Controlled()
+    provider_module.ChatProvider = lambda key, **kwargs: Controlled()
     if mode == "finish_wait":
         original = ExecutionRepository.finish
 

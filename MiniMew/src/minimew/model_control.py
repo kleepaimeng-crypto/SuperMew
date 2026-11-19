@@ -69,35 +69,37 @@ async def freeze_current_snapshot(session: AsyncSession) -> ModelSnapshot:
         raise ModelConfigurationUnavailable
     try:
         configuration = ModelConfiguration.model_validate(profile.configuration)
-        reasoning = (
-            ReasoningPolicy(structured_output="json-repair-v1")
-            if ReasoningSettings().enabled
-            else None
-        )
-        repairs = (
-            RepairPolicy(finalization="reserved-v1")
-            if reasoning is not None and RepairSettings().enabled
-            else None
-        )
-        hitl = HitlPolicy() if repairs is not None and HitlSettings().enabled else None
-        return ModelSnapshot(
-            schema_version=5
-            if hitl
-            else 4
-            if repairs is not None
-            else 3
-            if reasoning is not None
-            else 2,
-            reasoning=reasoning,
-            repairs=repairs,
-            hitl=hitl,
-            rag=RagPolicy(strategy="hybrid"),
-            answer=ProfileSnapshot(
-                profile_id=profile.id, profile_version=profile.version, configuration=configuration
-            ),
-        )
+        return build_snapshot(configuration, profile.id, profile.version)
     except ValidationError:
         raise ModelConfigurationUnavailable from None
+
+
+def build_snapshot(configuration, profile_id, profile_version):
+    reasoning = (
+        ReasoningPolicy(structured_output="json-repair-v1") if ReasoningSettings().enabled else None
+    )
+    repairs = (
+        RepairPolicy(finalization="reserved-v1")
+        if reasoning is not None and RepairSettings().enabled
+        else None
+    )
+    hitl = HitlPolicy() if repairs is not None and HitlSettings().enabled else None
+    return ModelSnapshot(
+        schema_version=5
+        if hitl
+        else 4
+        if repairs is not None
+        else 3
+        if reasoning is not None
+        else 2,
+        reasoning=reasoning,
+        repairs=repairs,
+        hitl=hitl,
+        rag=RagPolicy(strategy="hybrid"),
+        answer=ProfileSnapshot(
+            profile_id=profile_id, profile_version=profile_version, configuration=configuration
+        ),
+    )
 
 
 async def set_current_model(

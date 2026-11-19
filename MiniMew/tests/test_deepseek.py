@@ -11,7 +11,7 @@ import pytest
 from langsmith.run_helpers import get_tracing_context
 from pydantic import SecretStr
 
-import minimew.execution.deepseek as adapter
+import minimew.execution.chat_provider as adapter
 from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import (
     InputMessage,
@@ -78,6 +78,7 @@ def transport(monkeypatch):
             return await handler(req)
 
         def async_client(**kwargs):
+            kwargs.pop("transport", None)  # 本夹具显式替换为离线MockTransport。
             client = httpx2.AsyncClient(transport=httpx2.MockTransport(dispatch), **kwargs)
             clients.append(client)
             return client
@@ -132,7 +133,7 @@ def test_sdk_parameters_public_stream_and_close(transport, model_configuration, 
     async def scenario():
         result = [
             e
-            async for e in adapter.DeepSeekProvider(SecretStr("local-test-key")).stream(
+            async for e in adapter.ChatProvider(SecretStr("local-test-key")).stream(
                 request(model_configuration)
             )
         ]
@@ -170,7 +171,7 @@ def test_abnormal_or_missing_finish_is_not_success(transport, model_configuratio
     async def scenario():
         events = []
         with pytest.raises(ProviderFailure, match="PROVIDER_INVALID_RESPONSE"):
-            async for event in adapter.DeepSeekProvider(SecretStr("key")).stream(
+            async for event in adapter.ChatProvider(SecretStr("key")).stream(
                 request(model_configuration)
             ):
                 events.append(event)
@@ -202,7 +203,7 @@ def test_empty_and_malformed_protocol_fails(transport, model_configuration, chan
         with pytest.raises(ProviderFailure, match="PROVIDER_INVALID_RESPONSE"):
             _ = [
                 e
-                async for e in adapter.DeepSeekProvider(SecretStr("key")).stream(
+                async for e in adapter.ChatProvider(SecretStr("key")).stream(
                     request(model_configuration)
                 )
             ]
@@ -228,7 +229,7 @@ def test_status_errors_are_typed_without_sdk_retry(
         with pytest.raises(ProviderFailure) as error:
             _ = [
                 e
-                async for e in adapter.DeepSeekProvider(SecretStr("key")).stream(
+                async for e in adapter.ChatProvider(SecretStr("key")).stream(
                     request(model_configuration)
                 )
             ]
@@ -270,7 +271,7 @@ def test_key_never_sent_to_unapproved_origin(transport, model_configuration, bas
         with pytest.raises(ProviderFailure):
             _ = [
                 e
-                async for e in adapter.DeepSeekProvider(SecretStr("key")).stream(
+                async for e in adapter.ChatProvider(SecretStr("key")).stream(
                     replace(data, snapshot=snapshot)
                 )
             ]
@@ -292,7 +293,7 @@ def test_two_calls_keep_inputs_and_clients_separate(transport, model_configurati
     requests, clients = transport(response)
 
     async def scenario():
-        provider = adapter.DeepSeekProvider(SecretStr("key"))
+        provider = adapter.ChatProvider(SecretStr("key"))
 
         async def collect(text):
             data = replace(request(model_configuration), messages=(InputMessage("user", text),))
@@ -319,7 +320,7 @@ def test_cancel_closes_clients(transport, model_configuration):
         async def collect():
             return [
                 e
-                async for e in adapter.DeepSeekProvider(SecretStr("key")).stream(
+                async for e in adapter.ChatProvider(SecretStr("key")).stream(
                     request(model_configuration)
                 )
             ]
@@ -343,13 +344,13 @@ def test_initialization_error_closes_partial_resources(transport, model_configur
     def broken(**kwargs):
         raise ValueError("private initialization error")
 
-    monkeypatch.setattr(adapter, "_AnswerChatDeepSeek", broken)
+    monkeypatch.setattr(adapter, "_AnswerChat", broken)
 
     async def scenario():
         with pytest.raises(ProviderFailure):
             _ = [
                 e
-                async for e in adapter.DeepSeekProvider(SecretStr("key")).stream(
+                async for e in adapter.ChatProvider(SecretStr("key")).stream(
                     request(model_configuration)
                 )
             ]
@@ -369,7 +370,7 @@ def test_redirect_cannot_receive_key(transport, model_configuration):
         with pytest.raises(ProviderFailure) as error:
             _ = [
                 e
-                async for e in adapter.DeepSeekProvider(SecretStr("key")).stream(
+                async for e in adapter.ChatProvider(SecretStr("key")).stream(
                     request(model_configuration)
                 )
             ]
@@ -403,7 +404,7 @@ def test_stream_network_error_is_transient_without_sdk_retry(
         with pytest.raises(ProviderFailure) as error:
             _ = [
                 e
-                async for e in adapter.DeepSeekProvider(SecretStr("key")).stream(
+                async for e in adapter.ChatProvider(SecretStr("key")).stream(
                     request(model_configuration)
                 )
             ]

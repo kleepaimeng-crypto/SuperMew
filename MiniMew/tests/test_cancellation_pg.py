@@ -503,7 +503,7 @@ def test_real_sdk_consumer_cancel_closes_clients_in_own_task(
     from test_deepseek import chunk
     from test_runs_pg import configure_model
 
-    from minimew.execution.deepseek import DeepSeekProvider
+    from minimew.execution.chat_provider import ChatProvider
 
     asyncio.run(
         configure_model(
@@ -541,7 +541,7 @@ def test_real_sdk_consumer_cancel_closes_clients_in_own_task(
             task = asyncio.create_task(
                 RunExecutor(
                     repo,
-                    DeepSeekProvider(SecretStr("test-key")),
+                    ChatProvider(SecretStr("test-key")),
                     cancellation_poll=0.01,
                 ).execute(owner, thread, run)
             )

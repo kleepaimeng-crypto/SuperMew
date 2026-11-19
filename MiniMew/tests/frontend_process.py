@@ -96,10 +96,10 @@ def main():
     assert len(settings.db_name.removeprefix("minimew_test_")) == 32
     assert (settings.db_host, settings.db_port) == ("127.0.0.1", 55432)
 
-    import minimew.execution.deepseek as adapter
+    import minimew.execution.chat_provider as adapter
 
     knowledge = os.environ.get("MINIMEW_KNOWLEDGE_BROWSER_TESTS") == "1"
-    adapter.DeepSeekProvider = lambda key: (
+    adapter.ChatProvider = lambda key, **kwargs: (
         ProjectBrowserProvider()
         if os.environ.get("MINIMEW_PROJECT_BROWSER_TESTS") == "1"
         else KnowledgeBrowserProvider()

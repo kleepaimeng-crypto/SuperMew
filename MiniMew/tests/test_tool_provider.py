@@ -11,7 +11,7 @@ from test_deepseek import chunk, request, wire
 from test_deepseek import transport as transport
 from test_model_messages import search_tool
 
-from minimew.execution import deepseek as adapter
+from minimew.execution import chat_provider as adapter
 from minimew.execution.messages import InputMessage, ModelTurn, ToolCall
 from minimew.execution.provider import ProviderCompleted, ProviderFailure
 
@@ -40,7 +40,7 @@ def sse(*frames):
 
 
 async def collect(data, provider=None):
-    provider = provider or adapter.DeepSeekProvider(SecretStr("test-key"))
+    provider = provider or adapter.ChatProvider(SecretStr("test-key"))
     return [event async for event in provider.stream(data)]
 
 
@@ -75,7 +75,7 @@ def test_executor_sends_first_turn_system_rules_and_preserves_auto_choice(
 
         executor = RunExecutor(
             repo,
-            adapter.DeepSeekProvider(SecretStr("test-key")),
+            adapter.ChatProvider(SecretStr("test-key")),
             registry=ToolRegistry((spec(forbidden),)),
             capabilities=frozenset({"documents.read"}),
         )
@@ -221,7 +221,7 @@ def test_invalid_tool_protocol_emits_no_public_or_completed_event(
     async def scenario():
         events = []
         with pytest.raises(ProviderFailure, match="PROVIDER_INVALID_RESPONSE") as failure:
-            async for event in adapter.DeepSeekProvider(SecretStr("test-key")).stream(
+            async for event in adapter.ChatProvider(SecretStr("test-key")).stream(
                 model_request(model_configuration)
             ):
                 events.append(event)
@@ -243,7 +243,7 @@ def test_concurrent_tool_requests_do_not_share_fragments(transport, model_config
     requests, clients = transport(response)
 
     async def scenario():
-        provider = adapter.DeepSeekProvider(SecretStr("test-key"))
+        provider = adapter.ChatProvider(SecretStr("test-key"))
         first, second = await asyncio.gather(
             *(
                 collect(model_request(model_configuration, (InputMessage("user", name),)), provider)

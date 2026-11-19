@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from minimew.api.auth import router as auth_router
+from minimew.api.model_settings import router as model_settings_router
 from minimew.api.documents import UploadLimitMiddleware
 from minimew.api.documents import router as documents_router
 from minimew.api.evaluations import router as evaluations_router
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(model_settings_router)
     app.include_router(threads_router)
     app.include_router(runs_router)
     app.include_router(skills_router)

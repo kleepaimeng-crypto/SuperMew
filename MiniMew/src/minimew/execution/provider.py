@@ -33,8 +33,21 @@ class ProviderRequest:
     project_context: ProjectContext | None = None
     json_output: bool = False
     skill: SkillSnapshot | None = None
+    credential_id: UUID | None = None
+    account_id: UUID | None = None
+    knowledge_enabled: bool = True
 
     def __post_init__(self):
+        if type(self.knowledge_enabled) is not bool or (
+            self.credential_id is not None
+            and (
+                not isinstance(self.credential_id, UUID)
+                or not isinstance(self.account_id, UUID)
+                or self.run_id is None
+                or self.case_identity is not None
+            )
+        ):
+            raise ValueError("Invalid account execution binding")
         if self.skill is not None and (
             not isinstance(self.skill, SkillSnapshot) or self.case_identity is not None
         ):

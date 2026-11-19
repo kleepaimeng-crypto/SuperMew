@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import minimew.app as app_module
-import minimew.execution.deepseek as answer_module
+import minimew.execution.chat_provider as answer_module
 from minimew.database import create_engine
 from minimew.documents.artifacts import read_artifact
 from minimew.execution.messages import ModelTurn, ToolCall
@@ -133,11 +133,11 @@ async def main(malformed_first=False):
     )
     before = {name: os.environ.get(name) for name in names}
     old_provider, old_notifications = (
-        answer_module.DeepSeekProvider,
+        answer_module.ChatProvider,
         app_module.notification_lifespan,
     )
     controlled = ControlledAnswer(malformed_first)
-    answer_module.DeepSeekProvider = lambda key: controlled
+    answer_module.ChatProvider = lambda key, **kwargs: controlled
     app_module.notification_lifespan = offline_notifications
     try:
         async with temporary_database() as database:
@@ -281,7 +281,7 @@ async def main(malformed_first=False):
                         await cleanup.aclose()
                         await engine.dispose()
     finally:
-        answer_module.DeepSeekProvider = old_provider
+        answer_module.ChatProvider = old_provider
         app_module.notification_lifespan = old_notifications
         for name, value in before.items():
             if value is None:

@@ -2,7 +2,7 @@
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 MAX_INPUT_CHARS = 60000
@@ -99,8 +99,15 @@ class InputMessage:
     content: str
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
+    reasoning_content: str | None = field(default=None, repr=False)
 
     def __post_init__(self):
+        if self.reasoning_content is not None and (
+            self.role != "assistant"
+            or not self.tool_calls
+            or not valid_text(self.reasoning_content, MAX_ARGUMENT_CHARS)
+        ):
+            raise ValueError("Invalid private tool continuation")
         if not isinstance(self.tool_calls, tuple) or any(
             not isinstance(call, ToolCall) for call in self.tool_calls
         ):
@@ -150,6 +157,7 @@ def validate_messages(messages, tools, instructions=""):
         raise ValueError("Conversation must start with user")
     for message in messages:
         size += len(message.content)
+        size += len(message.reasoning_content or "")
         if message.role == "tool":
             if message.tool_call_id not in pending:
                 raise ValueError("Unexpected or duplicate tool result")
@@ -175,12 +183,15 @@ class ModelTurn:
     kind: Literal["text", "tool_calls"]
     content: str
     tool_calls: tuple[ToolCall, ...] = ()
+    reasoning_content: str | None = field(default=None, repr=False)
 
 
 def validate_turn(turn):
     if not isinstance(turn, ModelTurn) or turn.kind not in ("text", "tool_calls"):
         raise ValueError("Invalid model turn")
-    message = InputMessage("assistant", turn.content, turn.tool_calls)
+    message = InputMessage(
+        "assistant", turn.content, turn.tool_calls, reasoning_content=turn.reasoning_content
+    )
     if (turn.kind == "tool_calls") != bool(message.tool_calls):
         raise ValueError("Model finish reason and payload disagree")
     size = len(turn.content) + sum(

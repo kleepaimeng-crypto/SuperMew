@@ -97,7 +97,11 @@ class RunExecutor:
                     user_id,
                     thread_id,
                     run_id,
-                    self.capabilities
+                    (
+                        self.capabilities
+                        if request.knowledge_enabled
+                        else self.capabilities - {"documents.read"}
+                    )
                     | (
                         frozenset({"skill.resources.read"})
                         if request.skill is not None and request.skill.resources
@@ -359,7 +363,9 @@ class RunExecutor:
         while True:
             if resume:
                 previous = resume["outer"]["assistant"]
-                turn = ModelTurn("tool_calls", previous.content, previous.tool_calls)
+                turn = ModelTurn(
+                    "tool_calls", previous.content, previous.tool_calls, previous.reasoning_content
+                )
             else:
                 if budget.finalization and request.tools and not budget.can_request_tools():
                     request = replace(
@@ -387,7 +393,9 @@ class RunExecutor:
                     "PROVIDER_INVALID_RESPONSE",
                     diagnostic=capture("answer_model", "final_answer_requested_tools"),
                 )
-            assistant = InputMessage("assistant", turn.content, turn.tool_calls)
+            assistant = InputMessage(
+                "assistant", turn.content, turn.tool_calls, reasoning_content=turn.reasoning_content
+            )
             prepared = self.registry.prepare(turn.tool_calls, context)
             # 执行前确认原调用ID未重复，且调用数据本身可装入下一轮上下文。
             placeholders = tuple(

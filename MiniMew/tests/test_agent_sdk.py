@@ -12,7 +12,7 @@ from test_execution_retry import Repository
 from test_tool_provider import tool_frame
 from test_tools import Result
 
-from minimew.execution.deepseek import DeepSeekProvider
+from minimew.execution.chat_provider import ChatProvider
 
 
 def test_real_sdk_agent_calls_tool_then_sends_paired_result_to_model(
@@ -47,7 +47,7 @@ def test_real_sdk_agent_calls_tool_then_sends_paired_result_to_model(
             return Result(text="受控证据")
 
         assert (
-            await run(executor(repo, DeepSeekProvider(SecretStr("test-key")), handler), repo)
+            await run(executor(repo, ChatProvider(SecretStr("test-key")), handler), repo)
             == "succeeded"
         )
         assert invoked == [(repo.data.run_id, "餐费")]

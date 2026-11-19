@@ -1054,7 +1054,7 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 - [SuperMew 正式领域语言](../CONTEXT.md)
 - [SuperMew 当前能力](../README.md)
 
-## 十阶段路线
+## 十一阶段路线
 
 | 阶段 | 实现范围 | 验收标准 |
 | --- | --- | --- |
@@ -1068,6 +1068,7 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 | 8. RAG 评测闭环 | Dataset、fingerprint、Observation、Gate、baseline、Evaluation Job/Worker、工作台 | 同一数据与配置可比较结果；评测复用正式 RAG；失败案例可追踪 |
 | 9. 扩展能力与交付 | Skill、模型与能力控制面完整 UI、Web Research、只读 SQL、Sandbox、生产部署 | 权限拒绝发生在执行前；API、Indexing Worker、Evaluation Worker 可独立运行；真实基础设施检查通过 |
 | 10. 界面架构与体验优化 | 以对话为中心的工作区、个人/项目会话层级、新会话首发创建、文档与评测一级入口 | 登录后直接开始对话；工作区归属清楚；桌面与移动主要流程可用；详见[第十章计划](chapters/10-界面架构与体验优化.md) |
+| 11. 模型配置与检索模型选择 | 账户级聊天模型配置，未设置时使用本地 `.env` 默认；Embedding、Rerank 选择本地模型或 API | 新 Run 使用账户当前配置；索引与查询向量相容；重排来源和错误可追溯；详见[第十一章计划](chapters/11-模型配置与检索模型选择.md) |
 
 ## 学习方式
 
@@ -1085,7 +1086,7 @@ uv run --env-file .env --no-sync python scripts/check_runtime.py tests/test_canc
 → 讲解代码并复盘
 ```
 
-不会一次生成十阶段代码。文档中的技术与步骤是待逐阶段讨论的方案，不表示依赖已安装或实现已完成。
+不会一次生成十一阶段代码。文档中的技术与步骤是待逐阶段讨论的方案，不表示依赖已安装或实现已完成。
 
 章节计划、结章文字总结与源码职责梳理仍保留；工程提速不减少必要功能或验证，也不要求逐个补答旧基础题。
 

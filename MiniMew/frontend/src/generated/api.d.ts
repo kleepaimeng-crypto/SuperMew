@@ -89,6 +89,92 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/account/model-settings/presets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Presets */
+    get: operations["presets_v1_account_model_settings_presets_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/account/model-settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read */
+    get: operations["read_v1_account_model_settings_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/account/model-settings/selection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Selection */
+    put: operations["selection_v1_account_model_settings_selection_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/account/model-settings/models": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create */
+    post: operations["create_v1_account_model_settings_models_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/account/model-settings/models/{model_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Edit */
+    put: operations["edit_v1_account_model_settings_models__model_id__put"];
+    post?: never;
+    /** Remove */
+    delete: operations["remove_v1_account_model_settings_models__model_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/projects": {
     parameters: {
       query?: never;
@@ -610,6 +696,23 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** AccountSettingsView */
+    AccountSettingsView: {
+      /** Models */
+      models: components["schemas"]["ModelView"][];
+      /** Current Model Id */
+      current_model_id: string | null;
+      /** Knowledge Enabled */
+      knowledge_enabled: boolean;
+      /** Knowledge Available */
+      knowledge_available: boolean;
+      /** Credential Storage Ready */
+      credential_storage_ready: boolean;
+      /** Default Model Name */
+      default_model_name: string;
+      /** Default Configured */
+      default_configured: boolean;
+    };
     /** AnswerMaterials */
     AnswerMaterials: {
       /** Sections */
@@ -1832,6 +1935,8 @@ export interface components {
        * @constant
        */
       provider: "openai_compatible";
+      /** Adapter */
+      adapter?: ("deepseek" | "kimi" | "qwen" | "generic") | null;
       /** Model Name */
       model_name: string;
       /** Base Url */
@@ -1857,6 +1962,69 @@ export interface components {
       reasoning?: components["schemas"]["ReasoningPolicy"] | null;
       repairs?: components["schemas"]["RepairPolicy"] | null;
       hitl?: components["schemas"]["HitlPolicy"] | null;
+    };
+    /** ModelView */
+    ModelView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Revision */
+      revision: number;
+      /** Adapter */
+      adapter: string;
+      /** Model Name */
+      model_name: string;
+      /** Base Url */
+      base_url: string;
+      /** Max Output Tokens */
+      max_output_tokens: number;
+      /** Timeout Seconds */
+      timeout_seconds: number;
+      /** Key Configured */
+      key_configured: boolean;
+    };
+    /** ModelWrite */
+    ModelWrite: {
+      /** Name */
+      name: string;
+      /**
+       * Adapter
+       * @enum {string}
+       */
+      adapter: "deepseek" | "kimi" | "qwen" | "generic";
+      /** Model Name */
+      model_name: string;
+      /** Base Url */
+      base_url?: string | null;
+      /** Api Key */
+      api_key?: string | null;
+      /**
+       * Max Output Tokens
+       * @default 4096
+       */
+      max_output_tokens: number;
+      /**
+       * Timeout Seconds
+       * @default 120
+       */
+      timeout_seconds: number;
+    };
+    /** PresetView */
+    PresetView: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Base Url */
+      base_url: string;
+      /** Models */
+      models: string[];
+      /** Documentation */
+      documentation: string;
     };
     /** ProcessDetailData */
     ProcessDetailData: {
@@ -2784,6 +2952,16 @@ export interface components {
       /** Judge Fault */
       judge_fault?: ("timeout" | "invalid" | "transient") | null;
     };
+    /** SelectionWrite */
+    SelectionWrite: {
+      /** Model Id */
+      model_id: string | null;
+      /**
+       * Knowledge Enabled
+       * @default true
+       */
+      knowledge_enabled: boolean;
+    };
     /** SkillSelection */
     SkillSelection: {
       /** Id */
@@ -2849,9 +3027,9 @@ export interface components {
     ThinkingPolicy: {
       /**
        * Type
-       * @constant
+       * @enum {string}
        */
-      type: "disabled";
+      type: "disabled" | "native";
     };
     /** ThreadListResponse */
     ThreadListResponse: {
@@ -3282,6 +3460,174 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  presets_v1_account_model_settings_presets_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PresetView"][];
+        };
+      };
+    };
+  };
+  read_v1_account_model_settings_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountSettingsView"];
+        };
+      };
+    };
+  };
+  selection_v1_account_model_settings_selection_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SelectionWrite"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_v1_account_model_settings_models_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ModelWrite"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  edit_v1_account_model_settings_models__model_id__put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        model_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ModelWrite"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  remove_v1_account_model_settings_models__model_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        model_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
       };
     };
   };

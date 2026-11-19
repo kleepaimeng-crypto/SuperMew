@@ -142,6 +142,7 @@ async def create_run(
             thread_id,
             data,
             credentials_available=settings.model_credentials_available,
+            settings=settings,
         )
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None

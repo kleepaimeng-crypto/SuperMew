@@ -19,11 +19,12 @@ class FrozenModel(BaseModel):
 
 
 class ThinkingPolicy(FrozenModel):
-    type: Literal["disabled"]
+    type: Literal["disabled", "native"]
 
 
 class ModelConfiguration(FrozenModel):
     provider: Literal["openai_compatible"]
+    adapter: Literal["deepseek", "kimi", "qwen", "generic"] | None = None
     model_name: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
     base_url: str = Field(min_length=1, max_length=2048)
     temperature: float = Field(ge=0, le=2)

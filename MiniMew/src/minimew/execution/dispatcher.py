@@ -97,13 +97,13 @@ async def execution_lifespan(sessions, settings):
     from minimew.knowledge import CAPABILITY
     from minimew.knowledge_runtime import knowledge_lifespan
 
-    provider = None
-    if settings.model_credentials_available:
-        from minimew.execution.deepseek import DeepSeekProvider
+    from minimew.execution.chat_provider import ChatProvider
+    from minimew.account_models.credentials import CredentialResolver
 
-        provider = DeepSeekProvider(settings.deepseek_api_key)
-    else:
-        logger.warning("execution_disabled code=MODEL_CONFIGURATION_UNAVAILABLE")
+    # 账户凭据可独立于部署默认Key工作；可用性在新Run解析与每次调用时核验。
+    provider = ChatProvider(
+        settings.deepseek_api_key, credentials=CredentialResolver(sessions, settings)
+    )
     async with AsyncExitStack() as stack:
         knowledge = await stack.enter_async_context(knowledge_lifespan(sessions, settings))
         dispatcher = RunDispatcher(
