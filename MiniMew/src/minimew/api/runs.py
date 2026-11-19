@@ -24,6 +24,7 @@ from minimew.hitl.schemas import ResumeConflict, ResumeCredential, ResumeInput
 from minimew.hitl.store import HitlStore
 from minimew.model_control import ModelConfigurationUnavailable
 from minimew.settings import SettingsDependency
+from minimew.skills.catalog import SkillUnavailable
 
 router = APIRouter(
     prefix="/v1/threads/{thread_id}/runs", tags=["runs"], dependencies=[Depends(no_store)]
@@ -145,7 +146,11 @@ async def create_run(
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None
     except IdempotencyConflict:
-        raise HTTPException(409, "Idempotency key already used with different content") from None
+        raise HTTPException(
+            409, "Idempotency key already used with different content or Skill"
+        ) from None
+    except SkillUnavailable:
+        raise HTTPException(422, detail={"code": "SKILL_UNAVAILABLE"}) from None
     except ModelConfigurationUnavailable:
         raise HTTPException(503, detail={"code": "MODEL_CONFIGURATION_UNAVAILABLE"}) from None
     response.status_code = 201 if created else 200

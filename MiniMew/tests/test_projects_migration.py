@@ -82,7 +82,7 @@ def test_projects_upgrade_preserves_personal_data_and_matches_metadata():
                 async with engine.connect() as connection:
                     assert (
                         await connection.scalar(text("SELECT version_num FROM alembic_version"))
-                        == "0021"
+                        == "0022"
                     )
                     assert (
                         await connection.scalar(

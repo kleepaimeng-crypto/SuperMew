@@ -13,6 +13,7 @@ from minimew.api.documents import router as documents_router
 from minimew.api.evaluations import router as evaluations_router
 from minimew.api.health import router as health_router
 from minimew.api.runs import router as runs_router
+from minimew.api.skills import router as skills_router
 from minimew.api.threads import router as threads_router
 from minimew.auth_http import AuthHttpMiddleware
 from minimew.database import create_engine
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(threads_router)
     app.include_router(runs_router)
+    app.include_router(skills_router)
     app.include_router(documents_router)
     app.include_router(evaluations_router)
 

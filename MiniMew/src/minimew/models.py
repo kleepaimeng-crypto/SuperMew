@@ -225,6 +225,13 @@ class Run(Base):
             "model_catalog_hash ~ '^[0-9a-f]{64}$')",
             name="ck_runs_model_snapshot",
         ),
+        CheckConstraint(
+            "(skill_snapshot IS NULL AND skill_request IS NULL AND "
+            "status IN ('succeeded','failed','cancelled')) OR "
+            "(skill_snapshot IS NOT NULL AND skill_request IS NOT NULL AND "
+            "jsonb_typeof(skill_snapshot)='object' AND jsonb_typeof(skill_request)='object')",
+            name="ck_runs_skill_snapshot",
+        ),
     )
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=text("gen_random_uuid()")
@@ -234,6 +241,8 @@ class Run(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
     memory_snapshot: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    skill_request: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
+    skill_snapshot: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     model_snapshot_json: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     model_catalog_hash: Mapped[str | None] = mapped_column(String(64))
     owner_token: Mapped[UUID | None] = mapped_column(Uuid)

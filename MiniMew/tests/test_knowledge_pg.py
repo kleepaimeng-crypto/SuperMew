@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from execution_helpers import FakeProvider
+from sqlalchemy import select
 from test_documents_pg import account, database_call, upload
 from test_execution_pg import facts
 from test_indexing_pg import client as client
@@ -273,6 +274,23 @@ def test_api_lifespan_wires_real_knowledge_tool_into_automatic_run(
     upload(client, headers, content="# 制度\n餐费150元。".encode())
 
     async def build(sessions):
+        # 本用例启动正式自动调度器；不能消费前序用例在同一自有临时库留下的待办。
+        # 保留下面“两次目标模型调用”的断言，先通过正式取消事务收拢测试残留。
+        assert os.environ["MINIMEW_INTEGRATION_DB"].startswith("minimew_test_")
+        assert sessions.kw["bind"].url.database == os.environ["MINIMEW_INTEGRATION_DB"]
+        from minimew.models import Run
+
+        repository = ExecutionRepository(sessions)
+        async with sessions() as session:
+            previous = (
+                await session.execute(
+                    select(Run.user_id, Run.thread_id, Run.id).where(
+                        Run.status.in_(["pending", "running", "waiting_input", "resume_pending"])
+                    )
+                )
+            ).all()
+        for user_id, thread_id, run_id in previous:
+            await repository.request_cancel(user_id, thread_id, run_id)
         w = worker(sessions, tmp_path)
         try:
             assert await w.run_once()

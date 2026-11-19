@@ -8,6 +8,11 @@ export default defineConfig({
     browserName: "chromium",
     channel: process.env.MINIMEW_TEST_BROWSER_CHANNEL,
     headless: true,
+    // 仅自有CPU模型验收限制Chromium进程/GPU提交额度，不改用户浏览器或应用。
+    launchOptions:
+      process.env.MINIMEW_PROJECT_BROWSER_TESTS === "1"
+        ? { args: ["--renderer-process-limit=2", "--disable-gpu"] }
+        : undefined,
   },
   webServer: {
     command: "npm run dev -- --port 5175",

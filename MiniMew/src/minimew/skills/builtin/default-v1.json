@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "default",
+  "version": "1.0.0",
+  "name": "默认助手",
+  "description": "保持现有聊天与自动检索，项目问题优先结合项目资料。",
+  "instructions": "",
+  "tools": ["knowledge_search"],
+  "resources": []
+}

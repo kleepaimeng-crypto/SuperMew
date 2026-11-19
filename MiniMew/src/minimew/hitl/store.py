@@ -53,6 +53,7 @@ class HitlStore:
                         "scope": scope,
                         "evidence": context.evidence.items,
                         "queried": context.evidence.queried,
+                        "skill_digest": context.skill.digest if context.skill is not None else None,
                     }
                 ),
             }
@@ -63,6 +64,13 @@ class HitlStore:
             )
             now = await session.scalar(select(func.clock_timestamp()))
             self.active(run, claim, now)
+            from minimew.skills.schemas import parse_snapshot
+
+            if (
+                request.skill is None
+                or parse_snapshot(run.skill_snapshot).digest != request.skill.digest
+            ):
+                raise ValueError("Checkpoint Skill mismatch")
             if run.execution_deadline_at is None or run.execution_deadline_at <= now:
                 raise ToolFailure("AGENT_DEADLINE_EXCEEDED")
             expires = min(
@@ -140,6 +148,10 @@ class HitlStore:
             ):
                 raise ValueError("Checkpoint identity mismatch")
             state = decode(document["state"])
+            from minimew.skills.schemas import parse_snapshot
+
+            if state["skill_digest"] != parse_snapshot(run.skill_snapshot).digest:
+                raise ValueError("Checkpoint Skill mismatch")
             if (
                 now >= cp.expires_at
                 or now + timedelta(seconds=state["remaining"]) >= state["scope"].expires_at

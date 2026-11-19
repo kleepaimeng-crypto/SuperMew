@@ -9,6 +9,8 @@ from minimew.conversation_schemas import CreateRunRequest, MessagePage, MessageR
 from minimew.execution.journal import append_event
 from minimew.model_control import ModelConfigurationUnavailable, freeze_current_snapshot
 from minimew.models import Message, Run, Thread
+from minimew.skills.catalog import load_skill
+from minimew.skills.schemas import parse_snapshot, summary
 
 
 class ConversationNotFound(Exception):
@@ -60,6 +62,9 @@ def run_response(run: Run, messages: list[Message]) -> RunResponse:
         finished_at=run.finished_at,
         cancel_requested_at=run.cancel_requested_at,
         error_code=run.error_code,
+        skill=summary(parse_snapshot(run.skill_snapshot))
+        if run.skill_snapshot is not None
+        else None,
     )
 
 
@@ -82,7 +87,12 @@ async def reserve_run(
         )
         if existing is not None:
             messages = await run_messages(session, existing)
-            if messages[0].content != data.content:
+            intent = data.skill.model_dump(mode="json", exclude_none=True) if data.skill else {}
+            # 旧终态从未提供Skill选择；只允许原无选择请求重放，不补造默认包。
+            same_skill = existing.skill_request == intent or (
+                existing.skill_request is None and data.skill is None
+            )
+            if messages[0].content != data.content or not same_skill:
                 raise IdempotencyConflict
             result, created = run_response(existing, messages), False
         else:
@@ -93,6 +103,7 @@ async def reserve_run(
             from minimew.projects import memory_snapshot
 
             memories = await memory_snapshot(session, user_id, thread.project_id)
+            skill = load_skill(data.skill)
             run = Run(
                 thread_id=thread_id,
                 user_id=user_id,
@@ -100,6 +111,10 @@ async def reserve_run(
                 model_snapshot_json=snapshot.model_dump(mode="json"),
                 memory_snapshot=memories,
                 model_catalog_hash=snapshot.catalog_hash(),
+                skill_request=data.skill.model_dump(mode="json", exclude_none=True)
+                if data.skill
+                else {},
+                skill_snapshot=skill.model_dump(mode="json"),
             )
             session.add(run)
             await session.flush()

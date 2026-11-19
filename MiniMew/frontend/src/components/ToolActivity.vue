@@ -36,7 +36,15 @@ watch(
   { immediate: true },
 );
 const emit = defineEmits<{ load: []; layout: [] }>();
-const names: Record<string, string> = { knowledge_search: "查询知识库" };
+const names: Record<string, string> = {
+  knowledge_search: "查询知识库",
+  read_skill_resource: "读取任务参考资料",
+};
+const standaloneTools = computed(() =>
+  props.steps?.length
+    ? props.tools.filter((t) => t.name !== "knowledge_search")
+    : props.tools,
+);
 const labels: Record<ToolProjection["status"], string> = {
   running: "执行中",
   completed: "已完成",
@@ -61,7 +69,9 @@ function toggled(event: Event) {
             : "执行中"
           : "执行过程"
       }}
-      <span v-if="steps?.length"> · {{ tasks.length }}项任务</span>
+      <span v-if="steps?.length">
+        · {{ tasks.length + standaloneTools.length }}项任务</span
+      >
       <span v-else-if="tools.length"> · {{ tools.length }}次工具调用</span>
       <span v-if="runStatus === 'succeeded'"> · 已完成</span>
     </summary>
@@ -71,8 +81,8 @@ function toggled(event: Event) {
         <ProcessTask :task="task" :run-status="runStatus" />
       </li>
     </ol>
-    <ol v-if="tools.length && !steps?.length">
-      <li v-for="tool in tools" :key="tool.id">
+    <ol v-if="standaloneTools.length">
+      <li v-for="tool in standaloneTools" :key="tool.id">
         <span>{{ names[tool.name] || tool.name }}</span>
         <span
           class="tool-state"

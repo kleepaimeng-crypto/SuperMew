@@ -5,12 +5,14 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from minimew.generated.run_event_v1 import ErrorCode, MessageStatus, RunEvent, RunStatus
+from minimew.skills.schemas import SkillSelection, SkillSummary
 
 
 class CreateRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
     content: str = Field(min_length=1, max_length=20000)
+    skill: SkillSelection | None = None
 
     @field_validator("content")
     @classmethod
@@ -42,6 +44,7 @@ class RunResponse(BaseModel):
     finished_at: datetime | None = None
     cancel_requested_at: datetime | None = None
     error_code: ErrorCode | None = None
+    skill: SkillSummary | None = None
 
 
 class MessagePage(BaseModel):

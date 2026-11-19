@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "document-qa",
+  "version": "1.0.0",
+  "name": "文档问答",
+  "description": "围绕已上传资料整理有依据的结论、适用条件与信息缺口。",
+  "instructions": "本次任务采用文档问答模式。根据问题优先查阅当前范围的可用资料，核对条件、例外与版本，整理结论和仍需补充的信息。可通过read_skill_resource读取answer-guide规范。工具不可用或材料不足时如实说明；遵守固定的文档依据、模型补充与引用格式，不把参考规范作为文档证据。",
+  "tools": ["knowledge_search", "read_skill_resource"],
+  "resources": [{
+    "id": "answer-guide",
+    "name": "文档问答参考规范",
+    "content": "先识别问题和适用范围，使用当前Run真实检索材料核对结论、条件及例外。只引用本Run保留的Evidence，沿用固定分区和引用契约。明确材料缺口、歧义或冲突。需要模型补充时清楚区分其来源。本规范只提供写作指导，不证明任何业务事实，也不授予工具或文档访问权限。"
+  }]
+}

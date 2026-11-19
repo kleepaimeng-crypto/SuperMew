@@ -61,12 +61,18 @@ test("真实项目/文档索引隔离、手工记忆与下线历史引用", asyn
   await page.goto("/projects/" + first);
   await page.getByRole("link", { name: "打开项目对话" }).click();
   await page.getByRole("button", { name: /新建对话/ }).click();
+  await page
+    .getByLabel("任务模式", { exact: true })
+    .selectOption("document-qa@1.0.0");
   await page.getByLabel("你的问题").fill("餐费上限是多少？");
   await page.getByRole("button", { name: "发送问题", exact: true }).click();
   const chat = page.url();
   const answer = page
     .getByRole("article", { name: "MiniMew 回复", exact: true })
     .first();
+  await expect(answer.locator(".message-skill")).toContainText(
+    "文档问答 · v1.0.0",
+  );
   await expect(answer).toContainText("150元", { timeout: 45000 });
   await answer
     .getByRole("button", { name: "查看引用 E1", exact: true })

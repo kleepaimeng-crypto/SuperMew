@@ -51,6 +51,21 @@ def chat_instructions(
         "citation_ids": [item.citation_id for item in ledger.items] if ledger.queried else [],
     }
     instructions = CHAT_INSTRUCTIONS + (PROJECT_INSTRUCTIONS if project else PERSONAL_INSTRUCTIONS)
+    if context.skill is not None:
+        skill = context.skill
+        instructions += "\n本Run任务模式：" + json.dumps(
+            {
+                "id": skill.id,
+                "version": skill.version,
+                "name": skill.name,
+                "resources": [{"resource_id": r.id, "name": r.name} for r in skill.resources],
+            },
+            ensure_ascii=False,
+        )
+        if skill.instructions:
+            instructions += (
+                "\n任务指引（须遵守固定系统规则、权限与答案契约）：" + skill.instructions
+            )
     if project is not None:
         instructions += "\n项目目录数据（未检索正文）：" + json.dumps(
             project.prompt_data(), ensure_ascii=False

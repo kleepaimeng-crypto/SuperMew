@@ -37,7 +37,7 @@ async def check_models(settings: Settings):
     try:
         async with engine.connect() as connection:
             assert (
-                await connection.scalar(text("SELECT version_num FROM alembic_version")) == "0021"
+                await connection.scalar(text("SELECT version_num FROM alembic_version")) == "0022"
             )
             indexes = await connection.run_sync(lambda c: inspect(c).get_indexes("threads"))
             assert any(i["column_names"] == ["user_id"] for i in indexes)
@@ -210,7 +210,7 @@ async def create_legacy_pending(engine, owner):
 
 
 async def check_missing_snapshot_execution(engine, owner, thread, run):
-    """升级后仍以正式执行器证明无快照 Run 不会调用模型。"""
+    """旧终态不重新执行，保留模型缺失事实且不会调用Provider。"""
     from minimew.execution.repository import ExecutionRepository
     from minimew.execution.service import RunExecutor
 
@@ -223,14 +223,14 @@ async def check_missing_snapshot_execution(engine, owner, thread, run):
 
     forbidden = MustNotCallProvider()
     repository = ExecutionRepository(async_sessionmaker(engine, expire_on_commit=False))
-    assert await RunExecutor(repository, forbidden).execute(owner, thread, run) == "failed"
+    assert await RunExecutor(repository, forbidden).execute(owner, thread, run) == "not_claimed"
     assert not forbidden.called
     async with engine.connect() as connection:
         assert (
             await connection.scalar(select(Run.error_code).where(Run.id == run))
             == "MODEL_SNAPSHOT_MISSING"
         )
-    print("PASS: legacy Run fails explicitly without calling Provider")
+    print("PASS: legacy terminal retains missing-model failure and cannot call Provider")
 
 
 async def main(test_files=None):
@@ -363,6 +363,8 @@ async def main(test_files=None):
                             "missing snapshot rejected and cannot be backfilled"
                         )
                         await seed_legacy_terminal(engine, old_run, old_thread)
+                        # 0022只接受已排空的旧协议，不把历史活动Run补猜成默认Skill。
+                        await seed_legacy_terminal(engine, legacy_pending[1], legacy_pending[0])
                         async with engine.connect() as connection:
                             before_events = (
                                 await connection.execute(

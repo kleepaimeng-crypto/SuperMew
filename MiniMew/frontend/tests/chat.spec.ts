@@ -61,6 +61,7 @@ async function fixture(
   await page.route("**/v1/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
+    if (path === "/v1/skills") return route.fulfill({ json: [] });
     if (path.endsWith("/answer"))
       return route.fulfill({
         json: {
@@ -286,6 +287,10 @@ test("提交成功但历史失败可独立恢复，不重新 POST", async ({ pag
   await page.getByLabel("你的问题", { exact: true }).fill("你好");
   await page.getByRole("button", { name: "发送问题", exact: true }).click();
   await expect(page.getByText(/问题已提交，消息记录尚未同步/)).toBeVisible();
+  // 预留回执先于历史失败响应：等错误界面就绪后才切换服务端夹具。
+  await expect(
+    page.getByRole("button", { name: "重试同步历史", exact: true }),
+  ).toBeEnabled();
   state.recoverHistory();
   await page.getByRole("button", { name: "重试同步历史", exact: true }).click();
   await expect(page.getByText("今天天气很好", { exact: true })).toBeVisible();

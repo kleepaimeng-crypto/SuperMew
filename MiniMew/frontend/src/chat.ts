@@ -1,4 +1,5 @@
 import type { components } from "./generated/api";
+import { parseSkill } from "./skills";
 import {
   isDateTime,
   isEventValue,
@@ -53,6 +54,9 @@ export function parseRun(
     finished_at: value.finished_at ?? null,
     cancel_requested_at: value.cancel_requested_at ?? null,
     error_code: value.error_code ?? null,
+    ...(value.skill !== undefined
+      ? { skill: value.skill === null ? null : parseSkill(value.skill) }
+      : {}),
   } as ChatRun;
 }
 export function parseMessagePage(

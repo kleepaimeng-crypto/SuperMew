@@ -241,9 +241,12 @@ def test_database_constraints_reject_cross_links_and_duplicates(client):
                 )
                 snapshot = (
                     await conn.execute(
-                        select(Run.model_snapshot_json, Run.model_catalog_hash).where(
-                            Run.id == run_id
-                        )
+                        select(
+                            Run.model_snapshot_json,
+                            Run.model_catalog_hash,
+                            Run.skill_request,
+                            Run.skill_snapshot,
+                        ).where(Run.id == run_id)
                     )
                 ).one()
             invalid = [
@@ -254,6 +257,8 @@ def test_database_constraints_reject_cross_links_and_duplicates(client):
                         idempotency_key="foreign",
                         model_snapshot_json=snapshot.model_snapshot_json,
                         model_catalog_hash=snapshot.model_catalog_hash,
+                        skill_request=snapshot.skill_request,
+                        skill_snapshot=snapshot.skill_snapshot,
                     ),
                     "23503",
                 ),
@@ -295,6 +300,8 @@ def test_database_constraints_reject_cross_links_and_duplicates(client):
                         idempotency_key="probe",
                         model_snapshot_json=snapshot.model_snapshot_json,
                         model_catalog_hash=snapshot.model_catalog_hash,
+                        skill_request=snapshot.skill_request,
+                        skill_snapshot=snapshot.skill_snapshot,
                     )
                     .returning(Run.id)
                 )

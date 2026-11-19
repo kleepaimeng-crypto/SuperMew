@@ -32,6 +32,16 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 本功能迁移head为`0021`；现有开发库需显式迁移并更新/重启API、Index Worker和前端，本次没有自动升级或重启。旧Run继续显示已有过程，未保存的具体缺口/模型用途不补造，旧scope没有文档名时注明暂不可用。实现和验收见[任务主线与检索详情](chapters/09-扩展能力与交付.md#93任务主线与检索详情实施2026-11-19)。
 
+## 内置任务模式（9.4）
+
+聊天输入处可选择“默认助手”或“文档问答”。默认助手保留现有聊天、自动工具选择和项目资料优先；文档问答提供版本化任务指引与只读参考资源。选择用于之后的新Run，进行中/暂停的任务和历史回答继续显示其持久模式与版本。模式不会开启本来禁用的知识服务或扩大项目资料范围。
+
+服务端在原创建Run事务冻结选择意图、Skill版本/摘要/完整内容。原正文、幂等键与选择不变的重试返回原Run；同key更换选择返回冲突。新版目录不改旧任务，待确认提交保留原模式及版本；已退出目录的表单选择在确认成功后恢复默认，历史仍使用原快照。旧历史显示未记录，不补造配置。
+
+`GET /v1/skills`只返回已登录用户可读取的内置目录摘要；原创建Run接口支持可选`skill: {id, version}`，省略时解析默认助手。只读`read_skill_resource`仅访问本Run快照中的resource_id，复用原工具次数/模型轮数/期限与Journal，资源规范不作为文档Evidence。内置包发布需新增版本、文件和固定摘要，不原地替换同版本内容；wheel已验证包含内置资源。
+
+本功能迁移head为`0022`。升级前须使用旧版完成或取消旧pending/running/waiting_input/resume_pending；有这类任务时迁移明确拒绝，不自动取消或补猜Skill。旧终态原样保留，新Run快照不可修改，已有Skill历史时拒绝降级。启用需显式迁移并配套更新API、Index Worker与前端；本次仅隔离库验收，没有升级开发库/重启用户服务。实现/数据流/测试见[9.4实施记录](chapters/09-扩展能力与交付.md#94内置skill工作包实施2026-11-19)。
+
 ## 运行最小后端
 
 需要 Python 3.12、uv 和正在运行的 Docker Desktop（Linux containers）。在 PowerShell 中进入本目录后运行：
@@ -71,7 +81,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0021 (head)`。0021在同一Journal增量加入有界`process.detail`，补齐阶段、模型用途/尝试、材料缺口/子问题和文档目录摘要；不改写旧`process.step`，存在详情历史时拒绝降级。0020扩展原Journal过程事件与执行/归属guard，过程历史不降级丢弃。0019增加Project、手工记忆、Thread/KB项目归属、文档下线与Run记忆快照；旧数据保留个人模式，存在项目或下线文档时拒绝降级以免丢失隔离/撤销语义。0018增加持久评测Job/Case/Corpus，供独立Evaluation Worker与工作台使用。0017新增本段execution_deadline_at并允许有效owner续短租约；升级会拒绝任何旧协议running，必须先用旧版正常排空。旧终态不补造期限，已提交waiting_input/resume_pending保持可续接，不猜测运行进度。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0022 (head)`。0022增加Run的不可变Skill选择意图和内容快照，旧活动协议须先排空，旧终态不回填；存在Skill历史拒绝降级。0021在同一Journal增量加入有界`process.detail`，补齐阶段、模型用途/尝试、材料缺口/子问题和文档目录摘要；不改写旧`process.step`，存在详情历史时拒绝降级。0020扩展原Journal过程事件与执行/归属guard，过程历史不降级丢弃。0019增加Project、手工记忆、Thread/KB项目归属、文档下线与Run记忆快照；旧数据保留个人模式，存在项目或下线文档时拒绝降级以免丢失隔离/撤销语义。0018增加持久评测Job/Case/Corpus，供独立Evaluation Worker与工作台使用。0017新增本段execution_deadline_at并允许有效owner续短租约；升级会拒绝任何旧协议running，必须先用旧版正常排空。旧终态不补造期限，已提交waiting_input/resume_pending保持可续接，不猜测运行进度。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 

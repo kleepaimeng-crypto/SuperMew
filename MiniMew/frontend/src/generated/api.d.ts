@@ -348,6 +348,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/skills": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Skills */
+    get: operations["list_skills_v1_skills_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/documents": {
     parameters: {
       query?: never;
@@ -966,6 +983,7 @@ export interface components {
       idempotency_key: string;
       /** Content */
       content: string;
+      skill?: components["schemas"]["SkillSelection"] | null;
     };
     /** CreateThreadRequest */
     CreateThreadRequest: {
@@ -2666,6 +2684,7 @@ export interface components {
             | "HITL_CHECKPOINT_INVALID"
           )
         | null;
+      skill?: components["schemas"]["SkillSummary"] | null;
     };
     /** RunResumedEvent */
     RunResumedEvent: {
@@ -2764,6 +2783,26 @@ export interface components {
       judge?: components["schemas"]["JudgeResult"] | null;
       /** Judge Fault */
       judge_fault?: ("timeout" | "invalid" | "transient") | null;
+    };
+    /** SkillSelection */
+    SkillSelection: {
+      /** Id */
+      id: string;
+      /** Version */
+      version?: string | null;
+    };
+    /** SkillSummary */
+    SkillSummary: {
+      /** Id */
+      id: string;
+      /** Version */
+      version: string;
+      /** Name */
+      name: string;
+      /** Description */
+      description: string;
+      /** Digest */
+      digest: string;
     };
     /** Source */
     Source: {
@@ -3944,6 +3983,26 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_skills_v1_skills_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SkillSummary"][];
+        };
       };
     };
   };

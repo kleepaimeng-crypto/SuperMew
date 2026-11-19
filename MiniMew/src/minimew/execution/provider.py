@@ -15,6 +15,7 @@ from minimew.execution.messages import (
 )
 from minimew.execution.project_context import ProjectContext
 from minimew.model_control import ModelSnapshot
+from minimew.skills.schemas import SkillSnapshot
 
 
 @dataclass(frozen=True)
@@ -31,8 +32,13 @@ class ProviderRequest:
     case_identity: CaseIdentity | None = None
     project_context: ProjectContext | None = None
     json_output: bool = False
+    skill: SkillSnapshot | None = None
 
     def __post_init__(self):
+        if self.skill is not None and (
+            not isinstance(self.skill, SkillSnapshot) or self.case_identity is not None
+        ):
+            raise ValueError("Skill snapshot requires a chat request")
         if type(self.json_output) is not bool or (
             self.json_output and (self.purpose not in {"grade", "plan", "rewrite"} or self.tools)
         ):

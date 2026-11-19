@@ -14,7 +14,10 @@ const feed = ref<HTMLElement | null>(null);
 const nearEnd = ref(true);
 watch(
   () => props.threadId,
-  (id) => void chat.open(id),
+  async (id) => {
+    await chat.open(id);
+    if (chat.threadId === id) void chat.loadSkills();
+  },
   { immediate: true },
 );
 onUnmounted(() => chat.close());
@@ -121,6 +124,15 @@ function enter(event: KeyboardEvent) {
         <div class="message-author">
           {{ message.role === "user" ? "你" : "MiniMew" }}
         </div>
+        <p
+          v-if="message.role === 'assistant' && chat.runs[message.run_id]"
+          class="message-skill"
+        >
+          任务模式：{{ chat.runs[message.run_id]!.run.skill?.name ?? "未记录" }}
+          <template v-if="chat.runs[message.run_id]!.run.skill">
+            · v{{ chat.runs[message.run_id]!.run.skill!.version }}</template
+          >
+        </p>
         <ToolActivity
           v-if="message.role === 'assistant' && chat.runs[message.run_id]"
           :tools="chat.runs[message.run_id]!.projection.tools"
@@ -273,6 +285,52 @@ function enter(event: KeyboardEvent) {
       </div>
     </div>
     <form class="chat-composer" @submit.prevent="send">
+      <div class="skill-choice">
+        <label for="chat-skill">任务模式</label>
+        <select
+          id="chat-skill"
+          v-model="chat.selectedSkill"
+          :disabled="!!chat.pending || chat.submitting || chat.skillsLoading"
+          aria-describedby="skill-help"
+        >
+          <option value="">默认助手</option>
+          <option
+            v-if="
+              chat.pending?.skill &&
+              !chat.skills.some(
+                (s) =>
+                  s.id === chat.pending!.skill!.id &&
+                  s.version === chat.pending!.skill!.version,
+              )
+            "
+            :value="`${chat.pending.skill.id}@${chat.pending.skill.version}`"
+          >
+            {{ chat.pending.skillName || chat.pending.skill.id }} · v{{
+              chat.pending.skill.version
+            }}（待确认）
+          </option>
+          <option
+            v-for="skill in chat.skills.filter((s) => s.id !== 'default')"
+            :key="`${skill.id}@${skill.version}`"
+            :value="`${skill.id}@${skill.version}`"
+          >
+            {{ skill.name }} · v{{ skill.version }}
+          </option>
+        </select>
+        <span id="skill-help">{{
+          chat.pending
+            ? "待确认的提交将保留原任务模式。"
+            : chat.skillsLoading
+              ? "正在加载任务模式…"
+              : "用于下一次提问，已有任务保持原模式。"
+        }}</span>
+      </div>
+      <div v-if="chat.skillsError" class="skill-error" role="status">
+        {{ chat.skillsError }}
+        <button type="button" class="quiet-button" @click="chat.loadSkills()">
+          重试加载模式
+        </button>
+      </div>
       <label for="chat-question">你的问题</label>
       <textarea
         id="chat-question"
@@ -321,3 +379,44 @@ function enter(event: KeyboardEvent) {
     </form>
   </div>
 </template>
+
+<style scoped>
+.skill-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.skill-choice label {
+  margin: 0;
+}
+.skill-choice select {
+  width: auto;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #b3c0ae;
+  border-radius: 6px;
+  background: #fcfdf9;
+  color: #294e39;
+  font: inherit;
+}
+.skill-choice span,
+.message-skill,
+.skill-error {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #536552;
+}
+.message-skill {
+  margin: 4px 0 8px;
+}
+.skill-error {
+  margin-bottom: 10px;
+}
+@media (pointer: coarse) {
+  .skill-choice select {
+    min-height: 44px;
+  }
+}
+</style>

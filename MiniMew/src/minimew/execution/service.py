@@ -74,7 +74,11 @@ class RunExecutor:
         if heartbeat_seconds <= 0:
             raise ValueError("Heartbeat interval must be positive")
         self.heartbeat_seconds = heartbeat_seconds
-        self.registry = registry if registry is not None else ToolRegistry()
+        from minimew.skills.runtime import resource_spec
+
+        self.registry = ToolRegistry(
+            (*(registry.specs if registry is not None else ()), resource_spec())
+        )
         self.capabilities = capabilities
 
     async def execute(self, user_id: UUID, thread_id: UUID, run_id: UUID) -> ExecutionOutcome:
@@ -93,12 +97,18 @@ class RunExecutor:
                     user_id,
                     thread_id,
                     run_id,
-                    self.capabilities,
+                    self.capabilities
+                    | (
+                        frozenset({"skill.resources.read"})
+                        if request.skill is not None and request.skill.resources
+                        else frozenset()
+                    ),
                     **({"rag_policy": request.snapshot.rag} if request.snapshot.rag else {}),
                     reasoning=request.snapshot.reasoning,
                     repairs=request.snapshot.repairs,
                     hitl=request.snapshot.hitl,
                     question=request.messages[-1].content,
+                    skill=request.skill,
                 )
             )
             tools = self.registry.visible(context)

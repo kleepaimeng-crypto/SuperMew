@@ -9,7 +9,7 @@ from alembic.script import ScriptDirectory
 def test_initial_migration_has_one_head_and_no_business_ddl():
     output = StringIO()
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"), output_buffer=output)
-    assert ScriptDirectory.from_config(config).get_heads() == ["0021"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0022"]
     command.upgrade(config, "0001", sql=True)
     sql = output.getvalue()
     assert "CREATE TABLE alembic_version" in sql

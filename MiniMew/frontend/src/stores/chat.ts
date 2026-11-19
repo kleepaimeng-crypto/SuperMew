@@ -23,11 +23,19 @@ import {
 } from "../events/runEventReducer";
 import { readRunEvents, waitForRetry } from "../events/runEventStream";
 import { failureForRun } from "../runErrors";
+import {
+  parseSkills,
+  parseSelection,
+  type SkillSummary,
+  type SkillSelection,
+} from "../skills";
 import { useAuthStore } from "./auth";
 
 interface Intent {
   key: string;
   content: string;
+  skill?: SkillSelection;
+  skillName?: string; // 仅本地表单显示，不参与服务端选择、幂等或权限。
 }
 export interface RunView {
   run: ChatRun;
@@ -65,6 +73,10 @@ export const useChatStore = defineStore("chat", () => {
   const historyError = ref("");
   const previousCursor = ref<number | null>(null);
   const draft = ref("");
+  const skills = ref<SkillSummary[]>([]);
+  const selectedSkill = ref("");
+  const skillsLoading = ref(false);
+  const skillsError = ref("");
   const pending = ref<Intent | null>(null);
   const submitting = ref(false);
   const submitError = ref("");
@@ -110,7 +122,19 @@ export const useChatStore = defineStore("chat", () => {
         value.content.trim() &&
         [...value.content].length <= 20000
       )
-        return { key: value.key, content: value.content };
+        return {
+          key: value.key,
+          content: value.content,
+          ...(value.skill !== undefined
+            ? { skill: parseSelection(value.skill) }
+            : {}),
+          ...(typeof value.skillName === "string" &&
+          value.skillName.trim() &&
+          [...value.skillName].length <= 80 &&
+          !value.skillName.includes("\0")
+            ? { skillName: value.skillName }
+            : {}),
+        };
     } catch {
       /* 无可恢复的本地草稿。 */
     }
@@ -135,6 +159,10 @@ export const useChatStore = defineStore("chat", () => {
     historyError.value = "";
     previousCursor.value = null;
     draft.value = "";
+    skills.value = [];
+    selectedSkill.value = "";
+    skillsLoading.value = false;
+    skillsError.value = "";
     pending.value = null;
     submitting.value = false;
     submitError.value = "";
@@ -221,6 +249,22 @@ export const useChatStore = defineStore("chat", () => {
   }
   const runPath = (ctx: Context, id: string) =>
     `/v1/threads/${ctx.threadId}/runs/${id}`;
+
+  async function loadSkills() {
+    const ctx = context();
+    if (!ctx || skillsLoading.value) return;
+    skillsLoading.value = true;
+    skillsError.value = "";
+    try {
+      const items = parseSkills(await authorized(ctx, "/v1/skills"));
+      if (current(ctx)) skills.value = items;
+    } catch {
+      if (current(ctx))
+        skillsError.value = "任务模式暂时无法加载，默认助手仍可使用。";
+    } finally {
+      if (current(ctx)) skillsLoading.value = false;
+    }
+  }
 
   function attachRun(run: ChatRun, replay: boolean): RunView {
     let view = runs[run.id];
@@ -339,6 +383,8 @@ export const useChatStore = defineStore("chat", () => {
     pending.value = restoreIntent(auth.user.id, id);
     if (pending.value) {
       draft.value = pending.value.content;
+      if (pending.value.skill)
+        selectedSkill.value = `${pending.value.skill.id}@${pending.value.skill.version}`;
       submitError.value =
         "上次提交结果未确认，可重试原提交；请勿重复创建问题。";
     }
@@ -356,8 +402,25 @@ export const useChatStore = defineStore("chat", () => {
           draft.value.includes("\0")))
     )
       return false;
-    if (!pending.value)
-      pending.value = { key: crypto.randomUUID(), content: draft.value };
+    if (!pending.value) {
+      const chosen = skills.value.find(
+        (s) => `${s.id}@${s.version}` === selectedSkill.value,
+      );
+      if (selectedSkill.value && !chosen) {
+        submitError.value = "所选任务模式不可用，请重新加载或选择默认助手。";
+        return false;
+      }
+      pending.value = {
+        key: crypto.randomUUID(),
+        content: draft.value,
+        ...(chosen
+          ? {
+              skill: { id: chosen.id, version: chosen.version },
+              skillName: chosen.name,
+            }
+          : {}),
+      };
+    }
     const intent = { ...pending.value };
     saveIntent(intent);
     submitting.value = true;
@@ -367,6 +430,7 @@ export const useChatStore = defineStore("chat", () => {
         await authorized(ctx, `/v1/threads/${ctx.threadId}/runs`, "POST", {
           idempotency_key: intent.key,
           content: intent.content,
+          ...(intent.skill ? { skill: intent.skill } : {}),
         }),
         ctx.threadId,
       );
@@ -374,6 +438,13 @@ export const useChatStore = defineStore("chat", () => {
       attachRun(run, true);
       acceptedRunId.value = run.id;
       pending.value = null;
+      if (
+        selectedSkill.value &&
+        !skills.value.some(
+          (s) => `${s.id}@${s.version}` === selectedSkill.value,
+        )
+      )
+        selectedSkill.value = "";
       saveIntent(null);
       draft.value = "";
       schedule(ctx);
@@ -817,6 +888,11 @@ export const useChatStore = defineStore("chat", () => {
     historyError,
     previousCursor,
     draft,
+    skills,
+    selectedSkill,
+    skillsLoading,
+    skillsError,
+    loadSkills,
     pending,
     submitting,
     submitError,

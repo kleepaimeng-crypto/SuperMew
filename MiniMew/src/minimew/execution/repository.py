@@ -24,6 +24,7 @@ from minimew.execution.provider import (
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.model_control import snapshot_for_run
 from minimew.models import AnswerRecord, Message, Run, RunCheckpoint, RunEventRecord
+from minimew.skills.schemas import parse_snapshot
 
 FINALIZE_SECONDS = 10
 
@@ -197,6 +198,10 @@ class ExecutionRepository:
             if run.status != "running" or run.owner_token != claim.owner_token:
                 raise OwnershipLost
             snapshot = snapshot_for_run(run)
+            try:
+                skill = parse_snapshot(run.skill_snapshot)
+            except (ValueError, TypeError):
+                raise ContextInvalid from None
             current = (await run_messages(session, run))[0]
             user, answer = aliased(Message), aliased(Message)
             rows = (
@@ -240,7 +245,12 @@ class ExecutionRepository:
             except ValueError:
                 raise ContextInvalid from None
             return ProviderRequest(
-                claim.run_id, claim.thread_id, snapshot, messages, project_context=project_context
+                claim.run_id,
+                claim.thread_id,
+                snapshot,
+                messages,
+                project_context=project_context,
+                skill=skill,
             )
 
     async def remaining(self, claim: Claim) -> float:

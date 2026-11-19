@@ -5,18 +5,15 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
-from execution_helpers import activate_claim
-from historical_runs import reserve_legacy_run
+from historical_runs import event, reserve_legacy_run
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.conversation_schemas import CreateRunRequest
 from minimew.database import create_engine
-from minimew.execution.process import ProcessReporter
-from minimew.execution.repository import ExecutionRepository
 from minimew.model_control import set_current_model
 from minimew.models import Thread, User
 from minimew.settings import Settings
@@ -54,15 +51,48 @@ def test_old_process_journal_survives_upgrade_and_detail_history_blocks_downgrad
                         thread.id,
                         CreateRunRequest(idempotency_key="old-process", content="准备工作"),
                     )
-                repo = ExecutionRepository(sessions)
-                claim = await repo.claim(user.id, thread.id, UUID(str(run.id)))
-                await activate_claim(repo, claim)
-
-                async def sink(data):
-                    assert await repo.record_process(claim, data)
-
-                async with ProcessReporter(run.id, sink).step("model", "old"):
-                    pass
+                # 历史协议仅用SQL夹具；最新Run ORM已有0022字段，不能用于0020。
+                rid = UUID(str(run.id))
+                async with sessions() as session, session.begin():
+                    await session.execute(
+                        text(
+                            "UPDATE runs SET status='running',owner_token=:token,"
+                            "started_at=clock_timestamp(),"
+                            "lease_until=clock_timestamp()+interval '20 seconds' "
+                            "WHERE id=:rid"
+                        ),
+                        dict(token=uuid4(), rid=rid),
+                    )
+                    await event(session, rid, thread.id, "run.started", {"status": "running"}, 2)
+                async with sessions() as session, session.begin():
+                    await session.execute(
+                        text(
+                            "UPDATE runs SET execution_deadline_at=clock_timestamp()+ "
+                            "((model_snapshot_json#>>"
+                            "'{answer,configuration,timeout_seconds}')::float "
+                            "- 1) "
+                            "* interval '1 second' "
+                            "WHERE id=:rid"
+                        ),
+                        dict(rid=rid),
+                    )
+                    step = dict(
+                        step_id="a" * 32,
+                        parent_step_id="",
+                        tool_call_id="",
+                        kind="model",
+                        status="running",
+                        query="",
+                        summary="",
+                        count=0,
+                        sources=[],
+                        outcome="",
+                        elapsed_ms=0,
+                    )
+                    await event(session, rid, thread.id, "process.step", step, 3)
+                    await event(
+                        session, rid, thread.id, "process.step", {**step, "status": "completed"}, 4
+                    )
 
                 async def snapshot():
                     async with engine.connect() as connection:
@@ -77,21 +107,55 @@ def test_old_process_journal_survives_upgrade_and_detail_history_blocks_downgrad
                         )
 
                 before = await snapshot()
-                migrate(database, "upgrade", "head")
-                migrate(database, "check")
+                migrate(database, "upgrade", "0021")
                 assert await snapshot() == before
                 migrate(database, "downgrade", "0020")
                 assert await snapshot() == before
-                migrate(database, "upgrade", "head")
+                migrate(database, "upgrade", "0021")
 
-                async def detail_sink(data):
-                    assert await repo.record_process(claim, data, detail=True)
-
-                async with ProcessReporter(run.id, sink, detail_sink).step(
-                    "assessment", "new", phase="initial"
-                ) as step:
-                    step.finish(outcome="insufficient", missing=["缺少备份路径"])
-                await repo.finish(claim, content="done")
+                async with sessions() as session, session.begin():
+                    child = {**step, "step_id": "b" * 32, "kind": "assessment"}
+                    await event(session, rid, thread.id, "process.step", child, 5)
+                    detail = dict(
+                        step_id=child["step_id"],
+                        stage="result",
+                        phase="initial",
+                        purpose="",
+                        attempt=0,
+                        missing=["缺少备份路径"],
+                        questions=[],
+                        sources=[],
+                    )
+                    await event(session, rid, thread.id, "process.detail", detail, 6)
+                    await event(
+                        session, rid, thread.id, "process.step", {**child, "status": "completed"}, 7
+                    )
+                    aid = await session.scalar(
+                        text("SELECT id FROM messages WHERE run_id=:rid AND role='assistant'"),
+                        dict(rid=rid),
+                    )
+                    await session.execute(
+                        text("UPDATE messages SET status='completed',content='done' WHERE id=:aid"),
+                        dict(aid=aid),
+                    )
+                    await event(
+                        session,
+                        rid,
+                        thread.id,
+                        "message.completed",
+                        dict(message_id=str(aid), content="done", status="completed"),
+                        8,
+                    )
+                    await event(
+                        session, rid, thread.id, "run.completed", dict(status="succeeded"), 9
+                    )
+                    await session.execute(
+                        text(
+                            "UPDATE runs SET status='succeeded',"
+                            "finished_at=clock_timestamp() WHERE id=:rid"
+                        ),
+                        dict(rid=rid),
+                    )
                 with pytest.raises(subprocess.CalledProcessError):
                     migrate(database, "downgrade", "0020")
                 assert (await snapshot())[: len(before)] == before

@@ -21,6 +21,7 @@ from minimew.execution.provider import ProviderFailure
 from minimew.generated.run_event_v1 import ErrorCode
 from minimew.hitl.policy import PauseRequested
 from minimew.rag.protocol import RagPolicy
+from minimew.skills.schemas import SkillSnapshot
 
 MAX_TOOL_RESULT_CHARS = 12000
 TOOL_ERROR_CODES = frozenset(
@@ -81,6 +82,7 @@ class ToolContext:
     hitl: object | None = None
     checkpoint: dict | None = None
     process: object | None = None
+    skill: SkillSnapshot | None = None
 
     @property
     def execution_identity(self):
@@ -159,6 +161,8 @@ class GuardrailDecision:
 class Guardrail:
     @staticmethod
     def decide(context: ToolContext, spec: ToolSpec, arguments: ToolModel) -> GuardrailDecision:
+        if context.skill is not None and spec.name not in context.skill.tools:
+            return GuardrailDecision("DENY")
         if spec.capability not in context.capabilities:
             return GuardrailDecision("DENY")
         try:
@@ -197,7 +201,10 @@ class ToolRegistry:
 
     def visible(self, context: ToolContext) -> tuple[ToolDefinition, ...]:
         return tuple(
-            spec.definition() for spec in self.specs if spec.capability in context.capabilities
+            spec.definition()
+            for spec in self.specs
+            if spec.capability in context.capabilities
+            and (context.skill is None or spec.name in context.skill.tools)
         )
 
     def bind_context(self, context: ToolContext) -> ToolContext:
@@ -207,7 +214,9 @@ class ToolRegistry:
         sessions = {
             spec.name: spec.session_factory(context)
             for spec in self.specs
-            if spec.session_factory is not None and spec.capability in context.capabilities
+            if spec.session_factory is not None
+            and spec.capability in context.capabilities
+            and (context.skill is None or spec.name in context.skill.tools)
         }
         return replace(context, tool_sessions=MappingProxyType(sessions)) if sessions else context
 
