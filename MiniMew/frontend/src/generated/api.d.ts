@@ -1840,6 +1840,71 @@ export interface components {
       repairs?: components["schemas"]["RepairPolicy"] | null;
       hitl?: components["schemas"]["HitlPolicy"] | null;
     };
+    /** ProcessDetailData */
+    ProcessDetailData: {
+      /** Step Id */
+      step_id: string;
+      /**
+       * Stage
+       * @enum {string}
+       */
+      stage: "start" | "result";
+      /**
+       * Phase
+       * @enum {string}
+       */
+      phase: "" | "initial" | "aggregate" | "rewritten" | "clarified" | "child";
+      /**
+       * Purpose
+       * @enum {string}
+       */
+      purpose:
+        "" | "model_decision" | "tool_selection" | "answer" | "answer_repair";
+      /** Attempt */
+      attempt: number;
+      /** Missing */
+      missing: string[];
+      /** Questions */
+      questions: string[];
+      /** Sources */
+      sources: components["schemas"]["ProcessSourceDetail"][];
+    };
+    /** ProcessDetailEvent */
+    ProcessDetailEvent: {
+      /**
+       * Schema Version
+       * @constant
+       */
+      schema_version: 1;
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string;
+      /** Sequence */
+      sequence: number;
+      /**
+       * Run Id
+       * Format: uuid
+       */
+      run_id: string;
+      /**
+       * Thread Id
+       * Format: uuid
+       */
+      thread_id: string;
+      /**
+       * Timestamp
+       * Format: date-time
+       */
+      timestamp: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "process.detail";
+      data: components["schemas"]["ProcessDetailData"];
+    };
     /** ProcessSource */
     ProcessSource: {
       /**
@@ -1854,6 +1919,25 @@ export interface components {
       version_id: string;
       /** Title */
       title: string;
+    };
+    /** ProcessSourceDetail */
+    ProcessSourceDetail: {
+      /**
+       * Document Id
+       * Format: uuid
+       */
+      document_id: string;
+      /**
+       * Version Id
+       * Format: uuid
+       */
+      version_id: string;
+      /** Name */
+      name: string;
+      /** Version Number */
+      version_number: number;
+      /** Sections */
+      sections: string[];
     };
     /** ProcessStepData */
     ProcessStepData: {
@@ -2432,6 +2516,7 @@ export interface components {
         | components["schemas"]["HitlAcceptedEvent"]
         | components["schemas"]["RunResumedEvent"]
         | components["schemas"]["ProcessStepEvent"]
+        | components["schemas"]["ProcessDetailEvent"]
       )[];
       /** Next Cursor */
       next_cursor: number;

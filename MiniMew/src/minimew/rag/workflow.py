@@ -63,7 +63,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
         if gaps:
             aspects = (*aspects, {"question": question, "status": "insufficient", "missing": gaps})
         async with report_step(
-            context.process, "assessment", "assessment/" + state["phase"]
+            context.process, "assessment", "assessment/" + state["phase"], phase=state["phase"]
         ) as stage:
             grade = (
                 await grade_materials(context.model_caller, question, draft, aspects)
@@ -76,7 +76,12 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
             if missing and grade.status == "sufficient":
                 grade = grade.model_copy(update={"status": "insufficient", "missing": missing})
             if stage:
-                stage.finish(summary="证据评判结束", count=len(draft.matches), outcome=grade.status)
+                stage.finish(
+                    summary="证据评判结束",
+                    count=len(draft.matches),
+                    outcome=grade.status,
+                    missing=grade.missing,
+                )
         return {
             "draft": draft,
             "pending": pending,
@@ -103,7 +108,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
 
     async def plan(state):
         budget.planner_used = True
-        async with report_step(context.process, "plan", "plan") as stage:
+        async with report_step(context.process, "plan", "plan", phase="initial") as stage:
             result = await context.model_caller(
                 "plan", {"question": question, "missing": state["grade"].missing}, Plan
             )
@@ -113,7 +118,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
             ) != len(queries):
                 raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
             if stage:
-                stage.finish(summary="已拆解检索子问题", count=len(queries))
+                stage.finish(summary="已拆解检索子问题", count=len(queries), questions=queries)
         return {"questions": queries}
 
     def dispatch(state):
@@ -122,7 +127,11 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
     async def child(state):
         async with slots:
             async with report_step(
-                context.process, "subquestion", f"child/{state['index']}", query=state["query"]
+                context.process,
+                "subquestion",
+                f"child/{state['index']}",
+                query=state["query"],
+                phase="child",
             ) as stage:
                 try:
                     result = await retrieve(
@@ -130,7 +139,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
                     )
                     draft, _ = prepare(result)
                     async with report_step(
-                        stage.reporter if stage else None, "assessment", "assessment"
+                        stage.reporter if stage else None, "assessment", "assessment", phase="child"
                     ) as grade_step:
                         grade = (
                             await grade_materials(context.model_caller, state["query"], draft)
@@ -142,9 +151,15 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
                                 summary="子问题证据评判结束",
                                 count=len(draft.matches),
                                 outcome=grade.status if grade else "insufficient",
+                                missing=grade.missing if grade else ("未找到相关材料",),
                             )
                     if stage:
-                        stage.finish(summary="子问题检索结束", count=len(draft.matches))
+                        stage.finish(
+                            summary="子问题处理结束",
+                            count=len(draft.matches),
+                            outcome=grade.status if grade else "insufficient",
+                            missing=grade.missing if grade else ("未找到相关材料",),
+                        )
                     return {
                         "pieces": (
                             (
@@ -245,7 +260,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
 
     async def rewrite(state):
         budget.rewrite_used = True
-        async with report_step(context.process, "rewrite", "rewrite") as stage:
+        async with report_step(context.process, "rewrite", "rewrite", phase="rewritten") as stage:
             revised = await context.model_caller(
                 "rewrite", {"question": question, "missing": state["grade"].missing}, Rewrite
             )

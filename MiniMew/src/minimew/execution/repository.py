@@ -456,11 +456,14 @@ class ExecutionRepository:
         except OwnershipLost:
             return False
 
-    async def record_process(self, claim: Claim, data: dict) -> bool:
+    async def record_process(self, claim: Claim, data: dict, *, detail=False) -> bool:
         """同一Run锁/owner下保存步骤；未知提交结果用同一payload幂等补写。"""
-        from minimew.generated.run_event_v1 import ProcessStepData
+        from minimew.generated.run_event_v1 import ProcessDetailData, ProcessStepData
 
-        payload = ProcessStepData.model_validate(data).model_dump(mode="json")
+        adapter = ProcessDetailData if detail else ProcessStepData
+        payload = adapter.model_validate(data).model_dump(mode="json")
+        event_type = "process.detail" if detail else "process.step"
+        state_key = "stage" if detail else "status"
         try:
             async with self.sessions() as session, session.begin():
                 run = await self._locked_run(session, claim.user_id, claim.thread_id, claim.run_id)
@@ -479,17 +482,17 @@ class ExecutionRepository:
                     await session.scalars(
                         select(RunEventRecord).where(
                             RunEventRecord.run_id == run.id,
-                            RunEventRecord.type == "process.step",
+                            RunEventRecord.type == event_type,
                             RunEventRecord.data["step_id"].astext == payload["step_id"],
                         )
                     )
                 ).all()
-                same = next((r for r in rows if r.data["status"] == payload["status"]), None)
+                same = next((r for r in rows if r.data[state_key] == payload[state_key]), None)
                 if same:
                     if same.data != payload:
                         raise ValueError("Process identity reused with different payload")
                     return True
-                await append_event(session, run, "process.step", data)
+                await append_event(session, run, event_type, data)
                 await session.flush()
                 changed = await session.execute(
                     update(Run)

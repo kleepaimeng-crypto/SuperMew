@@ -140,6 +140,25 @@ class ProcessStepData(ContractModel):
     elapsed_ms: int = Field(ge=0, le=86400000)
 
 
+class ProcessSourceDetail(ContractModel):
+    document_id: UUID
+    version_id: UUID
+    name: str = Field(min_length=1, max_length=255)
+    version_number: int = Field(ge=0)
+    sections: list[Annotated[str, Field(max_length=200)]] = Field(max_length=6)
+
+
+class ProcessDetailData(ContractModel):
+    step_id: str = Field(pattern="^[0-9a-f]{32}$")
+    stage: Literal["start", "result"]
+    phase: Literal["", "initial", "aggregate", "rewritten", "clarified", "child"]
+    purpose: Literal["", "model_decision", "tool_selection", "answer", "answer_repair"]
+    attempt: int = Field(ge=0, le=2)
+    missing: list[Annotated[str, Field(min_length=1, max_length=256)]] = Field(max_length=8)
+    questions: list[Annotated[str, Field(min_length=1, max_length=1024)]] = Field(max_length=4)
+    sources: list[ProcessSourceDetail] = Field(max_length=6)
+
+
 class RunEventBase(ContractModel):
     schema_version: Literal[1]
     event_id: UUID
@@ -231,6 +250,11 @@ class ProcessStepEvent(RunEventBase):
     data: ProcessStepData
 
 
+class ProcessDetailEvent(RunEventBase):
+    type: Literal["process.detail"]
+    data: ProcessDetailData
+
+
 RunEvent = Annotated[
     RunCreatedEvent
     | RunStartedEvent
@@ -246,7 +270,8 @@ RunEvent = Annotated[
     | HitlRequiredEvent
     | HitlAcceptedEvent
     | RunResumedEvent
-    | ProcessStepEvent,
+    | ProcessStepEvent
+    | ProcessDetailEvent,
     Field(discriminator="type"),
 ]
 EVENT_ADAPTER = TypeAdapter(RunEvent)

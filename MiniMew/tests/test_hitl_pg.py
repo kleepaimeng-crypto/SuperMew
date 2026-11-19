@@ -406,7 +406,9 @@ def test_pause_refresh_and_resume_same_run_tool_message_scope_snapshot_budget(
             assert str(saved["messages"][1].id) == created["assistant_message_id"]
             assert stages == ["answer", "grade", "grade", "answer"]
             assert len(grades) == 2 and grades[1]["aspects"][0]["clarification"] == "国内"
-            assert [e.type for e in saved["events"] if e.type != "process.step"] == [
+            assert [
+                e.type for e in saved["events"] if e.type not in {"process.step", "process.detail"}
+            ] == [
                 "run.created",
                 "run.started",
                 "tool.started",

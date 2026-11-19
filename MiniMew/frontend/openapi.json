@@ -4815,6 +4815,145 @@
         "required": ["answer"],
         "title": "ModelSnapshot"
       },
+      "ProcessDetailData": {
+        "properties": {
+          "step_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "title": "Step Id"
+          },
+          "stage": {
+            "type": "string",
+            "enum": ["start", "result"],
+            "title": "Stage"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "",
+              "initial",
+              "aggregate",
+              "rewritten",
+              "clarified",
+              "child"
+            ],
+            "title": "Phase"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "",
+              "model_decision",
+              "tool_selection",
+              "answer",
+              "answer_repair"
+            ],
+            "title": "Purpose"
+          },
+          "attempt": {
+            "type": "integer",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Attempt"
+          },
+          "missing": {
+            "items": {
+              "type": "string",
+              "maxLength": 256,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Missing"
+          },
+          "questions": {
+            "items": {
+              "type": "string",
+              "maxLength": 1024,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Questions"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessSourceDetail"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Sources"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step_id",
+          "stage",
+          "phase",
+          "purpose",
+          "attempt",
+          "missing",
+          "questions",
+          "sources"
+        ],
+        "title": "ProcessDetailData"
+      },
+      "ProcessDetailEvent": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Event Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "thread_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Thread Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "type": {
+            "type": "string",
+            "const": "process.detail",
+            "title": "Type"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ProcessDetailData"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "sequence",
+          "run_id",
+          "thread_id",
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "title": "ProcessDetailEvent"
+      },
       "ProcessSource": {
         "properties": {
           "document_id": {
@@ -4838,6 +4977,50 @@
         "type": "object",
         "required": ["document_id", "version_id", "title"],
         "title": "ProcessSource"
+      },
+      "ProcessSourceDetail": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Document Id"
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Version Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "version_number": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version Number"
+          },
+          "sections": {
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "type": "array",
+            "maxItems": 6,
+            "title": "Sections"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "version_id",
+          "name",
+          "version_number",
+          "sections"
+        ],
+        "title": "ProcessSourceDetail"
       },
       "ProcessStepData": {
         "properties": {
@@ -5827,6 +6010,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ProcessStepEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ProcessDetailEvent"
                 }
               ],
               "discriminator": {
@@ -5836,6 +6022,7 @@
                   "hitl.required": "#/components/schemas/HitlRequiredEvent",
                   "message.completed": "#/components/schemas/MessageCompletedEvent",
                   "message.delta": "#/components/schemas/MessageDeltaEvent",
+                  "process.detail": "#/components/schemas/ProcessDetailEvent",
                   "process.step": "#/components/schemas/ProcessStepEvent",
                   "run.cancel_requested": "#/components/schemas/RunCancel_RequestedEvent",
                   "run.cancelled": "#/components/schemas/RunCancelledEvent",

@@ -113,6 +113,23 @@ export interface ProcessStepData {
   outcome: string;
   elapsed_ms: number;
 }
+export interface ProcessSourceDetail {
+  document_id: string;
+  version_id: string;
+  name: string;
+  version_number: number;
+  sections: string[];
+}
+export interface ProcessDetailData {
+  step_id: string;
+  stage: "start" | "result";
+  phase: "" | "initial" | "aggregate" | "rewritten" | "clarified" | "child";
+  purpose: "" | "model_decision" | "tool_selection" | "answer" | "answer_repair";
+  attempt: number;
+  missing: string[];
+  questions: string[];
+  sources: ProcessSourceDetail[];
+}
 export interface RunEventBase {
   schema_version: 1;
   event_id: string;
@@ -181,6 +198,10 @@ export interface ProcessStepEvent extends RunEventBase {
   type: "process.step";
   data: ProcessStepData;
 }
+export interface ProcessDetailEvent extends RunEventBase {
+  type: "process.detail";
+  data: ProcessDetailData;
+}
 export type RunEvent =
   | RunCreatedEvent
   | RunStartedEvent
@@ -196,4 +217,5 @@ export type RunEvent =
   | HitlRequiredEvent
   | HitlAcceptedEvent
   | RunResumedEvent
-  | ProcessStepEvent;
+  | ProcessStepEvent
+  | ProcessDetailEvent;

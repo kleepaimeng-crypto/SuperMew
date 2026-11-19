@@ -52,7 +52,8 @@
         "hitl.required",
         "hitl.accepted",
         "run.resumed",
-        "process.step"
+        "process.step",
+        "process.detail"
       ]
     },
     "timestamp": {
@@ -461,6 +462,122 @@
           "maximum": 86400000
         }
       }
+    },
+    "ProcessSourceDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "version_id",
+        "name",
+        "version_number",
+        "sections"
+      ],
+      "properties": {
+        "document_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "version_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "version_number": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sections": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      }
+    },
+    "ProcessDetailData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "stage",
+        "phase",
+        "purpose",
+        "attempt",
+        "missing",
+        "questions",
+        "sources"
+      ],
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "start",
+            "result"
+          ]
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "",
+            "initial",
+            "aggregate",
+            "rewritten",
+            "clarified",
+            "child"
+          ]
+        },
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "",
+            "model_decision",
+            "tool_selection",
+            "answer",
+            "answer_repair"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "missing": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "questions": {
+          "type": "array",
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/ProcessSourceDetail"
+          }
+        }
+      }
     }
   },
   "oneOf": [
@@ -611,6 +728,16 @@
         },
         "data": {
           "$ref": "#/$defs/ProcessStepData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "process.detail"
+        },
+        "data": {
+          "$ref": "#/$defs/ProcessDetailData"
         }
       }
     }

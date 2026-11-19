@@ -17,12 +17,21 @@ from minimew.vector_store.manifest import CandidateManifest, VectorError, canoni
 
 
 @dataclass(frozen=True)
+class ScopeDocument:
+    document_id: UUID
+    version_id: UUID
+    name: str
+    version_number: int
+
+
+@dataclass(frozen=True)
 class RetrievalScope:
     user_id: UUID
     targets: tuple[CandidateManifest, ...]
     expires_at: datetime
     directory: tuple[ChunkBuild, ...] = ()
     namespace: str | None = None
+    documents: tuple[ScopeDocument, ...] = ()
 
 
 async def published_scope(
@@ -40,7 +49,7 @@ async def published_scope(
         # 一个 SELECT/MVCC 快照同时读取 current、版本和产物，避免跨次查询混版。
         rows = (
             await session.execute(
-                select(DocumentVersion, IndexArtifact)
+                select(DocumentVersion, IndexArtifact, Document.title)
                 .select_from(Document)
                 .join(DocumentVersion, Document.current_version_id == DocumentVersion.id)
                 .join(IndexJob, IndexJob.version_id == DocumentVersion.id)
@@ -64,7 +73,8 @@ async def published_scope(
         now = await session.scalar(select(func.clock_timestamp()))
         targets = []
         directory = []
-        for version, artifact in rows:
+        documents = []
+        for version, artifact, title in rows:
             if artifact is None:
                 raise VectorError("INDEX_ARTIFACT_INVALID")
             manifest = read_artifact(artifact)
@@ -73,6 +83,9 @@ async def published_scope(
                 or manifest.scope.identity.version_id != version.id
             ):
                 raise VectorError("INDEX_ARTIFACT_INVALID")
+            documents.append(
+                ScopeDocument(version.document_id, version.id, title, version.version_number)
+            )
             targets.append(manifest)
             directory.append(TypeAdapter(ChunkBuild).validate_json(canonical(artifact.chunks)))
         # 严格短于旧 current 的一小时保留期，为已取得 scope 的请求留出完成窗口。
@@ -82,6 +95,7 @@ async def published_scope(
             now + timedelta(minutes=55),
             tuple(directory),
             "minimew_project_" + project_id.hex if project_id else None,
+            tuple(documents),
         )
 
 

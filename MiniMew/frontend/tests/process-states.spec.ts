@@ -103,7 +103,7 @@ for (const failure of [
     });
     await page.goto("/threads/" + ids.thread);
     await expect(page.locator(".tool-activity")).toHaveAttribute("open", "");
-    await expect(page.locator(".process-steps")).toContainText(failure.text);
+    await expect(page.locator(".process-tasks")).toContainText(failure.text);
     if (failure.kind === "assessment") {
       await expect(page.locator(".run-failure")).toContainText(failure.text);
       await page.locator(".run-failure summary").click();
@@ -112,10 +112,10 @@ for (const failure of [
       );
       await expect(page.locator(".run-failure")).toContainText(ids.run);
     }
-    await expect(page.locator(".process-steps")).toContainText(
+    await expect(page.locator(".process-tasks")).toContainText(
       "重排未完成，保留召回顺序",
     );
-    await expect(page.locator(".process-steps")).not.toContainText(
+    await expect(page.locator(".process-tasks")).not.toContainText(
       "阶段采用降级结果",
     );
     await page

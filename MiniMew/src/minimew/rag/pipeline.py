@@ -34,7 +34,18 @@ class RagPipeline:
         process=None,
         step_key="retrieval",
     ):
-        async with report_step(process, "retrieval", step_key, query=query) as step:
+        async with report_step(
+            process,
+            "retrieval",
+            step_key,
+            query=query,
+            phase={
+                "initial": "initial",
+                "rewrite-search": "rewritten",
+                "clarified-search": "clarified",
+                "search": "child",
+            }.get(step_key, ""),
+        ) as step:
             result = await self._search(
                 query,
                 scope,
@@ -48,6 +59,7 @@ class RagPipeline:
                     summary="已保留检索材料",
                     count=len(result.rows),
                     sources=process_sources(result.rows, scope),
+                    source_details=process_source_details(result.rows, scope),
                     outcome=result.trace.fallback or "ok",
                 )
             return result
@@ -194,4 +206,37 @@ def process_sources(rows, scope):
             "version_id": UUID(str(version_id)),
             "title": title[:200],
         }
+    return tuple(sources.values())
+
+
+def process_source_details(rows, scope):
+    from uuid import UUID
+
+    catalog = {(str(d.document_id), str(d.version_id)): d for d in getattr(scope, "documents", ())}
+    sources = {}
+    for row in rows:
+        payload = row["payload"]
+        identity = payload["identity"]
+        key = str(identity["document_id"]), str(identity["version_id"])
+        if key not in sources:
+            if len(sources) >= 6:
+                continue
+            document = catalog.get(key)
+            sources[key] = {
+                "document_id": UUID(key[0]),
+                "version_id": UUID(key[1]),
+                "name": document.name[:255] if document else "文档名称暂不可用",
+                "version_number": document.version_number if document else 0,
+                "sections": [],
+            }
+        for build in getattr(scope, "directory", ()):
+            section = next(
+                (s for s in build.sections if str(s.section_id) == str(payload["section_id"])), None
+            )
+            if section and section.title_path:
+                title = " / ".join(section.title_path)[:200]
+                values = sources[key]["sections"]
+                if title not in values and len(values) < 6:
+                    values.append(title)
+                break
     return tuple(sources.values())

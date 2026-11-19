@@ -349,7 +349,7 @@ class RunEventRecord(Base):
             "type IN ('run.created','run.started','message.delta','message.completed',"
             "'run.completed','run.failed','run.cancel_requested','run.cancelled',"
             "'tool.started','tool.completed','tool.failed','hitl.required','hitl.accepted',"
-            "'run.resumed','process.step')",
+            "'run.resumed','process.step','process.detail')",
             name="ck_run_events_type",
         ),
         Index(

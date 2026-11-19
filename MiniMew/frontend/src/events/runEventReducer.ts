@@ -1,4 +1,5 @@
 import type {
+  ProcessDetailData,
   ProcessStepData,
   ErrorCode,
   MessageStatus,
@@ -21,6 +22,7 @@ export interface RunProjection extends RunBinding {
   readonly errorCode: ErrorCode | null;
   readonly tools: readonly ToolProjection[];
   readonly steps: readonly ProcessStepData[];
+  readonly stepDetails: readonly ProcessDetailData[];
   readonly waiting: {
     readonly checkpointId: string;
     readonly prompt: string;
@@ -70,6 +72,7 @@ export function createRunProjection(binding: RunBinding): RunProjection {
     errorCode: null,
     tools: [],
     steps: [],
+    stepDetails: [],
     waiting: null,
   };
 }
@@ -122,6 +125,29 @@ function transition(
   const cancelling = state.cancelRequestedAt !== null;
 
   switch (event.type) {
+    case "process.detail": {
+      const detail = event.data;
+      const step = state.steps.find((s) => s.step_id === detail.step_id);
+      const previous = state.stepDetails.find(
+        (d) => d.step_id === detail.step_id,
+      );
+      if (
+        !running ||
+        !messagePending ||
+        cancelling ||
+        step?.status !== "running" ||
+        previous?.stage === "result" ||
+        previous?.stage === detail.stage
+      )
+        return null;
+      return {
+        ...state,
+        stepDetails: [
+          ...state.stepDetails.filter((d) => d.step_id !== detail.step_id),
+          detail,
+        ],
+      };
+    }
     case "process.step": {
       if (!running || !messagePending || cancelling) return null;
       const step = event.data;

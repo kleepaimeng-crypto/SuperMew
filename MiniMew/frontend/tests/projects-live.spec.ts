@@ -74,10 +74,13 @@ test("真实项目/文档索引隔离、手工记忆与下线历史引用", asyn
   await expect(answer.getByRole("region", { name: "引用原文" })).toContainText(
     "论文项目制度",
   );
-  await answer.locator(".tool-activity summary").click();
-  await expect(answer.locator(".process-steps")).toContainText("餐费");
-  await expect(answer.locator(".process-steps")).toContainText("向量召回");
-  await expect(answer.locator(".process-steps")).toContainText("论文项目制度");
+  await answer.locator(".tool-activity > summary").click();
+  await expect(answer.locator(".process-tasks")).toContainText("paper.md");
+  await expect(answer.getByText("向量召回", { exact: true })).not.toBeVisible();
+  await answer.getByText("检索详情", { exact: true }).first().click();
+  await expect(answer.locator(".process-tasks")).toContainText("餐费");
+  await expect(answer.locator(".process-tasks")).toContainText("向量召回");
+  await expect(answer.locator(".process-tasks")).toContainText("论文项目制度");
   await page.screenshot({
     path: info.outputPath("process-desktop.png"),
     fullPage: true,
@@ -93,7 +96,7 @@ test("真实项目/文档索引隔离、手工记忆与下线历史引用", asyn
     fullPage: true,
   });
   await answer
-    .locator(".process-steps")
+    .locator(".process-tasks")
     .getByText("向量召回", { exact: true })
     .scrollIntoViewIfNeeded();
   await page.screenshot({
@@ -102,7 +105,7 @@ test("真实项目/文档索引隔离、手工记忆与下线历史引用", asyn
   });
   await page.setViewportSize({ width: 1280, height: 900 });
   await answer
-    .locator(".process-steps")
+    .locator(".process-tasks")
     .getByText("向量召回", { exact: true })
     .scrollIntoViewIfNeeded();
   await page.screenshot({
@@ -110,8 +113,10 @@ test("真实项目/文档索引隔离、手工记忆与下线历史引用", asyn
     fullPage: true,
   });
   await page.reload();
-  await answer.locator(".tool-activity summary").click();
-  await expect(answer.locator(".process-steps")).toContainText("论文项目制度");
+  await answer.locator(".tool-activity > summary").click();
+  await expect(answer.locator(".process-tasks")).toContainText("paper.md");
+  await answer.getByText("检索详情", { exact: true }).first().click();
+  await expect(answer.locator(".process-tasks")).toContainText("论文项目制度");
   await page.goto("/projects");
   const second = await project("报销项目");
   await page.getByRole("link", { name: "管理项目文档" }).click();

@@ -324,6 +324,7 @@ class RunExecutor:
             process=ProcessReporter(
                 request.run_id,
                 lambda data: self._record_process(claim, request, deadline, data),
+                lambda data: self._record_process(claim, request, deadline, data, detail=True),
             ),
         )
         request = self._with_instructions(request, context)
@@ -454,15 +455,17 @@ class RunExecutor:
             budget,
             lambda: self._check_active(claim, request, deadline),
             lambda repair: self._model_turn(
-                claim, repair, deadline, progress, budget, context.process
+                claim, repair, deadline, progress, budget, context.process, purpose="answer_repair"
             ),
         )
 
-    async def _record_process(self, claim, request, deadline, data):
+    async def _record_process(self, claim, request, deadline, data, *, detail=False):
         for attempt in range(2):
             await self._check_active(claim, request, deadline)
             try:
-                if not await self.repository.record_process(claim, data):
+                if not await self.repository.record_process(
+                    claim, data, **({"detail": True} if detail else {})
+                ):
                     raise OwnershipLost
                 return
             except (SQLAlchemyError, OSError, TimeoutError):
@@ -502,7 +505,7 @@ class RunExecutor:
             raise ContextInvalid from None
 
     async def _model_turn(
-        self, claim, request, deadline, progress, budget, process=None
+        self, claim, request, deadline, progress, budget, process=None, *, purpose="model_decision"
     ) -> ModelTurn:
         for attempt in range(2):
             if attempt:
@@ -510,10 +513,25 @@ class RunExecutor:
             budget.require_model()
             budget.model_requests += 1
             try:
-                async with report_step(process, "model", f"model/{budget.model_requests}") as step:
+                async with report_step(
+                    process,
+                    "model",
+                    f"model/{budget.model_requests}",
+                    purpose=purpose,
+                    attempt=attempt + 1,
+                ) as step:
                     turn = await self._consume(claim, request, deadline, progress)
                     if step:
-                        step.finish(summary="模型请求结束", count=1, outcome=turn.kind)
+                        step.finish(
+                            summary="模型请求结束",
+                            count=1,
+                            outcome=turn.kind,
+                            purpose="answer_repair"
+                            if purpose == "answer_repair"
+                            else "tool_selection"
+                            if turn.kind == "tool_calls"
+                            else "answer",
+                        )
                     return turn
             except ProviderFailure as failure:
                 if (

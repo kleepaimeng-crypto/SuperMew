@@ -2,7 +2,10 @@ import { it, expect } from "vitest";
 import { event, started, ids } from "../../tests/fixtures/chat";
 import { createRunProjection, reduceRunEvent } from "./runEventReducer";
 import { parseRunEvent } from "./runEventContract";
-import type { ProcessStepData } from "../generated/run-event-v1";
+import type {
+  ProcessStepData,
+  ProcessDetailData,
+} from "../generated/run-event-v1";
 const data: ProcessStepData = {
   step_id: "a".repeat(32),
   parent_step_id: "",
@@ -58,5 +61,47 @@ it("bounded arrays, numeric maxima and extra private fields are rejected", () =>
   ])
     expect(() =>
       parseRunEvent({ ...e, data: { ...data, ...patch } }),
+    ).toThrow();
+});
+
+const detail: ProcessDetailData = {
+  step_id: data.step_id,
+  stage: "start",
+  phase: "initial",
+  purpose: "",
+  attempt: 0,
+  missing: [],
+  questions: [],
+  sources: [],
+};
+it("detail replays on its existing step, preserves cursor on invalid/foreign events", () => {
+  let s = reduceRunEvent(running(), event("process.step", 3, data)).state;
+  const first = event("process.detail", 4, detail);
+  s = reduceRunEvent(s, parseRunEvent(first)).state;
+  expect(s.stepDetails).toEqual([detail]);
+  expect(reduceRunEvent(s, first).kind).toBe("duplicate");
+  expect(
+    reduceRunEvent(s, { ...first, run_id: ids.user, sequence: 5 }).kind,
+  ).toBe("foreign");
+  const result = event("process.detail", 5, {
+    ...detail,
+    stage: "result",
+    missing: ["校验命令"],
+  });
+  s = reduceRunEvent(s, parseRunEvent(result)).state;
+  expect(s.stepDetails[0]?.missing).toEqual(["校验命令"]);
+  expect(reduceRunEvent(s, { ...result, sequence: 6 }).kind).toBe("invalid");
+  expect(s.cursor).toBe(5);
+  expect(reduceRunEvent(running(), first).kind).not.toBe("applied");
+});
+it("metadata does not fabricate missing old fields and checks nested scalar bounds", () => {
+  expect(running().stepDetails).toEqual([]);
+  for (const patch of [
+    { missing: ["x".repeat(257)] },
+    { questions: [""] },
+    { reasoning: "private" },
+  ])
+    expect(() =>
+      parseRunEvent(event("process.detail", 3, { ...detail, ...patch })),
     ).toThrow();
 });

@@ -162,14 +162,16 @@ test("逐行保留过程、成功后收起、历史重开与刷新", async ({ pa
   });
   await page.goto("/threads/" + ids.thread);
   const details = page.locator(".tool-activity"),
-    rows = page.locator(".process-steps > li");
+    rows = page.locator(".process-tasks > li");
   await expect(details).toHaveAttribute("open", "");
-  await expect(rows).toHaveCount(2);
+  await expect(rows).toHaveCount(1);
+  await expect(details.getByText(query, { exact: false })).not.toBeVisible();
+  await details.getByText("检索详情", { exact: true }).click();
   await expect(details).toContainText(query);
-  await expect(details).toContainText("正在匹配语义相关片段");
+  await expect(details).toContainText("向量召回");
   release[1]!();
-  await expect(rows).toHaveCount(3);
-  await expect(details).toContainText("向量召回完成");
+  await expect(rows).toHaveCount(2);
+  await expect(details).toContainText("3个候选片段");
   await expect(details).toContainText(source.title);
   await expect(page.locator(".answer-body")).toHaveCount(0);
   await page.screenshot({
@@ -193,15 +195,17 @@ test("逐行保留过程、成功后收起、历史重开与刷新", async ({ pa
     path: info.outputPath("completed-collapsed-mobile.png"),
     fullPage: true,
   });
-  await details.locator("summary").click();
-  await expect(rows).toHaveCount(3);
+  await details.locator(":scope > summary").click();
+  await expect(rows).toHaveCount(2);
   await expect(details).toContainText(source.title);
   await page.reload();
   await expect(page.locator(".answer-body")).toContainText("餐费上限150元");
   await expect(details).not.toHaveAttribute("open", "");
-  await details.locator("summary").click();
-  await expect(rows).toHaveCount(3);
+  await details.locator(":scope > summary").click();
+  await expect(rows).toHaveCount(2);
   await expect(details).toContainText(query);
+  await details.getByText("检索详情", { exact: true }).click();
+  await expect(details.getByText(source.title, { exact: false })).toBeVisible();
   await page.screenshot({
     path: info.outputPath("completed-mobile.png"),
     fullPage: true,

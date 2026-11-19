@@ -31,6 +31,17 @@ def field_type(spec, *, python):
         raise ValueError("Unsupported field keywords; update generator and tests")
     if spec.get("type") == "array":
         item = field_type(spec["items"], python=python)
+        if python:
+            bounds = {
+                "minLength": "min_length",
+                "maxLength": "max_length",
+                "minimum": "ge",
+                "maximum": "le",
+            }
+            args = [f"{v}={spec['items'][k]!r}" for k, v in bounds.items() if k in spec["items"]]
+            if args:
+                item = f"Annotated[{item}, Field({', '.join(args)})]"
+
         if set(spec) != {"type", "items", "maxItems"}:
             raise ValueError("Bounded array required")
         return f"list[{item}]" if python else f"{item}[]"

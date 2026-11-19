@@ -28,9 +28,9 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 运行时过程默认展开，步骤逐行保留并显示中文动作说明；成功终态后自动收起，再显示完整答案，历史仍可重新展开。失败、取消或等待补充时保留可见过程。阅读上方记录时不强制滚到底部。
 
-聊天中的“执行过程”展示实际模型请求、工具内查询词、召回来源/Version、融合/补全/重排、证据评判与改写/子问题。过程沿原Run Journal持久保存，可在刷新后重放；候选来源和最终答案引用分别表示其实际环节。失败、降级、等待补充及Run终态按真实状态显示，不公开模型原始思维链，不增加展示模型调用。
+聊天中的“执行过程”默认展示任务主线：首次检索、材料覆盖检查、必要的补查方向/改写、最终回答和格式纠正。并行子问题归在同一补查计划下，显示各自问题与实际缺口。向量/关键词召回、融合、同节补全、重排、完整查询与耗时收进各轮“检索详情”，数量明确区分候选片段和保留材料。来源集中显示文件名，展开查看实际命中章节、版本号与完整Version ID。过程沿原Run Journal保存，刷新后可分页重放；候选来源不冒充最终答案引用，不公开模型原始思维链，不增加展示模型调用。
 
-本功能迁移head为`0020`；现有开发库需显式迁移并重启API/Index Worker，本次没有自动升级或重启。历史Run仅展示实际保存的记录。实现和验收见[9.3记录](chapters/09-扩展能力与交付.md#93实施与代码框架2026-11-18)。
+本功能迁移head为`0021`；现有开发库需显式迁移并更新/重启API、Index Worker和前端，本次没有自动升级或重启。旧Run继续显示已有过程，未保存的具体缺口/模型用途不补造，旧scope没有文档名时注明暂不可用。实现和验收见[任务主线与检索详情](chapters/09-扩展能力与交付.md#93任务主线与检索详情实施2026-11-19)。
 
 ## 运行最小后端
 
@@ -71,7 +71,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0020 (head)`。0020扩展原Journal过程事件与执行/归属guard，过程历史不降级丢弃。0019增加Project、手工记忆、Thread/KB项目归属、文档下线与Run记忆快照；旧数据保留个人模式，存在项目或下线文档时拒绝降级以免丢失隔离/撤销语义。0018增加持久评测Job/Case/Corpus，供独立Evaluation Worker与工作台使用。0017新增本段execution_deadline_at并允许有效owner续短租约；升级会拒绝任何旧协议running，必须先用旧版正常排空。旧终态不补造期限，已提交waiting_input/resume_pending保持可续接，不猜测运行进度。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0021 (head)`。0021在同一Journal增量加入有界`process.detail`，补齐阶段、模型用途/尝试、材料缺口/子问题和文档目录摘要；不改写旧`process.step`，存在详情历史时拒绝降级。0020扩展原Journal过程事件与执行/归属guard，过程历史不降级丢弃。0019增加Project、手工记忆、Thread/KB项目归属、文档下线与Run记忆快照；旧数据保留个人模式，存在项目或下线文档时拒绝降级以免丢失隔离/撤销语义。0018增加持久评测Job/Case/Corpus，供独立Evaluation Worker与工作台使用。0017新增本段execution_deadline_at并允许有效owner续短租约；升级会拒绝任何旧协议running，必须先用旧版正常排空。旧终态不补造期限，已提交waiting_input/resume_pending保持可续接，不猜测运行进度。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 

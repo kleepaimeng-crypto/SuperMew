@@ -35,7 +35,9 @@ watch(
 );
 function liveSteps(id: string) {
   const view = chat.runs[id];
-  return view && !terminal(chat.runStatus(view)) ? view.projection.steps : [];
+  return view && !terminal(chat.runStatus(view))
+    ? [view.projection.steps, view.projection.stepDetails]
+    : [];
 }
 async function followFeed() {
   if (!nearEnd.value) return;
@@ -123,6 +125,7 @@ function enter(event: KeyboardEvent) {
           v-if="message.role === 'assistant' && chat.runs[message.run_id]"
           :tools="chat.runs[message.run_id]!.projection.tools"
           :steps="chat.runs[message.run_id]!.projection.steps"
+          :step-details="chat.runs[message.run_id]!.projection.stepDetails"
           :run-status="
             chat.runs[message.run_id]!.projection.cursor
               ? chat.runs[message.run_id]!.projection.runStatus

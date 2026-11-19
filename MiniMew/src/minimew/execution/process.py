@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 class ProcessReporter:
     run_id: object
     sink: object
+    detail_sink: object | None = None
     path: str = ""
     parent_id: str = ""
     tool_call_id: str = ""
@@ -18,7 +19,7 @@ class ProcessReporter:
         return replace(self, path="tool/" + call_id, parent_id="", tool_call_id=call_id)
 
     @asynccontextmanager
-    async def step(self, kind, key, *, query=""):
+    async def step(self, kind, key, *, query="", phase="", purpose="", attempt=0):
         identity = uuid5(NAMESPACE_URL, f"{self.run_id}/{self.path}/{key}").hex
         data = {
             "step_id": identity,
@@ -35,6 +36,17 @@ class ProcessReporter:
         }
         await self.sink(data)
         step = ProcessStep(replace(self, path=self.path + "/" + key, parent_id=identity), data)
+        step.detail = dict(
+            step_id=identity,
+            phase=phase,
+            purpose=purpose,
+            attempt=attempt,
+            missing=[],
+            questions=[],
+            sources=[],
+        )
+        if self.detail_sink and (phase or purpose or attempt):
+            await self.detail_sink({**step.detail, "stage": "start"})
         started = time.monotonic()
         try:
             yield step
@@ -64,6 +76,8 @@ class ProcessReporter:
             )
             raise
         else:
+            if self.detail_sink and (step.detail_changed or phase or purpose or attempt):
+                await self.detail_sink({**step.detail, "stage": "result"})
             await self.sink(
                 {
                     **data,
@@ -78,20 +92,44 @@ class ProcessStep:
     def __init__(self, reporter, data):
         self.reporter, self.data, self.result = reporter, data, {}
         self.status = "completed"
+        self.detail = {}
+        self.detail_changed = False
 
     def fail(self, code):
         self.status = "failed"
         self.result = {"outcome": code}
 
-    def finish(self, *, summary="", count=0, sources=(), outcome=""):
+    def finish(
+        self,
+        *,
+        summary="",
+        count=0,
+        sources=(),
+        outcome="",
+        missing=None,
+        questions=None,
+        source_details=None,
+        purpose=None,
+    ):
         self.result = dict(summary=summary, count=count, sources=list(sources), outcome=outcome)
+        for key, value in (
+            ("missing", missing),
+            ("questions", questions),
+            ("sources", source_details),
+            ("purpose", purpose),
+        ):
+            if value is not None:
+                self.detail[key] = value if key == "purpose" else list(value)
+                self.detail_changed = True
 
 
 @asynccontextmanager
-async def report_step(reporter, kind, key, *, query=""):
+async def report_step(reporter, kind, key, *, query="", phase="", purpose="", attempt=0):
     """评测/离线宿主可显式不订阅；聊天宿主注入原Journal的报告器。"""
     if reporter is None:
         yield None
     else:
-        async with reporter.step(kind, key, query=query) as step:
+        async with reporter.step(
+            kind, key, query=query, phase=phase, purpose=purpose, attempt=attempt
+        ) as step:
             yield step
