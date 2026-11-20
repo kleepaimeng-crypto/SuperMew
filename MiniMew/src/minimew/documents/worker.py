@@ -28,7 +28,7 @@ from minimew.documents.chunking import build_version_chunks
 from minimew.documents.index_cleanup import IndexCleanupRepository
 from minimew.documents.jobs import IndexJobRepository, OwnershipLost
 from minimew.documents.parsing import DocumentBuildError
-from minimew.documents.profiles import hybrid_preset, preset
+from minimew.documents.profiles import CURRENT_CHUNKER, hybrid_preset, preset
 from minimew.documents.storage import SourceStore
 from minimew.embeddings.adapter import LocalEmbeddingAdapter
 from minimew.embeddings.bailian import BailianEmbedding
@@ -130,7 +130,7 @@ class IndexWorker:
             for profile in (PROFILE, BAILIAN_PROFILE)
             if bailian is not None or profile == PROFILE
             for parser in ("markdown-txt-v1", "markdown-txt-v2")
-            for chunker in ("structure-v1", "structure-v2")
+            for chunker in ("structure-v1", "structure-v2", CURRENT_CHUNKER)
         }
         self.stop = asyncio.Event()
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minimew-index")

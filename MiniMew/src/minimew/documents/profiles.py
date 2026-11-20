@@ -11,6 +11,7 @@ LOCAL_HYBRID = "hybrid-jieba-bm25-v1"
 BAILIAN_DENSE = "bailian-dense-cosine-v1"
 BAILIAN_HYBRID = "bailian-hybrid-jieba-bm25-v1"
 BAILIAN_ID = "bailian-text-embedding-v4"
+CURRENT_CHUNKER = "structure-v3"
 BAILIAN_LAYOUTS = (BAILIAN_DENSE, BAILIAN_HYBRID)
 HYBRID_LAYOUTS = (LOCAL_HYBRID, BAILIAN_HYBRID)
 
@@ -66,7 +67,7 @@ class BuildConfiguration(FrozenConfiguration):
     schema_version: Literal[1] = 1
     source_format: Literal["markdown", "text"] | None = None
     parser: Literal["markdown-txt-v1", "markdown-txt-v2"] = "markdown-txt-v1"
-    chunker: Literal["structure-v1", "structure-v2"] = "structure-v1"
+    chunker: Literal["structure-v1", "structure-v2", "structure-v3"] = "structure-v1"
     chunk_tokens: int = Field(ge=32, le=8192)
     overlap_tokens: int = Field(ge=0)
     embedding: EmbeddingProfile

@@ -2966,7 +2966,7 @@
           },
           "chunker": {
             "type": "string",
-            "enum": ["structure-v1", "structure-v2"],
+            "enum": ["structure-v1", "structure-v2", "structure-v3"],
             "title": "Chunker",
             "default": "structure-v1"
           },

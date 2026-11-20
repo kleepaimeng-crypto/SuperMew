@@ -9,7 +9,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from minimew.documents.chunking import BudgetTokenizer, BuildIdentity, ChunkBuild, build_chunks
 from minimew.documents.parsing import DocumentBuildError, parse_source
-from minimew.documents.profiles import BuildConfiguration, preset
+from minimew.documents.profiles import CURRENT_CHUNKER, BuildConfiguration, preset
 from minimew.documents.storage import InvalidSource, validate_source
 from minimew.embeddings.adapter import LocalEmbeddingAdapter
 from minimew.embeddings.config import EmbeddingRuntimeSettings
@@ -31,7 +31,7 @@ def build_preview(path: Path, tokenizer: BudgetTokenizer) -> tuple[BuildConfigur
             **preset("bge-small-zh-v1.5").model_dump(mode="json"),
             "source_format": source.format,
             "parser": "markdown-txt-v2",
-            "chunker": "structure-v2",
+            "chunker": CURRENT_CHUNKER,
         }
     )
     # 仅供检查：身份固定标注 local-preview，不能作为数据库登记/鉴权的证据。

@@ -8,7 +8,14 @@ from minimew.account_models.credentials import encrypt
 from minimew.documents.artifacts import retire_artifacts
 from minimew.documents.catalog import ensure_base
 from minimew.documents.jobs import publish_candidate
-from minimew.documents.profiles import BAILIAN_ID, HYBRID_LAYOUTS, hybrid_preset, preset, read_build
+from minimew.documents.profiles import (
+    BAILIAN_ID,
+    CURRENT_CHUNKER,
+    HYBRID_LAYOUTS,
+    hybrid_preset,
+    preset,
+    read_build,
+)
 from minimew.documents.schemas import EmbeddingRebuildView, EmbeddingSettingsView
 from minimew.embeddings.bailian import BASE_URL
 from minimew.models import (
@@ -139,7 +146,7 @@ async def start_rebuild(session, user_id, project_id, change, settings):
                 raise RebuildConflict("EMBEDDING_KEY_REQUIRED")
         target = (hybrid_preset if current.index_layout in HYBRID_LAYOUTS else preset)(
             target_id
-        ).model_copy(update={"parser": current.parser, "chunker": "structure-v2"})
+        ).model_copy(update={"parser": current.parser, "chunker": CURRENT_CHUNKER})
         session.add(
             EmbeddingRebuild(
                 id=identity,

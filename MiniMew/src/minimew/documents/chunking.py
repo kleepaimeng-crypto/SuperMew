@@ -155,7 +155,7 @@ def build_chunks(
             end = next_end
         emit(section_index, start, end, table_header=header if start != block.start else None)
 
-    def split_run(section_index: int, spans: list[SourceSpan]) -> None:
+    def split_run(section_index: int, spans: list[SourceSpan], *, code: bool = False) -> None:
         if not spans:
             return
         run_start, run_end = spans[0].start, spans[-1].end
@@ -173,11 +173,16 @@ def build_chunks(
             raise DocumentBuildError("DOCUMENT_TOKEN_ALIGNMENT_INVALID")
         token_starts = [a for a, _ in offsets]
         token_ends = [b for _, b in offsets]
-        paragraphs = [span.end for span in spans]
-        sentences = [
-            run_start + match.end()
-            for match in re.finditer(r"[。！？!?；;][”’\"']*|\.(?=\s|$)|\r\n|\r|\n", text)
-        ]
+        patterns = (
+            (r"(?:\r\n|\r|\n)[ \t]*(?:\r\n|\r|\n)", r"\r\n|\r|\n")
+            if code
+            else (r"[。！？!?；;][”’\"']*|\.(?=\s|$)|\r\n|\r|\n",)
+        )
+        preferred = [[span.end for span in spans]] if not code else []
+        preferred.extend(
+            [run_start + match.end() for match in re.finditer(pattern, text)]
+            for pattern in patterns
+        )
 
         def fits(start: int, end: int) -> bool:
             return tokenizer.count(prefix + parsed.text[start:end]) <= build.chunk_tokens
@@ -197,7 +202,7 @@ def build_chunks(
                     continue
                 raise DocumentBuildError("DOCUMENT_UNSPLITTABLE_TEXT")
             if end < run_end:
-                for boundaries in (paragraphs, sentences):
+                for boundaries in preferred:
                     pos = bisect_right(boundaries, end) - 1
                     if pos >= 0 and boundaries[pos] > frontier and fits(start, boundaries[pos]):
                         end = boundaries[pos]
@@ -206,6 +211,9 @@ def build_chunks(
             frontier = end
             if end == run_end:
                 break
+            if code:
+                start = frontier
+                continue
             right = bisect_right(token_ends, end)
             left = max(bisect_left(token_starts, start), right - build.overlap_tokens)
             start = token_starts[left] if build.overlap_tokens and left < right else end
@@ -231,8 +239,11 @@ def build_chunks(
             if tokenizer.count(prefix) > build.chunk_tokens:
                 raise DocumentBuildError("DOCUMENT_TITLE_TOO_LONG")
             if tokenizer.count(prefix + parsed.excerpt(block.span)) > build.chunk_tokens:
-                if build.chunker == "structure-v2" and block.kind == "table":
+                if build.chunker in ("structure-v2", "structure-v3") and block.kind == "table":
                     split_table(current, block.span, prefix)
+                    continue
+                if build.chunker == "structure-v3" and block.kind == "code":
+                    split_run(current, [block.span], code=True)
                     continue
                 raise DocumentBuildError("DOCUMENT_BLOCK_TOO_LARGE")
             emit(current, block.span.start, block.span.end)

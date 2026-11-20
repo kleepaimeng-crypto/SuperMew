@@ -165,10 +165,21 @@ export function parseVersion(value: unknown): Version {
   if (
     !record(build) ||
     !record(build.embedding) ||
-    !["bge-small-zh-v1.5", "bge-m3"].includes(String(build.embedding.id)) ||
     !integer(build.embedding.dimension) ||
-    typeof build.embedding.revision !== "string" ||
-    !/^[a-f\d]{40}$/.test(build.embedding.revision)
+    typeof build.embedding.revision !== "string"
+  )
+    return invalid();
+  const embedding = build.embedding;
+  if (embedding.id === "bailian-text-embedding-v4") {
+    if (
+      embedding.model_id !== "text-embedding-v4" ||
+      embedding.dimension !== 512 ||
+      embedding.revision !== "bailian-v4-contract-v1"
+    )
+      return invalid();
+  } else if (
+    !["bge-small-zh-v1.5", "bge-m3"].includes(String(embedding.id)) ||
+    !/^[a-f\d]{40}$/.test(String(embedding.revision))
   )
     return invalid();
   return value as Version;

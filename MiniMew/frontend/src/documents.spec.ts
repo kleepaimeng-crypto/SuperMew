@@ -57,3 +57,30 @@ it("校验分页与版本身份，不能把坏响应当空目录", () => {
   ).toThrow();
   expect(parseReceipt(fixture()).job.id).toBe(fixture().job.id);
 });
+
+it("接受百炼上传回执并拒绝不匹配的百炼版本", () => {
+  const receipt = fixture();
+  const build = receipt.version.build_configuration;
+  const embedding = {
+    ...build.embedding,
+    id: "bailian-text-embedding-v4",
+    model_id: "text-embedding-v4",
+    revision: "bailian-v4-contract-v1",
+    dimension: 512,
+    pooling: "provider",
+  };
+  const version = {
+    ...receipt.version,
+    build_configuration: { ...build, embedding },
+  };
+  expect(parseReceipt({ ...receipt, version }).version).toEqual(version);
+  expect(() =>
+    parseVersion({
+      ...version,
+      build_configuration: {
+        ...build,
+        embedding: { ...embedding, dimension: 1024 },
+      },
+    }),
+  ).toThrow();
+});

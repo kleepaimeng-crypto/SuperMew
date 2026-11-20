@@ -134,7 +134,7 @@ def test_long_table_upload_publishes_row_chunks_with_original_spans(client, tmp_
     rows = [f"|类型{i}|" + "说明" * 24 + "|" for i in range(10)]
     content = ("# 数据类型\n|类型|说明|\n|---|---|\n" + "\n".join(rows) + "\n").encode()
     value = upload(client, headers, content=content).json()
-    assert value["version"]["build_configuration"]["chunker"] == "structure-v2"
+    assert value["version"]["build_configuration"]["chunker"] == "structure-v3"
 
     async def scenario(sessions):
         w = worker(sessions, tmp_path)

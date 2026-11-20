@@ -875,7 +875,7 @@ export interface components {
        * @default structure-v1
        * @enum {string}
        */
-      chunker: "structure-v1" | "structure-v2";
+      chunker: "structure-v1" | "structure-v2" | "structure-v3";
       /** Chunk Tokens */
       chunk_tokens: number;
       /** Overlap Tokens */

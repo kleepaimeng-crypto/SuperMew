@@ -216,6 +216,8 @@ def test_oversized_table_splits_by_complete_rows_with_header_context(newline):
     lines[5] = lines[5].replace("说明文字3", "说明文字3\u2028")
     text = "# 数据类型" + newline + newline.join(lines) + newline
     parsed, result = chunk(text, size=64, chunker="structure-v2")
+    _, current = chunk(text, size=64, chunker="structure-v3")
+    assert [row.source_text for row in current.chunks] == [row.source_text for row in result.chunks]
     rows = result.chunks
     assert len(rows) > 1
     header = newline.join(lines[:2]) + newline
@@ -232,6 +234,23 @@ def test_oversized_table_splits_by_complete_rows_with_header_context(newline):
     assert all(a.span.end == b.span.start for a, b in zip(rows, rows[1:]))
     assert result == build_chunks(
         parsed, IDENTITY, configuration(size=64, chunker="structure-v2"), CharacterTokenizer()
+    )
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_oversized_code_uses_original_contiguous_spans(newline):
+    text = newline.join(["# 示例", "```java", "int a = 1;", "", "x" * 100, "```", ""])
+    with pytest.raises(DocumentBuildError, match="DOCUMENT_BLOCK_TOO_LARGE"):
+        chunk(text, size=48, chunker="structure-v2")
+
+    parsed, result = chunk(text, size=48, chunker="structure-v3")
+    code = next(block for block in parsed.blocks if block.kind == "code")
+    assert len(result.chunks) > 2
+    assert result.chunks[0].source_text.endswith(newline * 2)
+    assert "".join(row.source_text for row in result.chunks) == parsed.excerpt(code.span)
+    assert all(row.token_count <= 48 for row in result.chunks)
+    assert all(
+        left.span.end == right.span.start for left, right in zip(result.chunks, result.chunks[1:])
     )
 
 

@@ -534,7 +534,7 @@ uv run --no-sync python scripts/check_chunking.py
 
 原文定位单位是 UTF-8 原始解码字符串的 **Unicode code point**：`start/end` 为 0-based `[start,end)`，行号为 1-based 且包含末行。原文不做 BOM 去除、换行归一化或 Token 解码重建；BOM 不作为正文编码，Markdown 解析器的行范围映射回原始 CRLF/CR/LF。字符位置不是 UTF-8 字节偏移，也不是浏览器 UTF-16 下标；后续跨端引用应按明确单位换算或使用行号。`source_text` 恒等于该原文位置的切片，`embedding_text` 单独添加所属标题路径，不能拿后者的位置回指源文。
 
-Markdown 使用 CommonMark 顶层结构并启用普通管道表格，不渲染 HTML、执行代码或读取链接；TXT 按空白行分段，不猜标题。标题仅作为上下文，段落/列表优先按结构组织，长段落先沿句子/换行，再沿 Token 原文位置拆；最终输入计入标题和特殊 Token，满足 384 预算。同节 overlap 最多 48 个正文 Token，必要时减少以保证前进；不跨章节、代码块或表格机械重叠。新上传使用 `structure-v2`：普通管道表格完整时保持原样，超预算时按完整数据行拆分，后续片段的编码文本和知识工具结果带原表头；`source_text` 与引用位置仍对应原文连续切片。代码及嵌套代码/表格所在外层结构仍按完整块处理；旧 Version/Job 的 `structure-v1` 构建规则不变。
+Markdown 使用 CommonMark 顶层结构并启用普通管道表格；TXT 按空白行分段。段落和列表优先按结构组织，长段落优先沿句子或换行拆分。默认分块预算为 384 token，包含标题和特殊 token。同节普通正文最多重叠 48 个 token。新上传和 Embedding 重建使用 `structure-v3`。普通管道表格超预算时按完整数据行拆分，续块携带原表头。顶层代码块超预算时优先按空行或完整代码行拆分，单行超限时使用 Token 的原文位置。代码片段无重叠，引用定位到原文连续范围。嵌套代码及表格所在的外层结构仍按完整块处理。旧 Version 和 Job 按冻结的构建配置处理。
 
 代码块、单个表格行连同表头超预算时返回 `DOCUMENT_BLOCK_TOO_LARGE`，标题自身超预算返回 `DOCUMENT_TITLE_TOO_LONG`，仅标题无正文返回 `DOCUMENT_NO_CONTENT`；不会丢弃超长部分、移除标题后继续或假称分块成功。来源缺失/损坏返回 `DOCUMENT_SOURCE_UNAVAILABLE`，原始内容 hash 不匹配返回 `DOCUMENT_SOURCE_HASH_MISMATCH`。配置/Tokenizer 身份不匹配返回 `DOCUMENT_BUILD_CONFIG_MISMATCH`。这些失败不等于“知识库没有知识”。旧失败任务不会自动重跑；修复部署后需上传新版。
 
