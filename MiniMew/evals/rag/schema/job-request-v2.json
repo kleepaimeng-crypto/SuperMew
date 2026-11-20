@@ -429,14 +429,20 @@
           "type": "boolean"
         },
         "reranker": {
-          "const": "BAAI/bge-reranker-base",
           "default": "BAAI/bge-reranker-base",
+          "enum": [
+            "BAAI/bge-reranker-base",
+            "qwen3-rerank"
+          ],
           "title": "Reranker",
           "type": "string"
         },
         "revision": {
-          "const": "2cfc18c9415c912f9d8155881c133215df768a70",
           "default": "2cfc18c9415c912f9d8155881c133215df768a70",
+          "enum": [
+            "2cfc18c9415c912f9d8155881c133215df768a70",
+            "bailian-rerank-v1"
+          ],
           "title": "Revision",
           "type": "string"
         },

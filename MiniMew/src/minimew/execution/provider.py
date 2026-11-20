@@ -36,15 +36,19 @@ class ProviderRequest:
     credential_id: UUID | None = None
     account_id: UUID | None = None
     knowledge_enabled: bool = True
+    rerank_credential_id: UUID | None = None
 
     def __post_init__(self):
         if type(self.knowledge_enabled) is not bool or (
-            self.credential_id is not None
-            and (
-                not isinstance(self.credential_id, UUID)
-                or not isinstance(self.account_id, UUID)
-                or self.run_id is None
-                or self.case_identity is not None
+            any(
+                identity is not None
+                and (
+                    not isinstance(identity, UUID)
+                    or not isinstance(self.account_id, UUID)
+                    or self.run_id is None
+                    or self.case_identity is not None
+                )
+                for identity in (self.credential_id, self.rerank_credential_id)
             )
         ):
             raise ValueError("Invalid account execution binding")

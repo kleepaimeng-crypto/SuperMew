@@ -9,9 +9,11 @@ import {
   parseJob,
   parsePage,
   parseReceipt,
+  parseRerankSettings,
   parseVersion,
   type Document,
   type EmbeddingChange,
+  type RerankChange,
   type Version,
 } from "../documents";
 import { useAuthStore } from "./auth";
@@ -420,6 +422,19 @@ export const useDocumentsStore = defineStore("documents", () => {
       ),
     );
   }
+  async function rerankSettings(project: string | null, change?: RerankChange) {
+    const params = project
+      ? "?" + new URLSearchParams({ project_id: project })
+      : "";
+    return parseRerankSettings(
+      await call(
+        context(),
+        "/v1/rerank-settings" + params,
+        change ? "PUT" : "GET",
+        change,
+      ),
+    );
+  }
   function setScope(id: string | null, showArchived = false) {
     if (projectId.value !== id || archived.value !== showArchived) {
       reset();
@@ -454,6 +469,7 @@ export const useDocumentsStore = defineStore("documents", () => {
     setScope,
     withdraw,
     embeddingSettings,
+    rerankSettings,
     items,
     selected,
     currentVersion,

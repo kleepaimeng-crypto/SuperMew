@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import KnowledgeEmbedding from "../components/KnowledgeEmbedding.vue";
+import KnowledgeRerank from "../components/KnowledgeRerank.vue";
 import { activeJob, jobError, jobLabel } from "../documents";
 import { useDocumentsStore } from "../stores/documents";
 import { useAuthStore } from "../stores/auth";
@@ -178,6 +179,10 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
         :key="`${auth.user?.id}:${projectId}`"
         :project="projectId"
         @rebuild-state="rebuilding = $event"
+      />
+      <KnowledgeRerank
+        :key="`rerank:${auth.user?.id}:${projectId}`"
+        :project="projectId"
       />
       <p v-if="documents.detailLoading && !documents.selected" role="status">
         正在读取版本与任务…

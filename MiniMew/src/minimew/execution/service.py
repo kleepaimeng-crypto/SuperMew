@@ -108,6 +108,7 @@ class RunExecutor:
                         else frozenset()
                     ),
                     **({"rag_policy": request.snapshot.rag} if request.snapshot.rag else {}),
+                    rerank_credential_id=request.rerank_credential_id,
                     reasoning=request.snapshot.reasoning,
                     repairs=request.snapshot.repairs,
                     hitl=request.snapshot.hitl,

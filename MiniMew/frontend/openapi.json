@@ -1529,6 +1529,120 @@
         ]
       }
     },
+    "/v1/rerank-settings": {
+      "get": {
+        "tags": ["documents"],
+        "summary": "Read Rerank Settings",
+        "operationId": "read_rerank_settings_v1_rerank_settings_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RerankSettingsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["documents"],
+        "summary": "Save Rerank Settings",
+        "operationId": "save_rerank_settings_v1_rerank_settings_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerankChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RerankSettingsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/embedding-profiles/selection": {
       "get": {
         "tags": ["documents"],
@@ -6099,13 +6213,16 @@
           },
           "reranker": {
             "type": "string",
-            "const": "BAAI/bge-reranker-base",
+            "enum": ["BAAI/bge-reranker-base", "qwen3-rerank"],
             "title": "Reranker",
             "default": "BAAI/bge-reranker-base"
           },
           "revision": {
             "type": "string",
-            "const": "2cfc18c9415c912f9d8155881c133215df768a70",
+            "enum": [
+              "2cfc18c9415c912f9d8155881c133215df768a70",
+              "bailian-rerank-v1"
+            ],
             "title": "Revision",
             "default": "2cfc18c9415c912f9d8155881c133215df768a70"
           },
@@ -6316,6 +6433,54 @@
           "fault"
         ],
         "title": "Report"
+      },
+      "RerankChange": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["local", "bailian"],
+            "title": "Source"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1,
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["source"],
+        "title": "RerankChange"
+      },
+      "RerankSettingsView": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["local", "bailian"],
+            "title": "Source"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "bailian_key_configured": {
+            "type": "boolean",
+            "title": "Bailian Key Configured"
+          }
+        },
+        "type": "object",
+        "required": ["source", "model", "bailian_key_configured"],
+        "title": "RerankSettingsView"
       },
       "ResumeCredential": {
         "properties": {

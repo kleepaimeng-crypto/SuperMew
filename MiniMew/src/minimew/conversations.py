@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from minimew.account_models.service import freeze_account
 from minimew.conversation_schemas import CreateRunRequest, MessagePage, MessageResponse, RunResponse
+from minimew.documents.rerank_settings import freeze_rerank
 from minimew.execution.journal import append_event
 from minimew.models import Message, Run, Thread
 from minimew.skills.catalog import load_skill
@@ -103,6 +104,9 @@ async def reserve_run(
             snapshot, credential_id, knowledge_enabled = await freeze_account(
                 session, user_id, settings or Settings(), credentials_available
             )
+            snapshot, rerank_credential_id = await freeze_rerank(
+                session, user_id, thread.project_id, snapshot
+            )
             from minimew.projects import memory_snapshot
 
             memories = await memory_snapshot(session, user_id, thread.project_id)
@@ -115,6 +119,7 @@ async def reserve_run(
                 memory_snapshot=memories,
                 model_catalog_hash=snapshot.catalog_hash(),
                 credential_id=credential_id,
+                rerank_credential_id=rerank_credential_id,
                 knowledge_enabled=knowledge_enabled,
                 skill_request=data.skill.model_dump(mode="json", exclude_none=True)
                 if data.skill

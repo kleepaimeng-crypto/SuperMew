@@ -7,6 +7,8 @@ export type Version = components["schemas"]["VersionResponse"];
 export type UploadReceipt = components["schemas"]["UploadReceipt"];
 export type EmbeddingChange = components["schemas"]["EmbeddingChange"];
 export type EmbeddingSettings = components["schemas"]["EmbeddingSettingsView"];
+export type RerankChange = components["schemas"]["RerankChange"];
+export type RerankSettings = components["schemas"]["RerankSettingsView"];
 const jobs = [
   "pending",
   "running",
@@ -37,6 +39,17 @@ const date = (v: unknown) =>
 const invalid = (): never => {
   throw new Error("Invalid document response");
 };
+
+export function parseRerankSettings(value: unknown): RerankSettings {
+  if (
+    !record(value) ||
+    (value.source !== "local" && value.source !== "bailian") ||
+    typeof value.model !== "string" ||
+    typeof value.bailian_key_configured !== "boolean"
+  )
+    return invalid();
+  return value as RerankSettings;
+}
 
 export function parseEmbeddingSettings(value: unknown): EmbeddingSettings {
   if (

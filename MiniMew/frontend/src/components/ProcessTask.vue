@@ -56,6 +56,15 @@ const warnings = computed(() =>
   ),
 );
 function result(code: string) {
+  if (
+    code === "RERANK_PROVIDER_AUTH_FAILED" ||
+    code === "RERANK_CREDENTIAL_UNAVAILABLE"
+  )
+    return "重排凭据不可用，保留召回顺序";
+  if (code === "RERANK_PROVIDER_TIMEOUT")
+    return "重排服务响应超时，保留召回顺序";
+  if (code === "RERANK_PROVIDER_UNAVAILABLE")
+    return "重排服务暂不可用，保留召回顺序";
   if (code.startsWith("RERANK_")) return "重排未完成，保留召回顺序";
   if (code === "HYBRID_LAYOUT_UNAVAILABLE")
     return "当前索引不支持混合检索，采用向量召回";
@@ -155,6 +164,9 @@ function result(code: string) {
           ><template v-if="record.status !== 'running'">
             · {{ elapsed(record.elapsed_ms) }}</template
           >
+          <p v-if="record.kind === 'rerank' && record.summary">
+            {{ record.summary }}
+          </p>
           <p
             v-if="
               record.outcome &&

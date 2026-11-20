@@ -17,7 +17,7 @@ from minimew.evaluation.result_protocol import JudgeResult as JudgeResult
 from minimew.evaluation.result_protocol import SourceTextV2 as SourceTextV2
 from minimew.hitl.policy import HitlPolicy
 from minimew.model_protocol import ModelConfiguration, ModelSnapshot, ProfileSnapshot
-from minimew.rag.protocol import RagPolicy
+from minimew.rag.protocol import BAILIAN_RERANKER, RagPolicy
 from minimew.rag.reasoning import ReasoningPolicy, RepairPolicy
 
 
@@ -83,6 +83,8 @@ class JobRequest(FrozenModel):
             raise ValueError("Evaluation requires frozen v5 reserved finalization")
         if self.snapshot.answer.configuration != controlled_snapshot().answer.configuration:
             raise ValueError("Only controlled generation is enabled")
+        if self.snapshot.rag.reranker == BAILIAN_RERANKER:
+            raise ValueError("API reranking requires an evaluation model binding")
         unique([s.case_id for s in self.scenarios], "scenario")
         if {c.case_id for c in self.dataset.cases} != {s.case_id for s in self.scenarios}:
             raise ValueError("Scenario directory must exactly match dataset")

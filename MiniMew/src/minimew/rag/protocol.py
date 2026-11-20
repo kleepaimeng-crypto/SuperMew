@@ -5,6 +5,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+LOCAL_RERANKER = "BAAI/bge-reranker-base"
+BAILIAN_RERANKER = "qwen3-rerank"
+LOCAL_RERANK_REVISION = "2cfc18c9415c912f9d8155881c133215df768a70"
+BAILIAN_RERANK_REVISION = "bailian-rerank-v1"
+
 
 class RagPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True, allow_inf_nan=False)
@@ -17,9 +22,9 @@ class RagPolicy(BaseModel):
     final_k: int = Field(default=6, ge=1, le=6)
     merge: bool = True
     rerank: bool = True
-    reranker: Literal["BAAI/bge-reranker-base"] = "BAAI/bge-reranker-base"
-    revision: Literal["2cfc18c9415c912f9d8155881c133215df768a70"] = (
-        "2cfc18c9415c912f9d8155881c133215df768a70"
+    reranker: Literal["BAAI/bge-reranker-base", "qwen3-rerank"] = LOCAL_RERANKER
+    revision: Literal["2cfc18c9415c912f9d8155881c133215df768a70", "bailian-rerank-v1"] = (
+        LOCAL_RERANK_REVISION
     )
     window: Literal[512] = 512
     batch_size: Literal[1] = 1
@@ -27,6 +32,8 @@ class RagPolicy(BaseModel):
 
     @model_validator(mode="after")
     def consistent_budgets(self):
+        if (self.reranker == BAILIAN_RERANKER) != (self.revision == BAILIAN_RERANK_REVISION):
+            raise ValueError("Reranker model and revision disagree")
         if max(self.fused_k, self.group_limit, self.final_k) > self.candidate_limit:
             raise ValueError("Candidate budget cannot be smaller than selection/group budgets")
         return self

@@ -12,6 +12,7 @@ from minimew.embeddings.config import EmbeddingRuntimeSettings
 from minimew.embeddings.errors import EmbeddingError
 from minimew.execution.tools import ToolFailure
 from minimew.knowledge import KnowledgeService
+from minimew.rag.bailian_reranker import BailianReranker
 from minimew.rag.reranker import LocalReranker, RerankError
 from minimew.vector_store.adapter import CandidateIndex
 from minimew.vector_store.config import VectorSettings
@@ -27,6 +28,8 @@ class KnowledgeRuntime:
         self.vector_settings = vector_settings or VectorSettings()
         self.encoder = self.backend = self.index = None
         self.reranker = None
+        self.rerank_error = None
+        self.bailian_reranker = None
         self.bailian = None
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minimew-knowledge")
         self._slot = asyncio.Semaphore(1)
@@ -37,7 +40,11 @@ class KnowledgeRuntime:
         self.backend = MilvusBackend.connect(self.vector_settings)
         self.backend.probe()
         self.index = CandidateIndex(self.backend, self.vector_settings.batch_size)
-        self.reranker = LocalReranker.load(self.embedding_settings)
+        try:
+            self.reranker = LocalReranker.load(self.embedding_settings)
+        except RerankError as exc:
+            self.rerank_error = exc.code
+            logger.warning("local_reranker_unavailable code=%s", exc.code)
 
     async def start(self):
         try:
@@ -104,6 +111,7 @@ async def knowledge_lifespan(sessions, settings):
         return
     runtime = KnowledgeRuntime()
     runtime.bailian = BailianEmbedding(sessions, settings)
+    runtime.bailian_reranker = BailianReranker(sessions, settings)
     try:
         await runtime.start()
         yield KnowledgeService(sessions, runtime)

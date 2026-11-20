@@ -83,6 +83,7 @@ class ToolContext:
     checkpoint: dict | None = None
     process: object | None = None
     skill: SkillSnapshot | None = None
+    rerank_credential_id: UUID | None = None
 
     @property
     def execution_identity(self):

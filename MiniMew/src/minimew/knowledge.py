@@ -121,6 +121,7 @@ class KnowledgeCalculation:
                     deadline=context.deadline,
                     process=context.process,
                     step_key="initial",
+                    rerank_credential_id=context.rerank_credential_id,
                 )
             context.trace_state.last_trace = result.trace
         except EmbeddingError as error:
@@ -181,6 +182,7 @@ class KnowledgeCalculation:
                     deadline=context.deadline,
                     process=process,
                     step_key=step_key,
+                    rerank_credential_id=context.rerank_credential_id,
                 )
                 if extra.trace.fallback:
                     emit(

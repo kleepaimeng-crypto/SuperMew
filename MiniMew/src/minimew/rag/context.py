@@ -1,6 +1,7 @@
 """宿主无关计算上下文；资格、保存与取消由宿主提供。"""
 
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from minimew.evidence import EvidenceDirectory
 from minimew.execution.identity import CaseIdentity, ChatIdentity
@@ -28,6 +29,7 @@ class RagContext:
     trace_state: TraceState = field(default_factory=TraceState)
     progress: object | None = None
     process: object | None = None
+    rerank_credential_id: UUID | None = None
 
     def __post_init__(self):
         if not isinstance(self.execution_identity, (ChatIdentity, CaseIdentity)):
@@ -73,6 +75,7 @@ def from_chat(context):
                 "hitl",
                 "checkpoint",
                 "process",
+                "rerank_credential_id",
             )
         },
     )

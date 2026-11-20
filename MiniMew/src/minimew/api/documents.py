@@ -21,7 +21,7 @@ from starlette.responses import JSONResponse
 from minimew.api.auth import bearer, get_current_access
 from minimew.api.threads import no_store
 from minimew.database import SessionDependency
-from minimew.documents import catalog, rebuilds
+from minimew.documents import catalog, rebuilds, rerank_settings
 from minimew.documents.profiles import BuildConfiguration, preset
 from minimew.documents.schemas import (
     DocumentPage,
@@ -29,6 +29,8 @@ from minimew.documents.schemas import (
     EmbeddingChange,
     EmbeddingSettingsView,
     IndexJobResponse,
+    RerankChange,
+    RerankSettingsView,
     UploadKey,
     UploadReceipt,
     VersionResponse,
@@ -81,6 +83,31 @@ async def document_user(
 DocumentUser = Annotated[User, Depends(document_user)]
 
 
+@router.get("/rerank-settings", response_model=RerankSettingsView)
+async def read_rerank_settings(
+    user: DocumentUser, session: SessionDependency, project_id: UUID | None = None
+):
+    with public_errors():
+        return await rerank_settings.read_settings(session, user.id, project_id)
+
+
+@router.put("/rerank-settings", response_model=RerankSettingsView)
+async def save_rerank_settings(
+    data: RerankChange,
+    user: DocumentUser,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    project_id: UUID | None = None,
+):
+    with public_errors():
+        try:
+            return await rerank_settings.save_settings(session, user.id, project_id, data, settings)
+        except rerank_settings.RerankKeyRequired:
+            raise HTTPException(409, detail={"code": "RERANK_KEY_REQUIRED"}) from None
+        except ModelConfigurationUnavailable:
+            raise HTTPException(503, detail={"code": "RERANK_KEY_STORAGE_UNAVAILABLE"}) from None
+
+
 @router.get("/embedding-profiles/selection", response_model=EmbeddingSettingsView)
 async def embedding_selection(
     user: DocumentUser,
@@ -118,7 +145,12 @@ class UploadLimitMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not any(
             scope["path"] == prefix or scope["path"].startswith(prefix + "/")
-            for prefix in ("/v1/documents", "/v1/index-jobs", "/v1/embedding-profiles")
+            for prefix in (
+                "/v1/documents",
+                "/v1/index-jobs",
+                "/v1/embedding-profiles",
+                "/v1/rerank-settings",
+            )
         ):
             return await self.app(scope, receive, send)
 

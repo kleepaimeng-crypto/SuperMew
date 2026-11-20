@@ -282,6 +282,16 @@ class Run(Base):
             ["model_credentials.id", "model_credentials.user_id"],
             name="fk_runs_credential_owner",
         ),
+        ForeignKeyConstraint(
+            ["rerank_credential_id", "user_id"],
+            ["model_credentials.id", "model_credentials.user_id"],
+            name="fk_runs_rerank_credential_owner",
+        ),
+        CheckConstraint(
+            "COALESCE(model_snapshot_json->'rag'->>'reranker' = 'qwen3-rerank', false)"
+            " = (rerank_credential_id IS NOT NULL)",
+            name="ck_runs_rerank_binding",
+        ),
     )
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=text("gen_random_uuid()")
@@ -292,6 +302,7 @@ class Run(Base):
     status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
     memory_snapshot: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     credential_id: Mapped[UUID | None] = mapped_column(Uuid)
+    rerank_credential_id: Mapped[UUID | None] = mapped_column(Uuid)
     knowledge_enabled: Mapped[bool] = mapped_column(server_default=text("true"))
     skill_request: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     skill_snapshot: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
@@ -544,6 +555,15 @@ class KnowledgeBase(Base):
             ["model_credentials.id", "model_credentials.user_id"],
             name="fk_kb_embedding_credential_owner",
         ),
+        ForeignKeyConstraint(
+            ["rerank_credential_id", "user_id"],
+            ["model_credentials.id", "model_credentials.user_id"],
+            name="fk_kb_rerank_credential_owner",
+        ),
+        CheckConstraint(
+            "NOT rerank_use_bailian OR rerank_credential_id IS NOT NULL",
+            name="ck_kb_rerank_binding",
+        ),
     )
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=text("gen_random_uuid()")
@@ -553,6 +573,8 @@ class KnowledgeBase(Base):
     build_configuration: Mapped[dict] = mapped_column(JSONB)
     build_fingerprint: Mapped[str] = mapped_column(String(64))
     embedding_credential_id: Mapped[UUID | None] = mapped_column(Uuid)
+    rerank_use_bailian: Mapped[bool] = mapped_column(server_default=text("false"))
+    rerank_credential_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

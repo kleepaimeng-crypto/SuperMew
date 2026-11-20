@@ -75,7 +75,7 @@ class UploadKey(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
 
 
-class EmbeddingChange(BaseModel):
+class LocalOrBailianSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     source: Literal["local", "bailian"]
     api_key: SecretStr | None = Field(default=None, min_length=1, max_length=4096)
@@ -86,8 +86,22 @@ class EmbeddingChange(BaseModel):
             self.source != "bailian"
             or any(not 33 <= ord(c) <= 126 for c in self.api_key.get_secret_value())
         ):
-            raise ValueError("Invalid Embedding API Key")
+            raise ValueError("Invalid API Key")
         return self
+
+
+class EmbeddingChange(LocalOrBailianSelection):
+    pass
+
+
+class RerankChange(LocalOrBailianSelection):
+    pass
+
+
+class RerankSettingsView(BaseModel):
+    source: Literal["local", "bailian"]
+    model: str
+    bailian_key_configured: bool
 
 
 class EmbeddingRebuildView(BaseModel):

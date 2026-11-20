@@ -1,10 +1,12 @@
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
+from minimew.documents.retrieval import RetrievalScope
 from minimew.rag.pipeline import RagPipeline
 from minimew.rag.protocol import RagPolicy
 
@@ -29,8 +31,8 @@ def test_pipeline_keeps_scope_and_trace_per_call():
     async def check():
         read = AsyncMock(return_value=[{"chunk_id": "one", "score": 0.3}])
         pipeline = RagPipeline(object(), Runtime(), retriever=read)
-        one, two = object(), object()
         user = uuid4()
+        one, two = (RetrievalScope(user, (), datetime.now(UTC)) for _ in range(2))
         a, b = await asyncio.gather(
             pipeline.search("A", one, user), pipeline.search("B", two, user)
         )

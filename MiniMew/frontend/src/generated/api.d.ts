@@ -451,6 +451,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/rerank-settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read Rerank Settings */
+    get: operations["read_rerank_settings_v1_rerank_settings_get"];
+    /** Save Rerank Settings */
+    put: operations["save_rerank_settings_v1_rerank_settings_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/embedding-profiles/selection": {
     parameters: {
       query?: never;
@@ -2386,15 +2404,16 @@ export interface components {
       /**
        * Reranker
        * @default BAAI/bge-reranker-base
-       * @constant
+       * @enum {string}
        */
-      reranker: "BAAI/bge-reranker-base";
+      reranker: "BAAI/bge-reranker-base" | "qwen3-rerank";
       /**
        * Revision
        * @default 2cfc18c9415c912f9d8155881c133215df768a70
-       * @constant
+       * @enum {string}
        */
-      revision: "2cfc18c9415c912f9d8155881c133215df768a70";
+      revision:
+        "2cfc18c9415c912f9d8155881c133215df768a70" | "bailian-rerank-v1";
       /**
        * Window
        * @default 512
@@ -2520,6 +2539,28 @@ export interface components {
       summary: components["schemas"]["Summary"];
       quality: components["schemas"]["Summary"];
       fault: components["schemas"]["Summary"];
+    };
+    /** RerankChange */
+    RerankChange: {
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "local" | "bailian";
+      /** Api Key */
+      api_key?: string | null;
+    };
+    /** RerankSettingsView */
+    RerankSettingsView: {
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "local" | "bailian";
+      /** Model */
+      model: string;
+      /** Bailian Key Configured */
+      bailian_key_configured: boolean;
     };
     /** ResumeCredential */
     ResumeCredential: {
@@ -4424,6 +4465,72 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SkillSummary"][];
+        };
+      };
+    };
+  };
+  read_rerank_settings_v1_rerank_settings_get: {
+    parameters: {
+      query?: {
+        project_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RerankSettingsView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_rerank_settings_v1_rerank_settings_put: {
+    parameters: {
+      query?: {
+        project_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RerankChange"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RerankSettingsView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

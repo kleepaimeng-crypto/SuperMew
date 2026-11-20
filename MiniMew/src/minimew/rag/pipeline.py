@@ -11,6 +11,7 @@ from minimew.execution.process import report_step
 from minimew.rag.fusion import fuse
 from minimew.rag.merging import complete, select
 from minimew.rag.protocol import (
+    BAILIAN_RERANKER,
     Candidate,
     MaterialGroup,
     RagPolicy,
@@ -35,6 +36,7 @@ class RagPipeline:
         deadline=None,
         process=None,
         step_key="retrieval",
+        rerank_credential_id=None,
     ):
         async with report_step(
             process,
@@ -55,6 +57,7 @@ class RagPipeline:
                 policy,
                 deadline=deadline,
                 process=step.reporter if step else None,
+                rerank_credential_id=rerank_credential_id,
             )
             if step:
                 step.finish(
@@ -66,7 +69,17 @@ class RagPipeline:
                 )
             return result
 
-    async def _search(self, query, scope, user_id, policy=None, *, deadline=None, process=None):
+    async def _search(
+        self,
+        query,
+        scope,
+        user_id,
+        policy=None,
+        *,
+        deadline=None,
+        process=None,
+        rerank_credential_id=None,
+    ):
         from types import SimpleNamespace
 
         runtime = self.runtime
@@ -153,11 +166,13 @@ class RagPipeline:
                     pairs = tuple(c for g in groups for c in g.members)
                     rerank_started = time.monotonic()
                     try:
-                        values = await runtime.sync(
-                            runtime.reranker.score,
+                        values = await self._scores(
+                            policy,
+                            user_id,
+                            rerank_credential_id,
                             query,
                             [c.row["payload"]["embedding_text"] for c in pairs],
-                            deadline=deadline,
+                            deadline,
                         )
                         if len(values) != len(pairs) or not all(math.isfinite(v) for v in values):
                             raise RerankError("RERANK_INVALID_OUTPUT")
@@ -181,7 +196,9 @@ class RagPipeline:
                             )
                         )
                     except RerankError as exc:
-                        if exc.code == "RERANK_DEADLINE_EXCEEDED":
+                        if exc.code == "RERANK_DEADLINE_EXCEEDED" or (
+                            deadline is not None and time.monotonic() >= deadline
+                        ):
                             from minimew.execution.tools import ToolFailure
 
                             raise ToolFailure("AGENT_DEADLINE_EXCEEDED") from None
@@ -189,13 +206,26 @@ class RagPipeline:
                     trace.stages["rerank_seconds"] = time.monotonic() - rerank_started
                     if stage:
                         stage.finish(
-                            summary="重排结束", count=len(pairs), outcome=trace.fallback or "ok"
+                            summary=f"重排模型 · {policy.reranker}",
+                            count=len(pairs),
+                            outcome=trace.fallback or "ok",
                         )
             trace.stages["seconds"] = time.monotonic() - started
             return RetrievalResult(select(groups, policy.final_k, trace), trace)
         return RetrievalResult(
             tuple(MaterialGroup((Candidate(row, dense=row["score"]),)) for row in hits), trace
         )
+
+    async def _scores(self, policy, owner, credential, query, passages, deadline):
+        runtime = self.runtime
+        if policy.reranker == BAILIAN_RERANKER:
+            adapter = getattr(runtime, "bailian_reranker", None)
+            if adapter is None:
+                raise RerankError("RERANK_CREDENTIAL_UNAVAILABLE")
+            return await adapter.score(owner, credential, query, passages, deadline=deadline)
+        if runtime.reranker is None:
+            raise RerankError(getattr(runtime, "rerank_error", None) or "RERANK_NOT_PREPARED")
+        return await runtime.sync(runtime.reranker.score, query, passages, deadline=deadline)
 
 
 def process_sources(rows, scope):
