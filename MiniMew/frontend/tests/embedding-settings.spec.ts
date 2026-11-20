@@ -32,6 +32,12 @@ for (const width of [1280, 390]) {
             },
       }),
     );
+    await page.route("**/v1/threads**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
+    await page.route("**/v1/projects**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
     await page.route("**/v1/documents**", (route) =>
       route.fulfill({ json: { items: [], next_offset: null } }),
     );

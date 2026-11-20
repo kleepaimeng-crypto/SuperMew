@@ -26,24 +26,28 @@ defineProps<{ failure: FailureView | null; runId: string }>();
 
 <style scoped>
 .run-failure {
-  margin-top: 12px;
-  border-left: 3px solid #997345;
-  padding: 2px 12px;
-  color: #76542f;
+  margin-top: 10px;
+  border: 1px solid var(--warn-border);
+  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--warn);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
 p {
-  margin: 6px 0;
+  margin: 4px 0;
+  color: inherit;
 }
 .failure-action,
 details {
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 summary {
   cursor: pointer;
   width: fit-content;
-  padding: 5px 0;
+  padding: 4px 0;
 }
 </style>

@@ -390,15 +390,17 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
 <style scoped>
 .document-workspace {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   width: 100%;
-  min-height: 560px;
+  min-height: 100%;
+  padding: 24px 28px;
+  gap: 28px;
 }
 .document-sidebar {
   display: flex;
   flex-direction: column;
-  padding-right: 24px;
-  border-right: 1px solid #dde2dc;
+  padding-right: 22px;
+  border-right: 1px solid var(--border);
   min-width: 0;
 }
 .directory-heading,
@@ -406,75 +408,79 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 .directory-heading h1 {
-  font-size: 21px;
-  letter-spacing: 0;
-  margin: 12px 0 24px;
+  font-size: 20px;
+  margin: 10px 0 14px;
 }
 .new-document {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 48px;
-  padding: 12px 16px;
-  border-radius: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
   text-decoration: none;
 }
 .document-list {
   list-style: none;
   padding: 0;
-  margin: 24px 0;
+  margin: 16px 0;
   flex: 1;
 }
 .document-list a {
   display: block;
-  padding: 16px 12px;
-  border-bottom: 1px solid #dde2dc;
-  border-radius: 4px;
+  padding: 10px 10px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  color: var(--ink-secondary);
 }
 .document-list a:hover {
-  background: #eef1ea;
+  background: var(--bg-muted);
+  color: var(--ink);
 }
 .document-list a[aria-current="page"] {
-  background: #e3ebe0;
-  color: #234b35;
+  background: var(--bg-accent-soft);
+  color: var(--accent-text);
 }
 .document-list strong {
   display: block;
-  font-size: 14px;
+  font-size: 13px;
   overflow-wrap: anywhere;
   font-weight: 550;
 }
 .document-list span {
   display: block;
   font-size: 12px;
-  color: #526356;
-  margin-top: 8px;
-  line-height: 1.6;
+  color: var(--ink-muted);
+  margin-top: 4px;
+  line-height: 1.5;
 }
 .empty-directory {
-  font-size: 14px;
+  font-size: 13px;
 }
 .document-account {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid #dde2dc;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
   overflow-wrap: anywhere;
-  font-size: 13px;
+  font-size: 12px;
 }
 .document-content {
   min-width: 0;
-  padding: 12px 0 32px 40px;
+  max-width: 820px;
+  padding: 4px 0 28px;
 }
 .document-heading h2 {
-  font-size: 28px;
+  font-size: 22px;
   letter-spacing: -0.02em;
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   overflow-wrap: anywhere;
 }
 .document-heading p,
@@ -484,132 +490,137 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
   font-size: 14px;
 }
 .document-heading {
-  margin-bottom: 32px;
+  margin-bottom: 22px;
 }
 .version-section {
-  padding: 0 0 24px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid #dde2dc;
+  padding: 0 0 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
 }
 h3 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  margin: 0 0 16px;
+  margin: 0 0 10px;
 }
 .job-heading h3 {
   margin: 0;
 }
 .job-heading > span {
-  font-size: 13px;
-  color: #405b49;
+  font-size: 12px;
+  color: var(--accent-text);
 }
 .published-state {
-  color: #234b35;
+  color: var(--accent);
   font-weight: 600;
 }
 .document-metadata {
-  margin: 16px 0 0;
+  margin: 12px 0 0;
   font-size: 13px;
 }
 .document-metadata div {
-  padding: 10px 0;
+  display: flex;
+  padding: 6px 0;
   border: 0;
 }
 .document-metadata dt {
   width: 100px;
   flex-shrink: 0;
+  color: var(--ink-muted);
 }
 .document-metadata dd {
+  margin: 0;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .document-upload {
-  margin-top: 32px;
+  margin-top: 22px;
   max-width: 72ch;
 }
 .document-upload label {
   display: block;
-  font-size: 14px;
-  margin: 20px 0 10px;
+  font-size: 13px;
+  margin: 14px 0 6px;
 }
 input[type="file"] {
   display: block;
   width: 100%;
+  height: auto;
   max-width: 100%;
-  padding: 12px;
-  border: 1px solid #bcc9bb;
-  border-radius: 5px;
-  background: #fff;
-  caret-color: #294e39;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-canvas);
+  caret-color: var(--accent);
 }
 input[type="file"]::file-selector-button {
   margin-right: 12px;
-  border: 0;
-  padding: 8px 12px;
-  background: #e3ebe0;
-  color: #234b35;
-  border-radius: 3px;
+  border: 1px solid var(--accent-border);
+  padding: 6px 12px;
+  background: var(--bg-accent-softer);
+  color: var(--accent-text);
+  border-radius: 6px;
   cursor: pointer;
+  font-weight: 500;
 }
 .upload-help {
-  color: #526356;
+  color: var(--ink-muted);
   font-size: 12px;
 }
 .upload-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  margin: 20px 0;
+  gap: 10px;
+  margin: 14px 0;
 }
 .upload-actions span {
-  color: #526356;
+  color: var(--ink-muted);
   font-size: 13px;
 }
 .upload-actions .primary {
   margin-top: 0;
   width: auto;
-  min-width: 160px;
+  min-width: 140px;
 }
 .document-error,
 .document-error p {
-  color: #92372e;
-  font-size: 14px;
+  color: var(--danger);
+  font-size: 13px;
 }
 .progress-error {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 progress {
   display: block;
   width: 100%;
-  height: 8px;
-  accent-color: #42735a;
-  margin-top: 20px;
+  height: 7px;
+  accent-color: var(--accent);
+  margin-top: 14px;
 }
 .progress-count {
   font-variant-numeric: tabular-nums;
 }
 .document-content ::selection {
-  background: #d6e5cf;
-  color: #203b29;
+  background: #bfdbfe;
+  color: var(--ink);
 }
-@media (max-width: 760px) {
+@media (max-width: 800px) {
   .document-workspace {
     grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 18px;
   }
   .document-sidebar {
-    padding: 0 0 24px;
+    padding: 0 0 18px;
     border-right: 0;
-    border-bottom: 1px solid #dde2dc;
+    border-bottom: 1px solid var(--border);
   }
   .document-list {
-    max-height: 220px;
+    max-height: 210px;
     overflow: auto;
   }
   .document-content {
-    padding: 28px 0;
-  }
-  .document-heading h2 {
-    font-size: 24px;
+    padding: 0 0 20px;
   }
   .job-heading {
     align-items: flex-start;

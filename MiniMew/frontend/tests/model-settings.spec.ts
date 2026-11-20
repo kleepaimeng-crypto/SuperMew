@@ -119,7 +119,7 @@ for (const width of [1280, 390]) {
       await page
         .getByLabel("模型", { exact: true })
         .evaluate((el) => getComputedStyle(el, "::placeholder").color),
-    ).toBe("rgb(83, 108, 93)");
+    ).toBe("rgb(100, 116, 139)");
     await page.screenshot({
       path: `../.impeccable/review/account-models/empty-${width}.png`,
       fullPage: true,

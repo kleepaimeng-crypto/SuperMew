@@ -193,66 +193,72 @@ function result(code: string) {
 </template>
 <style scoped>
 .task-row {
-  padding: 14px 0;
-  border-bottom: 1px solid #e5e9e3;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
   overflow-wrap: anywhere;
   min-width: 0;
+}
+.task-row:last-child {
+  border-bottom: 0;
 }
 .task-heading {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 .task-heading span,
 .muted {
   font-size: 12px;
-  color: #62705f;
+  color: var(--ink-muted);
 }
 p {
-  margin: 7px 0;
+  margin: 5px 0;
   color: inherit;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 ul {
-  margin: 7px 0;
+  margin: 5px 0;
   padding-left: 18px;
 }
 .subtasks {
-  margin: 10px 0 0 12px;
+  margin: 8px 0 0 10px;
   padding-left: 12px;
-  border-left: 1px solid #dde2dc;
+  border-left: 2px solid var(--accent-border);
 }
 .subquery,
 .planned {
   font-size: 13px;
 }
 .retrieval-details {
-  font-size: 13px;
-  margin-top: 8px;
+  font-size: 12px;
+  margin-top: 6px;
 }
 summary {
   cursor: pointer;
-  padding: 6px 0;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  padding: 4px 0;
+  color: var(--accent-text);
   width: fit-content;
 }
+summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .technical-records {
-  padding-left: 20px;
+  padding-left: 18px;
 }
 .technical-records > li {
-  padding: 8px 0;
+  padding: 6px 0;
 }
 .source-detail {
-  padding: 10px 0;
+  padding: 8px 0;
 }
 .task-error {
-  color: #76542f;
+  color: var(--warn);
 }
 @media (pointer: coarse) {
   summary {
-    min-height: 44px;
+    min-height: 36px;
   }
 }
 </style>

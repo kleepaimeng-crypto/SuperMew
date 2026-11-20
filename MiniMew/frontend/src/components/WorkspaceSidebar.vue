@@ -126,7 +126,22 @@ async function logout() {
         :to="documentsTarget"
         @click="navigateAndClose"
       >
-        <span>文档</span>
+        <span class="ws-nav-item-main">
+          <svg
+            class="ws-nav-icon"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"
+          >
+            <path
+              d="M5 3.5h6.5L15.5 7.5v9a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z"
+            />
+            <path d="M11.5 3.5v4h4M7.5 11h5M7.5 14h3.5" />
+          </svg>
+          <span>文档</span>
+        </span>
         <span class="ws-scope-pill" :title="`当前范围：${activeScopeLabel}`">{{
           activeScopeLabel
         }}</span>
@@ -137,7 +152,19 @@ async function logout() {
         to="/evaluations"
         @click="navigateAndClose"
       >
-        <span>评测</span>
+        <span class="ws-nav-item-main">
+          <svg
+            class="ws-nav-icon"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"
+          >
+            <path d="M4 15.5h12M6.5 15.5V10M10 15.5V6.5M13.5 15.5V8.5" />
+          </svg>
+          <span>评测</span>
+        </span>
         <span class="ws-scope-pill ws-scope-global">全局</span>
       </RouterLink>
     </nav>
@@ -470,8 +497,13 @@ async function logout() {
         to="/account"
         @click="navigateAndClose"
       >
-        <span class="ws-account-name">{{ auth.user?.username }}</span>
-        <span class="ws-account-sub">账户与模型</span>
+        <span class="ws-avatar" aria-hidden="true">{{
+          (auth.user?.username?.[0] ?? "U").toUpperCase()
+        }}</span>
+        <span class="ws-account-text">
+          <span class="ws-account-name">{{ auth.user?.username }}</span>
+          <span class="ws-account-sub">账户与模型</span>
+        </span>
       </RouterLink>
       <button
         type="button"

@@ -84,6 +84,9 @@ test("恢复失败不跳登录，重试成功后才显示账户；移动端无�
     route.fulfill({ status: fail ? 500 : 200, json: fail ? {} : token }),
   );
   await page.route("**/auth/me", (route) => route.fulfill({ json: profile }));
+  await page.route("**/v1/**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
   await page.goto("/account");
   await expect(page.getByRole("alert")).toContainText("服务暂时不可用");
   await expect(page).toHaveURL(/\/account$/);
@@ -136,6 +139,9 @@ test("退出失败后刷新页面优先重试退出，不恢复登录", async ({
   await page.route("**/auth/me", (route) => route.fulfill({ json: profile }));
   await page.route("**/auth/logout", (route) =>
     route.fulfill({ status: failLogout ? 500 : 204 }),
+  );
+  await page.route("**/v1/**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
   );
   await page.goto("/account");
   await page

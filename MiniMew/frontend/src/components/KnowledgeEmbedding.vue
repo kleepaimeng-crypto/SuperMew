@@ -180,46 +180,41 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .embedding-settings {
-  border-block-end: 1px solid var(--border, #d6ddd8);
-  padding-block-end: 1rem;
-  margin-block-end: 1rem;
+  border-block-end: 1px solid var(--border);
+  padding-block-end: 14px;
+  margin-block-end: 16px;
   overflow-wrap: anywhere;
 }
 .embedding-settings h2 {
-  font-size: 1rem;
+  font-size: 15px;
   margin: 0;
 }
 .embedding-settings p {
-  margin: 0.4rem 0;
+  margin: 6px 0;
+  font-size: 13px;
 }
 .embedding-settings details {
-  margin-top: 0.7rem;
+  margin-top: 10px;
 }
 .embedding-settings summary {
   cursor: pointer;
   width: fit-content;
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 500;
 }
 .embedding-settings form {
   display: grid;
-  gap: 0.45rem;
+  gap: 8px;
   justify-items: start;
-  margin-top: 0.7rem;
+  margin-top: 10px;
 }
 .embedding-settings select,
 .embedding-settings input {
-  width: min(100%, 23rem);
-}
-.embedding-settings select {
-  min-height: 2.5rem;
-  padding-inline: 0.65rem;
-  border: 1px solid #b8c6bb;
-  border-radius: 5px;
-  background: #fff;
-  color: inherit;
-  font: inherit;
+  width: min(100%, 24rem);
 }
 .rebuild-status progress {
   max-width: 100%;
-  accent-color: #254b37;
+  accent-color: var(--accent);
 }
 </style>

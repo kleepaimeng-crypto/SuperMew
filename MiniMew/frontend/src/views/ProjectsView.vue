@@ -202,134 +202,160 @@ async function save() {
 <style scoped>
 .project-workspace {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 32px;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: 28px;
   width: 100%;
-  min-height: 580px;
+  min-height: 100%;
+  padding: 24px 28px;
 }
 .project-directory {
-  padding-right: 24px;
-  border-right: 1px solid #dde2dc;
+  padding-right: 22px;
+  border-right: 1px solid var(--border);
   min-width: 0;
 }
 h1 {
-  font-size: 22px;
-  letter-spacing: 0;
+  font-size: 20px;
 }
 h2 {
-  font-size: 28px;
-  letter-spacing: 0;
+  font-size: 22px;
   overflow-wrap: anywhere;
 }
 h3 {
-  font-size: 20px;
+  font-size: 16px;
 }
 .project-content {
   min-width: 0;
-  max-width: 850px;
+  max-width: 820px;
 }
 p {
-  line-height: 1.7;
-  max-width: 75ch;
+  line-height: 1.65;
+  max-width: 72ch;
 }
 label {
   display: block;
-  margin: 12px 0 8px;
+  margin: 10px 0 6px;
 }
 input,
 textarea {
   font: inherit;
   max-width: 100%;
 }
+.project-directory form .primary {
+  margin-top: 10px;
+  width: 100%;
+}
 textarea {
   width: 100%;
-  padding: 12px 14px;
-  background: #fff;
-  border: 1px solid #cbd4cb;
-  border-radius: 6px;
-  color: #243c2f;
+  padding: 10px 12px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--ink);
   resize: vertical;
-  min-height: 100px;
+  min-height: 88px;
 }
 textarea:focus-visible {
-  outline: 2px solid #3f6a50;
-  outline-offset: 2px;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+  outline: none;
 }
 .project-directory nav {
   display: flex;
   flex-direction: column;
-  margin: 24px 0;
-  max-height: 55vh;
+  gap: 3px;
+  margin: 16px 0;
+  max-height: 50vh;
   overflow: auto;
 }
 .project-directory nav a {
-  padding: 16px 12px;
-  border-bottom: 1px solid #dde2dc;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-secondary);
   overflow-wrap: anywhere;
 }
+.project-directory nav a:hover {
+  background: var(--bg-muted);
+}
 .project-directory nav a[aria-current="page"] {
-  background: #e4ece4;
+  background: var(--bg-accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
 }
 .project-links {
   display: flex;
-  gap: 24px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin: 24px 0;
+  margin: 14px 0 20px;
 }
 .project-links a {
-  color: #265b40;
-  text-decoration: underline;
-  text-underline-offset: 4px;
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--bg-accent-softer);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.project-links a:hover {
+  background: var(--bg-accent-soft);
 }
 .project-memories {
-  border-top: 1px solid #dde2dc;
-  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
 }
 .project-note {
   font-size: 13px;
-  color: #536259;
+  color: var(--ink-muted);
 }
 .memory-item {
-  border-top: 1px solid #dde2dc;
-  margin-top: 28px;
-  padding-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  margin-top: 14px;
+  padding: 14px 16px;
 }
 .memory-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 10px 0;
 }
 .memory-toggle input {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   padding: 0;
   margin: 0;
+  accent-color: var(--accent);
 }
 .memory-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .project-error {
-  border: 1px solid #9a4c35;
-  background: #fbf0e9;
-  padding: 12px 16px;
+  border: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
 }
 @media (max-width: 800px) {
   .project-workspace {
     grid-template-columns: 1fr;
+    padding: 16px;
   }
   .project-directory {
     border-right: 0;
-    border-bottom: 1px solid #dde2dc;
-    padding: 0 0 24px;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 18px;
   }
   .project-directory nav {
     max-height: 180px;
-  }
-  h2 {
-    font-size: 25px;
   }
 }
 </style>

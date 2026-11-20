@@ -85,8 +85,11 @@ const scopeLabel = computed(() =>
 
     <div v-else-if="threads.selected" class="thread-active">
       <header class="thread-heading">
-        <div class="thread-heading-meta">
+        <div class="thread-heading-left">
+          <h2>{{ title || "未命名对话" }}</h2>
           <span class="scope-badge">{{ scopeLabel }}</span>
+        </div>
+        <div class="thread-heading-actions">
           <RouterLink
             v-if="projectId"
             class="quiet-link"
@@ -105,7 +108,6 @@ const scopeLabel = computed(() =>
             {{ projectId ? "项目文档" : "个人文档" }}
           </RouterLink>
         </div>
-        <h2>{{ title || "未命名对话" }}</h2>
       </header>
       <ChatPanel :key="threads.selected.id" :thread-id="threads.selected.id" />
     </div>
