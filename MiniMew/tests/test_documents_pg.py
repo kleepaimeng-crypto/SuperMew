@@ -35,13 +35,16 @@ def client(monkeypatch, tmp_path):
     assert database.startswith("minimew_test_") and len(database) == 45
     monkeypatch.setenv("MINIMEW_DB_NAME", database)
     monkeypatch.setenv("MINIMEW_DOCUMENT_UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "MINIMEW_DIAGNOSTIC_LOG_DIR", str(tmp_path.with_name(tmp_path.name + "-logs"))
+    )
 
     async def reset_owned_test_catalog(sessions):
         async with sessions() as session, session.begin():
             await session.execute(
                 text(
                     "TRUNCATE index_cleanup_jobs,index_artifacts,document_submissions,index_jobs,"
-                    "document_versions,documents,knowledge_bases"
+                    "document_versions,documents,embedding_rebuilds,knowledge_bases"
                 )
             )
 

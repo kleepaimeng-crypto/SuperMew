@@ -32,6 +32,7 @@ class RetrievalScope:
     directory: tuple[ChunkBuild, ...] = ()
     namespace: str | None = None
     documents: tuple[ScopeDocument, ...] = ()
+    embedding_credential_id: UUID | None = None
 
 
 async def published_scope(
@@ -49,8 +50,14 @@ async def published_scope(
         # 一个 SELECT/MVCC 快照同时读取 current、版本和产物，避免跨次查询混版。
         rows = (
             await session.execute(
-                select(DocumentVersion, IndexArtifact, Document.title)
+                select(
+                    DocumentVersion,
+                    IndexArtifact,
+                    Document.title,
+                    KnowledgeBase.embedding_credential_id,
+                )
                 .select_from(Document)
+                .join(KnowledgeBase, KnowledgeBase.id == Document.knowledge_base_id)
                 .join(DocumentVersion, Document.current_version_id == DocumentVersion.id)
                 .join(IndexJob, IndexJob.version_id == DocumentVersion.id)
                 .outerjoin(
@@ -61,11 +68,8 @@ async def published_scope(
                     Document.user_id == user_id,
                     DocumentVersion.status == "published",
                     Document.deleted_at.is_(None),
-                    Document.knowledge_base_id.in_(
-                        select(KnowledgeBase.id).where(
-                            KnowledgeBase.user_id == user_id, KnowledgeBase.project_id == project_id
-                        )
-                    ),
+                    KnowledgeBase.user_id == user_id,
+                    KnowledgeBase.project_id == project_id,
                 )
                 .order_by(Document.id)
             )
@@ -74,7 +78,7 @@ async def published_scope(
         targets = []
         directory = []
         documents = []
-        for version, artifact, title in rows:
+        for version, artifact, title, _ in rows:
             if artifact is None:
                 raise VectorError("INDEX_ARTIFACT_INVALID")
             manifest = read_artifact(artifact)
@@ -96,6 +100,7 @@ async def published_scope(
             tuple(directory),
             "minimew_project_" + project_id.hex if project_id else None,
             tuple(documents),
+            rows[0][3] if rows else None,
         )
 
 

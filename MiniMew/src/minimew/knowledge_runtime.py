@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from functools import partial
 
 from minimew.embeddings.adapter import LocalEmbeddingAdapter
+from minimew.embeddings.bailian import BailianEmbedding
 from minimew.embeddings.config import EmbeddingRuntimeSettings
 from minimew.embeddings.errors import EmbeddingError
 from minimew.execution.tools import ToolFailure
@@ -26,6 +27,7 @@ class KnowledgeRuntime:
         self.vector_settings = vector_settings or VectorSettings()
         self.encoder = self.backend = self.index = None
         self.reranker = None
+        self.bailian = None
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="minimew-knowledge")
         self._slot = asyncio.Semaphore(1)
         self._closed = False
@@ -101,6 +103,7 @@ async def knowledge_lifespan(sessions, settings):
         yield None
         return
     runtime = KnowledgeRuntime()
+    runtime.bailian = BailianEmbedding(sessions, settings)
     try:
         await runtime.start()
         yield KnowledgeService(sessions, runtime)

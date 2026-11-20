@@ -72,7 +72,7 @@ def build_chunks(
     build: BuildConfiguration,
     tokenizer: BudgetTokenizer,
 ) -> ChunkBuild:
-    if build.source_format != parsed.source_format or tokenizer.profile != build.embedding:
+    if build.source_format != parsed.source_format or tokenizer.profile != build.tokenizer_profile:
         raise DocumentBuildError("DOCUMENT_BUILD_CONFIG_MISMATCH")
     fingerprint = build.fingerprint()
     scope = (

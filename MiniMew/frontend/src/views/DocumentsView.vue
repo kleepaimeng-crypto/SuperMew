@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import KnowledgeEmbedding from "../components/KnowledgeEmbedding.vue";
 import { activeJob, jobError, jobLabel } from "../documents";
 import { useDocumentsStore } from "../stores/documents";
 import { useAuthStore } from "../stores/auth";
@@ -10,7 +11,8 @@ const route = useRoute(),
   documents = useDocumentsStore(),
   auth = useAuthStore();
 const file = ref<File | null>(null),
-  fileInput = ref<HTMLInputElement>();
+  fileInput = ref<HTMLInputElement>(),
+  rebuilding = ref(false);
 const documentId = computed(() =>
   typeof route.params.documentId === "string"
     ? route.params.documentId
@@ -64,6 +66,7 @@ function choose(event: Event) {
   file.value = (event.target as HTMLInputElement).files?.[0] ?? null;
 }
 async function submit(retry = false) {
+  if (rebuilding.value) return;
   const id = retry
     ? await documents.retryUpload()
     : file.value
@@ -171,6 +174,11 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
     </aside>
 
     <div class="document-content">
+      <KnowledgeEmbedding
+        :key="`${auth.user?.id}:${projectId}`"
+        :project="projectId"
+        @rebuild-state="rebuilding = $event"
+      />
       <p v-if="documents.detailLoading && !documents.selected" role="status">
         正在读取版本与任务…
       </p>
@@ -313,17 +321,21 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
           ref="fileInput"
           type="file"
           accept=".md,.txt"
-          :disabled="documents.uploading"
+          :disabled="documents.uploading || rebuilding"
           aria-describedby="upload-help"
           @change="choose"
         />
         <p id="upload-help" class="upload-help">
-          Markdown / TXT · UTF-8 · 最大 5 MiB
+          {{
+            rebuilding
+              ? "索引重建期间暂停此知识库的上传。"
+              : "Markdown / TXT · UTF-8 · 最大 5 MiB"
+          }}
         </p>
         <div class="upload-actions">
           <button
             class="primary"
-            :disabled="!file || documents.uploading"
+            :disabled="!file || documents.uploading || rebuilding"
             type="submit"
           >
             {{
@@ -346,16 +358,13 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
             "
             type="button"
             class="secondary"
-            :disabled="documents.uploading"
+            :disabled="documents.uploading || rebuilding"
             @click="submit(true)"
           >
             重试本次上传
           </button>
         </div>
       </form>
-      <p class="model-support">
-        当前支持轻量模型 bge-small-zh-v1.5（CPU）。BGE-M3 尚未支持。
-      </p>
     </div>
   </section>
 </template>
@@ -523,8 +532,7 @@ input[type="file"]::file-selector-button {
   border-radius: 3px;
   cursor: pointer;
 }
-.upload-help,
-.model-support {
+.upload-help {
   color: #526356;
   font-size: 12px;
 }
@@ -551,10 +559,6 @@ input[type="file"]::file-selector-button {
 }
 .progress-error {
   margin-bottom: 24px;
-}
-.model-support {
-  margin-top: 32px;
-  line-height: 1.8;
 }
 progress {
   display: block;

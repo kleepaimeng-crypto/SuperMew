@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from minimew.documents.artifacts import read_artifact
 from minimew.documents.chunking import ChunkBuild
 from minimew.documents.parsing import parse_source
+from minimew.documents.profiles import BAILIAN_LAYOUTS
 from minimew.documents.retrieval import RetrievalScope
 from minimew.evaluation.runtime_protocol import CorpusV2 as Corpus
 from minimew.evaluation.runtime_protocol import SourceTextV2 as SourceText
@@ -59,7 +60,12 @@ async def prepare(sessions, user_id, dataset, mapping, source_store, vector_sett
             if row is None:
                 raise EvaluationNotFound
             version, artifact = row
-            targets.append(read_artifact(artifact))
+            manifest = read_artifact(artifact)
+            if manifest.scope.index_layout in BAILIAN_LAYOUTS:
+                raise EvaluationConflict(
+                    "API embedding corpora require an evaluation model binding"
+                )
+            targets.append(manifest)
             directory.append(TypeAdapter(ChunkBuild).validate_json(canonical(artifact.chunks)))
             originals.append((source_id, version.id, version.source_format, version.content_sha256))
             bindings.append({"source_id": source_id, "version_id": str(version.id)})
@@ -79,7 +85,9 @@ async def prepare(sessions, user_id, dataset, mapping, source_store, vector_sett
             "ready": False,
             "corpus": corpus.model_dump(mode="json"),
             "corpus_fingerprint": dataset.corpus_fingerprint(),
-            "scope": json.loads(TypeAdapter(RetrievalScope).dump_json(scope)),
+            "scope": json.loads(
+                TypeAdapter(RetrievalScope).dump_json(scope, exclude={"embedding_credential_id"})
+            ),
             "bindings": bindings,
         }
         session.add(

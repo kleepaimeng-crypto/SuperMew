@@ -451,6 +451,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/embedding-profiles/selection": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Embedding Selection */
+    get: operations["embedding_selection_v1_embedding_profiles_selection_get"];
+    put?: never;
+    /** Request Embedding Rebuild */
+    post: operations["request_embedding_rebuild_v1_embedding_profiles_selection_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/documents": {
     parameters: {
       query?: never;
@@ -850,7 +868,11 @@ export interface components {
        * @default dense-cosine-v1
        * @enum {string}
        */
-      index_layout: "dense-cosine-v1" | "hybrid-jieba-bm25-v1";
+      index_layout:
+        | "dense-cosine-v1"
+        | "hybrid-jieba-bm25-v1"
+        | "bailian-dense-cosine-v1"
+        | "bailian-hybrid-jieba-bm25-v1";
     };
     /** Case */
     Case: {
@@ -1177,18 +1199,28 @@ export interface components {
       created_at: string;
       latest_job?: components["schemas"]["IndexJobResponse"] | null;
     };
+    /** EmbeddingChange */
+    EmbeddingChange: {
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "local" | "bailian";
+      /** Api Key */
+      api_key?: string | null;
+    };
     /** EmbeddingProfile */
     EmbeddingProfile: {
       /**
        * Id
        * @enum {string}
        */
-      id: "bge-small-zh-v1.5" | "bge-m3";
+      id: "bge-small-zh-v1.5" | "bge-m3" | "bailian-text-embedding-v4";
       /**
        * Model Id
        * @enum {string}
        */
-      model_id: "BAAI/bge-small-zh-v1.5" | "BAAI/bge-m3";
+      model_id: "BAAI/bge-small-zh-v1.5" | "BAAI/bge-m3" | "text-embedding-v4";
       /** Revision */
       revision: string;
       /** Dimension */
@@ -1202,9 +1234,9 @@ export interface components {
       /**
        * Pooling
        * @default cls
-       * @constant
+       * @enum {string}
        */
-      pooling: "cls";
+      pooling: "cls" | "provider";
       /** Query Prefix */
       query_prefix: string;
       /**
@@ -1215,6 +1247,42 @@ export interface components {
       document_prefix: "";
       /** Max Input Tokens */
       max_input_tokens: number;
+    };
+    /** EmbeddingRebuildView */
+    EmbeddingRebuildView: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "building" | "succeeded" | "failed";
+      /** Target Model */
+      target_model: string;
+      /** Completed */
+      completed: number;
+      /** Total */
+      total: number;
+      /** Error Code */
+      error_code: string | null;
+    };
+    /** EmbeddingSettingsView */
+    EmbeddingSettingsView: {
+      /**
+       * Current Source
+       * @enum {string}
+       */
+      current_source: "local" | "bailian";
+      /** Current Model */
+      current_model: string;
+      /** Dimensions */
+      dimensions: number;
+      /** Bailian Key Configured */
+      bailian_key_configured: boolean;
+      rebuild: components["schemas"]["EmbeddingRebuildView"] | null;
     };
     /** EvaluationArtifact */
     EvaluationArtifact: {
@@ -1527,7 +1595,8 @@ export interface components {
         | "embedding"
         | "indexing"
         | "verifying"
-        | "publishing";
+        | "publishing"
+        | "ready";
       /** Progress Done */
       progress_done: number;
       /** Progress Total */
@@ -4355,6 +4424,72 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SkillSummary"][];
+        };
+      };
+    };
+  };
+  embedding_selection_v1_embedding_profiles_selection_get: {
+    parameters: {
+      query?: {
+        project_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EmbeddingSettingsView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  request_embedding_rebuild_v1_embedding_profiles_selection_post: {
+    parameters: {
+      query?: {
+        project_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EmbeddingChange"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EmbeddingSettingsView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

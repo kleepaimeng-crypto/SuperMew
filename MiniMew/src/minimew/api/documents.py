@@ -21,17 +21,20 @@ from starlette.responses import JSONResponse
 from minimew.api.auth import bearer, get_current_access
 from minimew.api.threads import no_store
 from minimew.database import SessionDependency
-from minimew.documents import catalog
+from minimew.documents import catalog, rebuilds
 from minimew.documents.profiles import BuildConfiguration, preset
 from minimew.documents.schemas import (
     DocumentPage,
     DocumentResponse,
+    EmbeddingChange,
+    EmbeddingSettingsView,
     IndexJobResponse,
     UploadKey,
     UploadReceipt,
     VersionResponse,
 )
 from minimew.documents.storage import InvalidSource, SourceStore, SourceTooLarge, validate_source
+from minimew.model_control import ModelConfigurationUnavailable
 from minimew.models import User
 from minimew.settings import SettingsDependency
 
@@ -46,6 +49,8 @@ def public_errors():
         raise HTTPException(404, "Document or job not found") from None
     except catalog.SubmissionConflict:
         raise HTTPException(409, "Idempotency key belongs to another submission") from None
+    except catalog.EmbeddingRebuildInProgress:
+        raise HTTPException(409, detail={"code": "EMBEDDING_REBUILD_IN_PROGRESS"}) from None
     except SourceTooLarge:
         raise HTTPException(413, "Upload too large") from None
     except InvalidSource:
@@ -74,6 +79,34 @@ async def document_user(
 
 
 DocumentUser = Annotated[User, Depends(document_user)]
+
+
+@router.get("/embedding-profiles/selection", response_model=EmbeddingSettingsView)
+async def embedding_selection(
+    user: DocumentUser,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    project_id: UUID | None = None,
+):
+    with public_errors():
+        return await rebuilds.settings_view(session, user.id, project_id, settings)
+
+
+@router.post("/embedding-profiles/selection", response_model=EmbeddingSettingsView, status_code=202)
+async def request_embedding_rebuild(
+    data: EmbeddingChange,
+    user: DocumentUser,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    project_id: UUID | None = None,
+):
+    with public_errors():
+        try:
+            return await rebuilds.start_rebuild(session, user.id, project_id, data, settings)
+        except rebuilds.RebuildConflict as exc:
+            raise HTTPException(409, detail={"code": str(exc)}) from None
+        except ModelConfigurationUnavailable:
+            raise HTTPException(503, detail={"code": "EMBEDDING_KEY_STORAGE_UNAVAILABLE"}) from None
 
 
 class UploadLimitMiddleware:

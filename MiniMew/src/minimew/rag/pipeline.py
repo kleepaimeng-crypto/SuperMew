@@ -1,10 +1,12 @@
 """同一已发布 scope 内的唯一策略编排；授权和证据登记留在知识工具。"""
 
+import asyncio
 import math
 import time
 from dataclasses import replace
 
 from minimew.documents.retrieval import scoped_index, search_published
+from minimew.embeddings.errors import EmbeddingError
 from minimew.execution.process import report_step
 from minimew.rag.fusion import fuse
 from minimew.rag.merging import complete, select
@@ -16,7 +18,7 @@ from minimew.rag.protocol import (
     RetrievalTrace,
 )
 from minimew.rag.reranker import RerankError
-from minimew.vector_store.manifest import PROFILE
+from minimew.vector_store.manifest import BAILIAN_PROFILE, PROFILE, VectorError, profile_for_layout
 
 
 class RagPipeline:
@@ -78,7 +80,22 @@ class RagPipeline:
         policy = policy or RagPolicy()
         trace = RetrievalTrace(policy.strategy)
         started = time.monotonic()
-        vector = await runtime.sync(runtime.encoder.encode_query, query)
+        profiles = {profile_for_layout(manifest.scope.index_layout) for manifest in scope.targets}
+        if len(profiles) > 1:
+            raise VectorError("VECTOR_BUILD_MISMATCH")
+        profile = next(iter(profiles), PROFILE)
+        if profile == BAILIAN_PROFILE:
+            if self.runtime.bailian is None:
+                raise EmbeddingError("EMBEDDING_CREDENTIAL_UNAVAILABLE")
+            try:
+                async with asyncio.timeout_at(deadline):
+                    (vector,) = await self.runtime.bailian.encode(
+                        user_id, scope.embedding_credential_id, [query]
+                    )
+            except TimeoutError:
+                raise EmbeddingError("EMBEDDING_PROVIDER_TIMEOUT") from None
+        else:
+            vector = await runtime.sync(runtime.encoder.encode_query, query)
         hybrid = policy.strategy == "hybrid" and all(
             "bm25" in runtime.index.capabilities(m) for m in scope.targets
         )
@@ -91,7 +108,7 @@ class RagPipeline:
                 scope,
                 user_id,
                 vector,
-                PROFILE,
+                profile,
                 top_k=policy.recall_k if hybrid else 3,
                 offload=runtime.sync,
             )
@@ -108,7 +125,7 @@ class RagPipeline:
                     scope,
                     user_id,
                     vector,
-                    PROFILE,
+                    profile,
                     top_k=policy.recall_k,
                     offload=runtime.sync,
                     lexical_query=query,

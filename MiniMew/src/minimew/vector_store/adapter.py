@@ -4,17 +4,16 @@ import math
 from dataclasses import dataclass
 from typing import Protocol
 
-from minimew.documents.profiles import EmbeddingProfile
+from minimew.documents.profiles import HYBRID_LAYOUTS, LOCAL_DENSE, EmbeddingProfile
 from minimew.vector_store.manifest import (
-    HYBRID_LAYOUT,
-    PROFILE,
-    SPACE_HASH,
     CandidateBuild,
     CandidateManifest,
     CandidateScope,
     VectorError,
     canonical,
+    encoding_space,
     normalized_vector,
+    profile_for_layout,
     record_hash,
 )
 
@@ -44,18 +43,20 @@ class CandidateIndex:
 
     @staticmethod
     def capabilities(manifest):
-        if manifest.encoding_space != SPACE_HASH:
+        if manifest.encoding_space != encoding_space(
+            profile_for_layout(manifest.scope.index_layout)
+        ):
             raise VectorError("VECTOR_BUILD_MISMATCH")
-        if manifest.scope.index_layout == HYBRID_LAYOUT:
+        if manifest.scope.index_layout in HYBRID_LAYOUTS:
             return frozenset({"dense", "bm25"})
-        if manifest.scope.index_layout == "dense-cosine-v1":
-            return frozenset({"dense"})
-        raise VectorError("VECTOR_BUILD_MISMATCH")
+        return frozenset({"dense"})
 
     def _validate(
         self, manifest: CandidateManifest, rows: list[dict], *, complete: bool
     ) -> set[str]:
-        if manifest.encoding_space != SPACE_HASH:
+        if manifest.encoding_space != encoding_space(
+            profile_for_layout(manifest.scope.index_layout)
+        ):
             raise VectorError("VECTOR_BUILD_MISMATCH")
         expected = {entry.row_id: entry for entry in manifest.entries}
         if not expected or len(expected) != len(manifest.entries):
@@ -72,7 +73,7 @@ class CandidateIndex:
                     canonical(row["payload"]), normalized_vector(row["vector"])
                 )
                 if (
-                    manifest.scope.index_layout == HYBRID_LAYOUT
+                    manifest.scope.index_layout in HYBRID_LAYOUTS
                     and row.get("retrieval_text") != row["payload"]["embedding_text"]
                 ):
                     raise ValueError("Unexpected lexical text")
@@ -92,15 +93,15 @@ class CandidateIndex:
         manifest = candidate.manifest
         entities = [record.entity(manifest.scope) for record in candidate.records]
         self._validate(manifest, entities, complete=True)
-        hybrid = manifest.scope.index_layout == HYBRID_LAYOUT
-        self.backend.ensure_collection(**({"layout": HYBRID_LAYOUT} if hybrid else {}))
+        layout = manifest.scope.index_layout
+        self.backend.ensure_collection(**({"layout": layout} if layout != LOCAL_DENSE else {}))
         existing = self.backend.read(manifest.scope, len(manifest.entries) + 1)
         seen = self._validate(manifest, existing, complete=False)
         missing = [row for row in entities if row["id"] not in seen]
         for start in range(0, len(missing), self.batch_size):
             self.backend.upsert(
                 missing[start : start + self.batch_size],
-                **({"layout": HYBRID_LAYOUT} if hybrid else {}),
+                **({"layout": layout} if layout != LOCAL_DENSE else {}),
             )
         return self.verify(manifest)
 
@@ -114,11 +115,11 @@ class CandidateIndex:
         rows = self.backend.read(manifest.scope, len(manifest.entries) + 1)
         self._validate(manifest, rows, complete=True)
         layout = manifest.scope.index_layout
-        target.backend.ensure_collection(**({"layout": layout} if layout == HYBRID_LAYOUT else {}))
+        target.backend.ensure_collection(**({"layout": layout} if layout != LOCAL_DENSE else {}))
         for start in range(0, len(rows), self.batch_size):
             target.backend.upsert(
                 rows[start : start + self.batch_size],
-                **({"layout": layout} if layout == HYBRID_LAYOUT else {}),
+                **({"layout": layout} if layout != LOCAL_DENSE else {}),
             )
         return target.verify(manifest)
 
@@ -130,7 +131,7 @@ class CandidateIndex:
         *,
         top_k: int = 3,
     ) -> list[dict]:
-        if query_profile != PROFILE:
+        if encoding_space(query_profile) != verified.manifest.encoding_space:
             raise VectorError("VECTOR_BUILD_MISMATCH")
         if not 1 <= top_k <= 20:
             raise VectorError("VECTOR_INVALID_QUERY")
@@ -140,7 +141,7 @@ class CandidateIndex:
         return self._hits(manifest, rows, top_k)
 
     def lexical(self, verified, query, *, top_k=10):
-        if verified.manifest.scope.index_layout != HYBRID_LAYOUT:
+        if verified.manifest.scope.index_layout not in HYBRID_LAYOUTS:
             raise VectorError("VECTOR_CAPABILITY_UNSUPPORTED")
         if not isinstance(query, str) or not query.strip() or not 1 <= top_k <= 20:
             raise VectorError("VECTOR_INVALID_QUERY")

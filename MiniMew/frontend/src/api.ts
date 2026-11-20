@@ -5,8 +5,19 @@ export type Credentials = components["schemas"]["LoginRequest"];
 type Token = components["schemas"]["TokenResponse"];
 
 export class ApiError extends Error {
-  constructor(public readonly status: number) {
+  constructor(
+    public readonly status: number,
+    private readonly response?: Response,
+  ) {
     super("Request failed");
+  }
+
+  async errorCode() {
+    const body = await this.response?.json().catch(() => null);
+    const code = body?.detail?.code;
+    return typeof code === "string" && /^[A-Z_]{1,64}$/.test(code)
+      ? code
+      : undefined;
   }
 }
 
@@ -38,7 +49,7 @@ export async function request(
       ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
       : AbortSignal.timeout(15000),
   });
-  if (!response.ok) throw new ApiError(response.status);
+  if (!response.ok) throw new ApiError(response.status, response);
   return response.status === 204 ? undefined : response.json();
 }
 

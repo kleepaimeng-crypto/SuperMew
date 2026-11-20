@@ -11,11 +11,12 @@ from sqlalchemy import func, select
 from minimew.documents.chunking import ChunkBuild
 from minimew.models import IndexArtifact, IndexCleanupJob
 from minimew.vector_store.manifest import (
-    SPACE_HASH,
     CandidateManifest,
     VectorError,
     canonical,
     collection_for,
+    encoding_space,
+    profile_for_layout,
 )
 
 
@@ -37,7 +38,8 @@ def read_artifact(artifact: IndexArtifact) -> CandidateManifest:
         chunks = TypeAdapter(ChunkBuild).validate_json(canonical(artifact.chunks))
         if (
             artifact.target_collection != collection_for(manifest.scope.index_layout)
-            or manifest.encoding_space != SPACE_HASH
+            or manifest.encoding_space
+            != encoding_space(profile_for_layout(manifest.scope.index_layout))
             or manifest.scope.attempt_id != artifact.id
             or manifest.scope.identity != chunks.identity
             or manifest.scope.build_fingerprint != chunks.build_fingerprint

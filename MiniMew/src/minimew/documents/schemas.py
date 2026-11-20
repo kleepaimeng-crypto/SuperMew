@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from minimew.documents.profiles import BuildConfiguration
 
@@ -11,7 +11,7 @@ JobStatus = Literal[
     "pending", "running", "staged", "succeeded", "failed", "cancelled", "dead_letter"
 ]
 JobStage = Literal[
-    "reserved", "parsing", "chunking", "embedding", "indexing", "verifying", "publishing"
+    "reserved", "parsing", "chunking", "embedding", "indexing", "verifying", "publishing", "ready"
 ]
 JobError = Literal["INVALID_SOURCE", "SOURCE_UNAVAILABLE", "BUILD_FAILED"]
 
@@ -73,3 +73,35 @@ class UploadReceipt(BaseModel):
 
 class UploadKey(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_.:-]+$")
+
+
+class EmbeddingChange(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    source: Literal["local", "bailian"]
+    api_key: SecretStr | None = Field(default=None, min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def valid_key(self):
+        if self.api_key is not None and (
+            self.source != "bailian"
+            or any(not 33 <= ord(c) <= 126 for c in self.api_key.get_secret_value())
+        ):
+            raise ValueError("Invalid Embedding API Key")
+        return self
+
+
+class EmbeddingRebuildView(BaseModel):
+    id: UUID
+    status: Literal["building", "succeeded", "failed"]
+    target_model: str
+    completed: int
+    total: int
+    error_code: str | None
+
+
+class EmbeddingSettingsView(BaseModel):
+    current_source: Literal["local", "bailian"]
+    current_model: str
+    dimensions: int
+    bailian_key_configured: bool
+    rebuild: EmbeddingRebuildView | None

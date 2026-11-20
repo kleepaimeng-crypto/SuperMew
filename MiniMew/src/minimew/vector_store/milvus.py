@@ -2,15 +2,16 @@
 
 import time
 
+from minimew.documents.profiles import BAILIAN_LAYOUTS, HYBRID_LAYOUTS
 from minimew.vector_store.config import VectorSettings
 from minimew.vector_store.manifest import (
     ANALYZER,
-    HYBRID_LAYOUT,
-    SPACE_HASH,
     CandidateScope,
     VectorError,
     canonical,
     collection_for,
+    encoding_space,
+    profile_for_layout,
 )
 
 TEXT_FIELDS = {
@@ -25,7 +26,6 @@ TEXT_FIELDS = {
     "record_sha256": 64,
 }
 FIELDS = [*TEXT_FIELDS, "payload", "vector"]
-DESCRIPTION = "MiniMew candidate dense v1 " + SPACE_HASH
 
 
 def scope_filter(scope: CandidateScope) -> str:
@@ -50,7 +50,8 @@ class MilvusBackend:
         default = collection_for(layout)
         if self.namespace is None:
             return default
-        return self.namespace + ("_hybrid" if layout == HYBRID_LAYOUT else "_dense")
+        kind = "_hybrid" if layout in HYBRID_LAYOUTS else "_dense"
+        return self.namespace + kind + ("_bailian" if layout in BAILIAN_LAYOUTS else "")
 
     def for_namespace(self, namespace):
         # 独立不可变视图，共用有界RPC连接；不修改全局当前集合。
@@ -107,8 +108,10 @@ class MilvusBackend:
         from pymilvus import DataType, Function, FunctionType
 
         collection = self.collection(layout)
-        hybrid = layout == HYBRID_LAYOUT
-        description = DESCRIPTION if not hybrid else "MiniMew hybrid jieba bm25 v1 " + SPACE_HASH
+        hybrid = layout in HYBRID_LAYOUTS
+        description = (
+            "MiniMew hybrid jieba bm25 v1 " if hybrid else "MiniMew candidate dense v1 "
+        ) + encoding_space(profile_for_layout(layout))
 
         if not self._rpc(self.client.has_collection, collection_name=collection):
             schema = self.client.create_schema(
@@ -226,7 +229,7 @@ class MilvusBackend:
             collection_name=self.collection(scope.index_layout),
             filter=scope_filter(scope),
             output_fields=FIELDS
-            + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
+            + (["retrieval_text"] if scope.index_layout in HYBRID_LAYOUTS else []),
             batch_size=128,
             consistency_level="Strong",
         )
@@ -251,7 +254,7 @@ class MilvusBackend:
             collection_name=self.collection(scope.index_layout),
             filter=scope_filter(scope) + " and chunk_id in " + canonical(list(ids)),
             output_fields=FIELDS
-            + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
+            + (["retrieval_text"] if scope.index_layout in HYBRID_LAYOUTS else []),
             consistency_level="Strong",
             limit=7,
         )
@@ -270,14 +273,14 @@ class MilvusBackend:
             filter=scope_filter(scope),
             limit=limit,
             output_fields=FIELDS
-            + (["retrieval_text"] if scope.index_layout == HYBRID_LAYOUT else []),
+            + (["retrieval_text"] if scope.index_layout in HYBRID_LAYOUTS else []),
             search_params={"metric_type": "COSINE", "params": {}},
             consistency_level="Strong",
         )
         return result[0]
 
     def lexical(self, scope, query, limit):
-        if scope.index_layout != HYBRID_LAYOUT:
+        if scope.index_layout not in HYBRID_LAYOUTS:
             raise VectorError("VECTOR_CAPABILITY_UNSUPPORTED")
         return self._rpc(
             self.client.search,

@@ -1529,6 +1529,120 @@
         ]
       }
     },
+    "/v1/embedding-profiles/selection": {
+      "get": {
+        "tags": ["documents"],
+        "summary": "Embedding Selection",
+        "operationId": "embedding_selection_v1_embedding_profiles_selection_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingSettingsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["documents"],
+        "summary": "Request Embedding Rebuild",
+        "operationId": "request_embedding_rebuild_v1_embedding_profiles_selection_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingSettingsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/documents": {
       "post": {
         "tags": ["documents"],
@@ -2758,7 +2872,12 @@
           },
           "index_layout": {
             "type": "string",
-            "enum": ["dense-cosine-v1", "hybrid-jieba-bm25-v1"],
+            "enum": [
+              "dense-cosine-v1",
+              "hybrid-jieba-bm25-v1",
+              "bailian-dense-cosine-v1",
+              "bailian-hybrid-jieba-bm25-v1"
+            ],
             "title": "Index Layout",
             "default": "dense-cosine-v1"
           }
@@ -3612,21 +3731,57 @@
         ],
         "title": "DocumentResponse"
       },
+      "EmbeddingChange": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["local", "bailian"],
+            "title": "Source"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1,
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["source"],
+        "title": "EmbeddingChange"
+      },
       "EmbeddingProfile": {
         "properties": {
           "id": {
             "type": "string",
-            "enum": ["bge-small-zh-v1.5", "bge-m3"],
+            "enum": [
+              "bge-small-zh-v1.5",
+              "bge-m3",
+              "bailian-text-embedding-v4"
+            ],
             "title": "Id"
           },
           "model_id": {
             "type": "string",
-            "enum": ["BAAI/bge-small-zh-v1.5", "BAAI/bge-m3"],
+            "enum": [
+              "BAAI/bge-small-zh-v1.5",
+              "BAAI/bge-m3",
+              "text-embedding-v4"
+            ],
             "title": "Model Id"
           },
           "revision": {
             "type": "string",
-            "pattern": "^[a-f0-9]{40}$",
+            "pattern": "^(?:[a-f0-9]{40}|bailian-v4-contract-v1)$",
             "title": "Revision"
           },
           "dimension": {
@@ -3641,7 +3796,7 @@
           },
           "pooling": {
             "type": "string",
-            "const": "cls",
+            "enum": ["cls", "provider"],
             "title": "Pooling",
             "default": "cls"
           },
@@ -3673,6 +3828,93 @@
           "max_input_tokens"
         ],
         "title": "EmbeddingProfile"
+      },
+      "EmbeddingRebuildView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["building", "succeeded", "failed"],
+            "title": "Status"
+          },
+          "target_model": {
+            "type": "string",
+            "title": "Target Model"
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "target_model",
+          "completed",
+          "total",
+          "error_code"
+        ],
+        "title": "EmbeddingRebuildView"
+      },
+      "EmbeddingSettingsView": {
+        "properties": {
+          "current_source": {
+            "type": "string",
+            "enum": ["local", "bailian"],
+            "title": "Current Source"
+          },
+          "current_model": {
+            "type": "string",
+            "title": "Current Model"
+          },
+          "dimensions": {
+            "type": "integer",
+            "title": "Dimensions"
+          },
+          "bailian_key_configured": {
+            "type": "boolean",
+            "title": "Bailian Key Configured"
+          },
+          "rebuild": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddingRebuildView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "current_source",
+          "current_model",
+          "dimensions",
+          "bailian_key_configured",
+          "rebuild"
+        ],
+        "title": "EmbeddingSettingsView"
       },
       "EvaluationArtifact": {
         "properties": {
@@ -4170,7 +4412,8 @@
               "embedding",
               "indexing",
               "verifying",
-              "publishing"
+              "publishing",
+              "ready"
             ],
             "title": "Stage"
           },

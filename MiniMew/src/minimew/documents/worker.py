@@ -31,6 +31,7 @@ from minimew.documents.parsing import DocumentBuildError
 from minimew.documents.profiles import hybrid_preset, preset
 from minimew.documents.storage import SourceStore
 from minimew.embeddings.adapter import LocalEmbeddingAdapter
+from minimew.embeddings.bailian import BailianEmbedding
 from minimew.embeddings.config import EmbeddingRuntimeSettings
 from minimew.embeddings.errors import EmbeddingError
 from minimew.embeddings.tokenizer import LocalTokenizer
@@ -38,7 +39,7 @@ from minimew.models import IndexWorkerHeartbeat, KnowledgeBase
 from minimew.settings import Settings
 from minimew.vector_store.adapter import CandidateIndex
 from minimew.vector_store.config import VectorSettings
-from minimew.vector_store.manifest import PROFILE, VectorError, make_candidate
+from minimew.vector_store.manifest import BAILIAN_PROFILE, PROFILE, VectorError, make_candidate
 from minimew.vector_store.milvus import MilvusBackend
 
 log = logging.getLogger("minimew.indexing")
@@ -110,20 +111,24 @@ class IndexWorker:
         worker_id=None,
         batch_size=4,
         vector_batch_size=4,
+        bailian=None,
     ):
         self.sessions, self.store = sessions, store
         self.tokenizer, self.encoder, self.backend = tokenizer, encoder, backend
+        self.bailian = bailian
         self.settings = settings or WorkerSettings()
         self.worker_id = worker_id or f"{socket.gethostname()[:80]}:{os.getpid()}:{uuid4().hex}"
         self.batch_size = batch_size
         self.vector_batch_size = vector_batch_size
         self.jobs, self.cleanup = IndexJobRepository(sessions), IndexCleanupRepository(sessions)
         self.fingerprints = {
-            factory(PROFILE.id)
+            factory(profile.id)
             .model_copy(update={"source_format": fmt, "parser": parser, "chunker": chunker})
             .fingerprint()
             for fmt in ("markdown", "text")
             for factory in (preset, hybrid_preset)
+            for profile in (PROFILE, BAILIAN_PROFILE)
+            if bailian is not None or profile == PROFILE
             for parser in ("markdown-txt-v1", "markdown-txt-v2")
             for chunker in ("structure-v1", "structure-v2")
         }
@@ -192,6 +197,16 @@ class IndexWorker:
             await guard()
             if not await self.jobs.progress(lease, "parsing", 0, None):
                 raise OwnershipLost
+            if lease.source_version_id is not None:
+                try:
+                    await self.sync(
+                        self.store.copy_version,
+                        lease.source_version_id,
+                        lease.version_id,
+                        lease.content_sha256,
+                    )
+                except OSError:
+                    raise DocumentBuildError("DOCUMENT_SOURCE_UNAVAILABLE") from None
             chunks = await self.sync(
                 build_version_chunks,
                 self.store,
@@ -208,11 +223,18 @@ class IndexWorker:
             for start in range(0, count, self.batch_size):
                 await guard()
                 batch = chunks.chunks[start : start + self.batch_size]
-                vectors.extend(
-                    await self.sync(
-                        self.encoder.encode_documents, [c.embedding_text for c in batch]
-                    )
-                )
+                texts = [c.embedding_text for c in batch]
+                if lease.build.embedding == BAILIAN_PROFILE:
+                    try:
+                        async with asyncio.timeout_at(deadline):
+                            values = await self.bailian.encode(
+                                lease.identity.user_id, lease.credential_id, texts
+                            )
+                    except TimeoutError:
+                        raise EmbeddingError("EMBEDDING_PROVIDER_TIMEOUT") from None
+                else:
+                    values = await self.sync(self.encoder.encode_documents, texts)
+                vectors.extend(values)
                 await guard()
                 await self.jobs.progress(lease, "embedding", len(vectors), count)
             candidate = await self.sync(make_candidate, chunks, lease.build, vectors, uuid4())
@@ -231,11 +253,14 @@ class IndexWorker:
     async def run_once(self):
         if self.stop.is_set():
             return False
+        from minimew.documents.rebuilds import finalize_ready
+
+        finalized = await finalize_ready(self.sessions)
         lease = await self.jobs.claim(
             self.worker_id, self.fingerprints, lease_seconds=self.settings.lease_seconds
         )
         if lease is None:
-            return await self.clean_once()
+            return await self.clean_once() or finalized
         done, lost = asyncio.Event(), asyncio.Event()
         deadline = time.monotonic() + self.settings.job_timeout_seconds
         pulse = asyncio.create_task(self._pulse(self.jobs, lease, done, lost, deadline))
@@ -259,7 +284,7 @@ class IndexWorker:
                     if isinstance(exc, DocumentBuildError)
                     else "BUILD_FAILED"
                 )
-                await self.jobs.fail(lease, public_code, dead_letter=code in RETRYABLE)
+                await self.jobs.fail(lease, public_code, dead_letter=code in RETRYABLE, cause=code)
         except SQLAlchemyError:
             # 发布 commit 回包不确定：retry() 再查原 Job 资格；已成功则不改写。
             log.warning("INDEX_CATALOG_UNAVAILABLE job=%s", lease.job_id)
@@ -273,6 +298,7 @@ class IndexWorker:
             done.set()
             await pulse
         # 即使持续有上传，也为清理队列提供一次公平机会。
+        await finalize_ready(self.sessions)
         await self.clean_once()
         return True
 
@@ -365,6 +391,7 @@ async def main(args):
             backend,
             batch_size=runtime.batch_size,
             vector_batch_size=vector_settings.batch_size,
+            bailian=BailianEmbedding(sessions, settings),
         )
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):

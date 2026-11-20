@@ -5,11 +5,13 @@ import {
   activeJob,
   isId,
   parseDocument,
+  parseEmbeddingSettings,
   parseJob,
   parsePage,
   parseReceipt,
   parseVersion,
   type Document,
+  type EmbeddingChange,
   type Version,
 } from "../documents";
 import { useAuthStore } from "./auth";
@@ -362,13 +364,19 @@ export const useDocumentsStore = defineStore("documents", () => {
       await loadList(true);
       return selection === turn ? result.document.id : null;
     } catch (cause) {
+      const conflict =
+        cause instanceof ApiError && cause.status === 409
+          ? await cause.errorCode()
+          : undefined;
       if (valid(ctx)) {
         uploadError.value =
           cause instanceof ApiError && [413, 422].includes(cause.status)
             ? "文件未被接受。请使用不超过5 MiB的非空UTF-8 Markdown或TXT文件。"
-            : cause instanceof ApiError && [403, 404].includes(cause.status)
-              ? "这份文档不可访问，请刷新目录后重试。"
-              : "上传结果尚未确认。可刷新目录查看，或重试本次上传；重试沿用原提交标识。";
+            : conflict === "EMBEDDING_REBUILD_IN_PROGRESS"
+              ? "此知识库正在切换编码模型。请等重建完成后重试上传。"
+              : cause instanceof ApiError && [403, 404].includes(cause.status)
+                ? "这份文档不可访问，请刷新目录后重试。"
+                : "上传结果尚未确认。可刷新目录查看，或重试本次上传；重试沿用原提交标识。";
       }
       return null;
     } finally {
@@ -395,6 +403,22 @@ export const useDocumentsStore = defineStore("documents", () => {
   function activate() {
     mounted = true;
     schedule();
+  }
+  async function embeddingSettings(
+    project: string | null,
+    change?: EmbeddingChange,
+  ) {
+    const params = project
+      ? "?" + new URLSearchParams({ project_id: project })
+      : "";
+    return parseEmbeddingSettings(
+      await call(
+        context(),
+        "/v1/embedding-profiles/selection" + params,
+        change ? "POST" : "GET",
+        change,
+      ),
+    );
   }
   function setScope(id: string | null, showArchived = false) {
     if (projectId.value !== id || archived.value !== showArchived) {
@@ -429,6 +453,7 @@ export const useDocumentsStore = defineStore("documents", () => {
     archived,
     setScope,
     withdraw,
+    embeddingSettings,
     items,
     selected,
     currentVersion,

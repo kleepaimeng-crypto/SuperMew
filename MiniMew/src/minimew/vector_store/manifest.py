@@ -8,7 +8,15 @@ from dataclasses import asdict, dataclass
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from minimew.documents.chunking import BuildIdentity, ChunkBuild
-from minimew.documents.profiles import BuildConfiguration, preset
+from minimew.documents.profiles import (
+    BAILIAN_ID,
+    BAILIAN_LAYOUTS,
+    HYBRID_LAYOUTS,
+    LOCAL_DENSE,
+    LOCAL_HYBRID,
+    BuildConfiguration,
+    preset,
+)
 
 
 class VectorError(Exception):
@@ -22,18 +30,31 @@ def canonical(value) -> str:
 
 
 PROFILE = preset("bge-small-zh-v1.5").embedding
-SPACE_HASH = hashlib.sha256(canonical(PROFILE.model_dump(mode="json")).encode()).hexdigest()
+BAILIAN_PROFILE = preset(BAILIAN_ID).embedding
+
+
+def encoding_space(profile):
+    return hashlib.sha256(canonical(profile.model_dump(mode="json")).encode()).hexdigest()
+
+
+SPACE_HASH = encoding_space(PROFILE)
 COLLECTION = "minimew_dense_v1_" + SPACE_HASH[:16]
-HYBRID_LAYOUT = "hybrid-jieba-bm25-v1"
+HYBRID_LAYOUT = LOCAL_HYBRID
 ANALYZER = {"tokenizer": "jieba", "filter": ["lowercase"]}
 
 
-def collection_for(layout):
-    if layout == "dense-cosine-v1":
-        return COLLECTION
-    if layout == HYBRID_LAYOUT:
-        return "minimew_hybrid_v1_" + SPACE_HASH[:16]
+def profile_for_layout(layout):
+    if layout in (LOCAL_DENSE, LOCAL_HYBRID):
+        return PROFILE
+    if layout in BAILIAN_LAYOUTS:
+        return BAILIAN_PROFILE
     raise VectorError("VECTOR_BUILD_MISMATCH")
+
+
+def collection_for(layout):
+    space = encoding_space(profile_for_layout(layout))
+    kind = "hybrid" if layout in HYBRID_LAYOUTS else "dense"
+    return f"minimew_{kind}_v1_{space[:16]}"
 
 
 def normalized_vector(vector) -> tuple[float, ...]:
@@ -94,7 +115,7 @@ class VectorRecord:
             "vector": list(self.vector),
             "record_sha256": self.record_sha256,
         }
-        if scope.index_layout == HYBRID_LAYOUT:
+        if scope.index_layout in HYBRID_LAYOUTS:
             value["retrieval_text"] = value["payload"]["embedding_text"]
         return value
 
@@ -125,7 +146,10 @@ def make_candidate(
     vectors: list[list[float]],
     attempt_id: UUID,
 ) -> CandidateBuild:
-    if build.embedding != PROFILE or build.fingerprint() != chunks.build_fingerprint:
+    if (
+        build.embedding != profile_for_layout(build.index_layout)
+        or build.fingerprint() != chunks.build_fingerprint
+    ):
         raise VectorError("VECTOR_BUILD_MISMATCH")
     if not chunks.chunks or len(vectors) != len(chunks.chunks):
         raise VectorError("VECTOR_INVALID_VECTOR")
@@ -159,6 +183,8 @@ def make_candidate(
     if len({r.row_id for r in rows}) != len(rows):
         raise VectorError("VECTOR_BUILD_MISMATCH")
     manifest = CandidateManifest(
-        scope, tuple(ManifestEntry(r.row_id, r.chunk_id, r.record_sha256) for r in rows)
+        scope,
+        tuple(ManifestEntry(r.row_id, r.chunk_id, r.record_sha256) for r in rows),
+        encoding_space(build.embedding),
     )
     return CandidateBuild(manifest, tuple(rows))

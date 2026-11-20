@@ -5,6 +5,8 @@ export type DocumentPage = components["schemas"]["DocumentPage"];
 export type IndexJob = components["schemas"]["IndexJobResponse"];
 export type Version = components["schemas"]["VersionResponse"];
 export type UploadReceipt = components["schemas"]["UploadReceipt"];
+export type EmbeddingChange = components["schemas"]["EmbeddingChange"];
+export type EmbeddingSettings = components["schemas"]["EmbeddingSettingsView"];
 const jobs = [
   "pending",
   "running",
@@ -22,6 +24,7 @@ const stages = [
   "indexing",
   "verifying",
   "publishing",
+  "ready",
 ];
 const record = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
@@ -34,6 +37,32 @@ const date = (v: unknown) =>
 const invalid = (): never => {
   throw new Error("Invalid document response");
 };
+
+export function parseEmbeddingSettings(value: unknown): EmbeddingSettings {
+  if (
+    !record(value) ||
+    !["local", "bailian"].includes(String(value.current_source)) ||
+    typeof value.current_model !== "string" ||
+    !integer(value.dimensions) ||
+    value.dimensions === 0 ||
+    typeof value.bailian_key_configured !== "boolean"
+  )
+    return invalid();
+  const rebuild = value.rebuild;
+  if (
+    rebuild !== null &&
+    (!record(rebuild) ||
+      !isId(rebuild.id) ||
+      !["building", "succeeded", "failed"].includes(String(rebuild.status)) ||
+      typeof rebuild.target_model !== "string" ||
+      !integer(rebuild.completed) ||
+      !integer(rebuild.total) ||
+      rebuild.completed > rebuild.total ||
+      !(rebuild.error_code === null || typeof rebuild.error_code === "string"))
+  )
+    return invalid();
+  return value as EmbeddingSettings;
+}
 
 export function parseJob(value: unknown): IndexJob {
   if (
@@ -164,6 +193,7 @@ export function jobLabel(job: IndexJob | null | undefined) {
     indexing: "写入索引",
     verifying: "核验索引",
     publishing: "发布版本",
+    ready: "已核验，等待整库发布",
   }[job.stage];
 }
 

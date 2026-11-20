@@ -87,6 +87,13 @@ class SourceStore:
             raise OSError("Source integrity check failed")
         return content
 
+    def copy_version(self, source_version_id: UUID, version_id: UUID, digest: str) -> None:
+        content = self.read(source_version_id, digest)
+        try:
+            self.write(version_id, Source("", "", content, digest))
+        except FileExistsError:
+            self.read(version_id, digest)
+
     def remove_orphan(self, version_id: UUID) -> None:
         path = self.path(version_id)
         if path.is_symlink():

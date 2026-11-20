@@ -539,6 +539,11 @@ class KnowledgeBase(Base):
             name="fk_kb_project_owner",
         ),
         UniqueConstraint("id", "user_id", name="uq_knowledge_bases_owner"),
+        ForeignKeyConstraint(
+            ["embedding_credential_id", "user_id"],
+            ["model_credentials.id", "model_credentials.user_id"],
+            name="fk_kb_embedding_credential_owner",
+        ),
     )
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=text("gen_random_uuid()")
@@ -547,6 +552,43 @@ class KnowledgeBase(Base):
     project_id: Mapped[UUID | None] = mapped_column(Uuid)
     build_configuration: Mapped[dict] = mapped_column(JSONB)
     build_fingerprint: Mapped[str] = mapped_column(String(64))
+    embedding_credential_id: Mapped[UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EmbeddingRebuild(Base):
+    __tablename__ = "embedding_rebuilds"
+    __table_args__ = (
+        UniqueConstraint("id", "knowledge_base_id", "user_id", name="uq_embedding_rebuild_scope"),
+        ForeignKeyConstraint(
+            ["knowledge_base_id", "user_id"],
+            ["knowledge_bases.id", "knowledge_bases.user_id"],
+            name="fk_embedding_rebuild_kb",
+        ),
+        ForeignKeyConstraint(
+            ["credential_id", "user_id"],
+            ["model_credentials.id", "model_credentials.user_id"],
+            name="fk_embedding_rebuild_credential",
+        ),
+        CheckConstraint(
+            "status IN ('building','succeeded','failed')", name="ck_embedding_rebuild_status"
+        ),
+        Index(
+            "uq_embedding_rebuild_active",
+            "knowledge_base_id",
+            unique=True,
+            postgresql_where=text("status = 'building'"),
+        ),
+        Index("ix_embedding_rebuild_history", "knowledge_base_id", "created_at", "id"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    knowledge_base_id: Mapped[UUID] = mapped_column(Uuid)
+    user_id: Mapped[UUID] = mapped_column(Uuid)
+    credential_id: Mapped[UUID | None] = mapped_column(Uuid)
+    configuration: Mapped[dict] = mapped_column(JSONB)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'building'"))
+    error_code: Mapped[str | None] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -681,6 +723,29 @@ class IndexJob(Base):
             ],
             name="fk_index_jobs_scope",
         ),
+        ForeignKeyConstraint(
+            ["rebuild_id", "knowledge_base_id", "user_id"],
+            [
+                "embedding_rebuilds.id",
+                "embedding_rebuilds.knowledge_base_id",
+                "embedding_rebuilds.user_id",
+            ],
+            name="fk_index_jobs_rebuild",
+        ),
+        ForeignKeyConstraint(
+            ["source_version_id", "document_id", "user_id", "knowledge_base_id"],
+            [
+                "document_versions.id",
+                "document_versions.document_id",
+                "document_versions.user_id",
+                "document_versions.knowledge_base_id",
+            ],
+            name="fk_index_jobs_rebuild_source",
+        ),
+        CheckConstraint(
+            "(rebuild_id IS NULL) = (source_version_id IS NULL)",
+            name="ck_index_jobs_rebuild_source",
+        ),
         CheckConstraint(
             "status IN ('pending','running','staged','succeeded','failed','cancelled',"
             "'dead_letter')",
@@ -688,7 +753,7 @@ class IndexJob(Base):
         ),
         CheckConstraint(
             "stage IN ('reserved','parsing','chunking','embedding','indexing',"
-            "'verifying','publishing')",
+            "'verifying','publishing','ready')",
             name="ck_index_jobs_stage",
         ),
         CheckConstraint(
@@ -719,6 +784,7 @@ class IndexJob(Base):
             name="ck_index_jobs_error",
         ),
         Index("ix_index_jobs_claim", "status", "created_at", "id"),
+        Index("ix_index_jobs_rebuild", "rebuild_id"),
     )
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=text("gen_random_uuid()")
@@ -727,6 +793,8 @@ class IndexJob(Base):
     document_id: Mapped[UUID] = mapped_column(Uuid)
     knowledge_base_id: Mapped[UUID] = mapped_column(Uuid)
     user_id: Mapped[UUID] = mapped_column(Uuid)
+    rebuild_id: Mapped[UUID | None] = mapped_column(Uuid)
+    source_version_id: Mapped[UUID | None] = mapped_column(Uuid)
     status: Mapped[str] = mapped_column(String(20), server_default=text("'pending'"))
     stage: Mapped[str] = mapped_column(String(20), server_default=text("'reserved'"))
     progress_done: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))

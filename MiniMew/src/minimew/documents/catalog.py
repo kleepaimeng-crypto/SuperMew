@@ -19,7 +19,14 @@ from minimew.documents.schemas import (
     VersionResponse,
 )
 from minimew.documents.storage import Source, SourceStore
-from minimew.models import Document, DocumentSubmission, DocumentVersion, IndexJob, KnowledgeBase
+from minimew.models import (
+    Document,
+    DocumentSubmission,
+    DocumentVersion,
+    EmbeddingRebuild,
+    IndexJob,
+    KnowledgeBase,
+)
 
 
 class DocumentNotFound(Exception):
@@ -32,6 +39,57 @@ class SubmissionConflict(Exception):
 
 class BuildUnavailable(Exception):
     pass
+
+
+class EmbeddingRebuildInProgress(Exception):
+    pass
+
+
+async def ensure_base(session, user_id, project_id, default_profile, index_layout):
+    from minimew.projects import owned_project
+
+    if project_id is not None:
+        await owned_project(session, user_id, project_id)
+    initial = BuildConfiguration.model_validate(
+        {
+            **preset(default_profile).model_dump(),
+            "index_layout": index_layout,
+            "parser": "markdown-txt-v2",
+            "chunker": "structure-v2",
+        }
+    )
+    await session.execute(
+        insert(KnowledgeBase)
+        .values(
+            user_id=user_id,
+            project_id=project_id,
+            build_configuration=initial.model_dump(mode="json"),
+            build_fingerprint=initial.fingerprint(),
+        )
+        .on_conflict_do_nothing(
+            index_elements=[KnowledgeBase.user_id]
+            if project_id is None
+            else [KnowledgeBase.project_id],
+            index_where=KnowledgeBase.project_id.is_(None)
+            if project_id is None
+            else KnowledgeBase.project_id.is_not(None),
+        )
+    )
+    return await session.scalar(
+        select(KnowledgeBase)
+        .where(KnowledgeBase.user_id == user_id, KnowledgeBase.project_id == project_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
+async def require_no_embedding_rebuild(session, kb_id):
+    if await session.scalar(
+        select(EmbeddingRebuild.id).where(
+            EmbeddingRebuild.knowledge_base_id == kb_id, EmbeddingRebuild.status == "building"
+        )
+    ):
+        raise EmbeddingRebuildInProgress
 
 
 async def source_lock(session: AsyncSession, version_id: UUID) -> None:
@@ -131,53 +189,20 @@ async def reserve_document(
         ).encode()
     ).hexdigest()
     async with session.begin():
-        initial = preset(default_profile).model_copy(
-            update={
-                "index_layout": index_layout,
-                "parser": "markdown-txt-v2",
-                "chunker": "structure-v2",
-            }
-        )
-        initial = BuildConfiguration.model_validate(initial.model_dump())
-        from minimew.projects import owned_project
-
         if document_id is not None:
             target = await owned_document(session, user_id, document_id)
             current_kb = await session.get(KnowledgeBase, target.knowledge_base_id)
             if project_id is not None and current_kb.project_id != project_id:
                 raise DocumentNotFound
             project_id = current_kb.project_id
-        if project_id is not None:
-            await owned_project(session, user_id, project_id)
-        await session.execute(
-            insert(KnowledgeBase)
-            .values(
-                user_id=user_id,
-                project_id=project_id,
-                build_configuration=initial.model_dump(mode="json"),
-                build_fingerprint=initial.fingerprint(),
-            )
-            .on_conflict_do_nothing(
-                index_elements=[KnowledgeBase.user_id]
-                if project_id is None
-                else [KnowledgeBase.project_id],
-                index_where=KnowledgeBase.project_id.is_(None)
-                if project_id is None
-                else KnowledgeBase.project_id.is_not(None),
-            )
-        )
-        kb = await session.scalar(
-            select(KnowledgeBase)
-            .where(KnowledgeBase.user_id == user_id, KnowledgeBase.project_id == project_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
+        kb = await ensure_base(session, user_id, project_id, default_profile, index_layout)
         previous = await session.get(DocumentSubmission, (kb.id, key))
         if previous is not None:
             if previous.request_sha256 != request_hash:
                 raise SubmissionConflict
             document = await owned_document(session, user_id, previous.document_id, lock=True)
             return await receipt(session, document, previous.version_id, previous.job_id), False
+        await require_no_embedding_rebuild(session, kb.id)
         # 仅推进之后创建的 Version；已有 Version/Job 的冻结构建配置不变。
         current_build = read_build(kb.build_configuration, kb.build_fingerprint)
         if current_build.chunker == "structure-v1":

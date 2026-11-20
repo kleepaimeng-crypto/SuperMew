@@ -9,7 +9,14 @@ from sqlalchemy import func, or_, select
 from minimew.documents.artifacts import artifact_values, read_artifact, retire_artifacts
 from minimew.documents.chunking import BuildIdentity
 from minimew.documents.profiles import BuildConfiguration, read_build
-from minimew.models import Document, DocumentVersion, IndexArtifact, IndexJob
+from minimew.models import (
+    Document,
+    DocumentVersion,
+    EmbeddingRebuild,
+    IndexArtifact,
+    IndexJob,
+    KnowledgeBase,
+)
 from minimew.vector_store.manifest import VectorError
 
 STAGES = ("reserved", "parsing", "chunking", "embedding", "indexing", "verifying", "publishing")
@@ -29,6 +36,8 @@ class IndexLease:
     attempt: int
     artifact_id: UUID | None = None
     staged: bool = False
+    source_version_id: UUID | None = None
+    credential_id: UUID | None = None
 
 
 class OwnershipLost(Exception):
@@ -45,13 +54,17 @@ class IndexJobRepository:
         if not fingerprints:
             return None
         async with self.sessions() as session, session.begin():
-            eligible = or_(
-                IndexJob.status == "pending",
-                IndexJob.status.in_(["running", "staged"])
-                & (IndexJob.lease_until <= func.clock_timestamp()),
-            ) & or_(
-                IndexJob.next_retry_at.is_(None),
-                IndexJob.next_retry_at <= func.clock_timestamp(),
+            eligible = (
+                or_(
+                    IndexJob.status == "pending",
+                    IndexJob.status.in_(["running", "staged"])
+                    & (IndexJob.lease_until <= func.clock_timestamp()),
+                )
+                & or_(
+                    IndexJob.next_retry_at.is_(None),
+                    IndexJob.next_retry_at <= func.clock_timestamp(),
+                )
+                & (IndexJob.stage != "ready")
             )
             # 所有路径采用 Document -> Job 锁顺序；不同文档可被不同 worker 领取。
             document = await session.scalar(
@@ -84,6 +97,8 @@ class IndexJobRepository:
                 return None
             version = await session.get(DocumentVersion, job.version_id)
             build = read_build(version.build_configuration, version.build_fingerprint)
+            source = await session.get(EmbeddingRebuild, job.rebuild_id) if job.rebuild_id else None
+            kb = await session.get(KnowledgeBase, job.knowledge_base_id)
             now = await session.scalar(select(func.clock_timestamp()))
             artifact_id = None
             if job.status == "staged":
@@ -114,6 +129,8 @@ class IndexJobRepository:
                 job.attempt,
                 artifact_id,
                 job.status == "staged",
+                job.source_version_id,
+                source.credential_id if source else kb.embedding_credential_id,
             )
 
     async def _owned(self, session, lease):
@@ -129,6 +146,7 @@ class IndexJobRepository:
                 IndexJob.document_id == document.id,
                 IndexJob.version_id == lease.version_id,
                 IndexJob.status.in_(["running", "staged"]),
+                IndexJob.stage != "ready",
                 IndexJob.owner_token == lease.owner_token,
                 IndexJob.execution_fence == lease.execution_fence,
                 IndexJob.lease_until > func.clock_timestamp(),
@@ -182,7 +200,9 @@ class IndexJobRepository:
             job.stage, job.progress_done, job.progress_total = stage, done, total
         return True
 
-    async def fail(self, lease: IndexLease, error_code: str, *, dead_letter=False) -> bool:
+    async def fail(
+        self, lease: IndexLease, error_code: str, *, dead_letter=False, cause=None
+    ) -> bool:
         if error_code not in ERRORS:
             raise ValueError("Unknown public failure code")
         async with self.sessions() as session, session.begin():
@@ -195,6 +215,8 @@ class IndexJobRepository:
             document.pending_version_id = None
             await retire_artifacts(session, job.id)
             job.status, job.error_code = ("dead_letter" if dead_letter else "failed"), error_code
+            if cause is not None:
+                job.last_error_code = cause
             job.finished_at = await session.scalar(select(func.clock_timestamp()))
         return True
 
@@ -290,17 +312,23 @@ class IndexJobRepository:
                 or read_artifact(artifact) != verified.manifest
             ):
                 raise VectorError("INDEX_ARTIFACT_INVALID")
-            if document.current_version_id:
-                previous = await session.get(DocumentVersion, document.current_version_id)
-                previous.status = "superseded"
-                old_job = await session.scalar(
-                    select(IndexJob).where(IndexJob.version_id == previous.id)
-                )
-                await retire_artifacts(session, old_job.id, grace_seconds=3600)
-            version = await session.get(DocumentVersion, lease.version_id)
-            version.status = "published"
-            document.current_version_id, document.pending_version_id = version.id, None
-            artifact.status = "published"
-            job.status, job.error_code, job.last_error_code = "succeeded", None, None
-            job.finished_at = await session.scalar(select(func.clock_timestamp()))
+            if job.rebuild_id is not None:
+                job.stage = "ready"
+            else:
+                now = await session.scalar(select(func.clock_timestamp()))
+                await publish_candidate(session, document, job, artifact, now)
         return True
+
+
+async def publish_candidate(session, document, job, artifact, now):
+    if document.current_version_id:
+        previous = await session.get(DocumentVersion, document.current_version_id)
+        previous.status = "superseded"
+        old_job = await session.scalar(select(IndexJob).where(IndexJob.version_id == previous.id))
+        await retire_artifacts(session, old_job.id, grace_seconds=3600)
+    version = await session.get(DocumentVersion, job.version_id)
+    version.status = "published"
+    document.current_version_id, document.pending_version_id = version.id, None
+    artifact.status = "published"
+    job.status, job.error_code, job.last_error_code = "succeeded", None, None
+    job.finished_at = now

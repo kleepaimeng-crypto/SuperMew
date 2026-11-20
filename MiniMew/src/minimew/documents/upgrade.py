@@ -9,29 +9,38 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.database import create_engine
-from minimew.documents.catalog import reserve_document
-from minimew.documents.profiles import read_build
+from minimew.documents.catalog import require_no_embedding_rebuild, reserve_document
+from minimew.documents.profiles import BAILIAN_ID, hybrid_preset, read_build
 from minimew.documents.storage import Source, SourceStore
 from minimew.models import Document, DocumentVersion, KnowledgeBase
 from minimew.settings import Settings
-from minimew.vector_store.manifest import HYBRID_LAYOUT
 
 
 async def upgrade(sessions, store, user_id, *, apply=False, parser=None, document_id=None):
     async with sessions() as session, session.begin():
         kb = await session.scalar(
-            select(KnowledgeBase).where(KnowledgeBase.user_id == user_id).with_for_update()
+            select(KnowledgeBase)
+            .where(KnowledgeBase.user_id == user_id, KnowledgeBase.project_id.is_(None))
+            .with_for_update()
         )
         if kb is None:
             raise ValueError("Knowledge base not found")
         build = read_build(kb.build_configuration, kb.build_fingerprint)
-        updates = {"index_layout": HYBRID_LAYOUT} if parser is None else {"parser": parser}
+        if apply:
+            await require_no_embedding_rebuild(session, kb.id)
+        if build.embedding.id == BAILIAN_ID and apply:
+            raise ValueError("Bailian layout upgrades use the embedding rebuild workflow")
+        updates = (
+            {"index_layout": hybrid_preset(build.embedding.id).index_layout}
+            if parser is None
+            else {"parser": parser}
+        )
         target = type(build).model_validate({**build.model_dump(mode="json"), **updates})
         rows = (
             await session.execute(
                 select(Document, DocumentVersion)
                 .join(DocumentVersion, Document.current_version_id == DocumentVersion.id)
-                .where(Document.user_id == user_id)
+                .where(Document.knowledge_base_id == kb.id, Document.deleted_at.is_(None))
                 .where(*([Document.id == document_id] if document_id is not None else []))
                 .order_by(Document.id)
             )
