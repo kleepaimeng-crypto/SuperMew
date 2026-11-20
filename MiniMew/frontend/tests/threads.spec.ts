@@ -31,9 +31,13 @@ async function identity(page: Page) {
     }),
   );
   await page.route("**/auth/logout", (route) => route.fulfill({ status: 204 }));
+  await page.route("**/v1/projects**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
+  await page.route("**/v1/skills", (route) => route.fulfill({ json: [] }));
 }
 
-test("列表分页、新建选中、地址恢复与退出", async ({ page }) => {
+test("列表分页、首发新建选中、地址恢复与退出", async ({ page }) => {
   await identity(page);
   let added = false;
   await page.route("**/v1/threads**", (route) => {
@@ -41,6 +45,18 @@ test("列表分页、新建选中、地址恢复与退出", async ({ page }) => 
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/messages"))
       return route.fulfill({ json: { items: [], previous_cursor: null } });
+    if (url.pathname.endsWith("/runs") && route.request().method() === "POST")
+      return route.fulfill({
+        status: 201,
+        json: {
+          id: "00000000-0000-0000-0000-000000000091",
+          thread_id: created.id,
+          user_message_id: "00000000-0000-0000-0000-000000000092",
+          assistant_message_id: "00000000-0000-0000-0000-000000000093",
+          status: "succeeded",
+          created_at: a.created_at,
+        },
+      });
     if (route.request().method() === "POST") {
       added = true;
       return route.fulfill({ status: 201, json: created });
@@ -63,7 +79,13 @@ test("列表分页、新建选中、地址恢复与退出", async ({ page }) => 
   await expect(
     page.getByRole("heading", { name: "第二段对话", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "新建对话" }).click();
+  await page
+    .getByRole("link", { name: /新会话/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/threads$/);
+  await page.getByLabel("你的问题").fill("第一条消息");
+  await page.getByRole("button", { name: "发送问题" }).click();
   await expect(page).toHaveURL(new RegExp(`/threads/${created.id}$`));
   await expect(
     page.getByRole("heading", { name: "新对话", exact: true }),
@@ -88,6 +110,7 @@ test("列表分页、新建选中、地址恢复与退出", async ({ page }) => 
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.getByRole("button", { name: "打开导航栏" }).click();
   await page.getByRole("button", { name: "退出登录" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("link", { name: /第一段对话/ })).toHaveCount(0);
@@ -120,9 +143,10 @@ test("创建失败不追加对话；列表故障、不可访问与详情故障�
   await page.goto("/threads");
   await expect(page.getByRole("alert")).toContainText("列表加载失败");
   listFailed = false;
-  await page.getByRole("button", { name: "重试加载列表" }).click();
-  await page.getByRole("button", { name: "新建对话" }).click();
-  await expect(page.getByRole("alert")).toContainText("创建结果未确认");
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await page.getByLabel("你的问题").fill("测试创建失败");
+  await page.getByRole("button", { name: "发送问题" }).click();
+  await expect(page.getByRole("alert")).toContainText("创建对话结果未确认");
   expect(postCount).toBe(1);
   await expect(page.getByRole("listitem")).toHaveCount(1);
   await page.getByRole("link", { name: /第一段对话/ }).click();

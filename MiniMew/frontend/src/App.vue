@@ -1,11 +1,31 @@
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import WorkspaceSidebar from "./components/WorkspaceSidebar.vue";
 import { useAuthStore } from "./stores/auth";
-import { watch } from "vue";
+import { useWorkspaceStore } from "./stores/workspace";
 
 const auth = useAuthStore();
+const workspace = useWorkspaceStore();
 const router = useRouter();
 const route = useRoute();
+
+const isAuthenticatedWorkspace = computed(
+  () => auth.status === "authenticated",
+);
+
+const mobileHeading = computed(() => {
+  if (route.path.startsWith("/documents")) {
+    return workspace.activeScope
+      ? `文档 · ${workspace.projectName(workspace.activeScope)}`
+      : "文档 · 个人";
+  }
+  if (route.path.startsWith("/evaluations")) return "评测";
+  if (route.path.startsWith("/projects")) return "项目";
+  if (route.path.startsWith("/account")) return "账户";
+  return route.params.threadId ? "对话" : "新会话";
+});
+
 watch(
   () => auth.status,
   (status) => {
@@ -13,6 +33,38 @@ watch(
       void router.replace("/login");
   },
 );
+
+watch(
+  [
+    () => auth.status,
+    () => route.path,
+    () => route.params.projectId,
+    () => route.query.project,
+  ],
+  ([status, path, paramProject, queryProject]) => {
+    if (status !== "authenticated") return;
+    workspace.closeMobileNav();
+    if (path.startsWith("/projects") && typeof paramProject === "string") {
+      workspace.setActiveScope(paramProject, false);
+      return;
+    }
+    if (path.startsWith("/threads") || path.startsWith("/documents")) {
+      const next = typeof queryProject === "string" ? queryProject : null;
+      workspace.setActiveScope(next, path.startsWith("/threads"));
+    }
+  },
+  { immediate: true },
+);
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && workspace.mobileNavOpen) {
+    workspace.closeMobileNav();
+  }
+}
+
+onMounted(() => window.addEventListener("keydown", onKeydown));
+onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
+
 async function retry() {
   if (auth.logoutPending) {
     try {
@@ -24,39 +76,56 @@ async function retry() {
     await auth.restore();
   }
   if (auth.status === "authenticated")
-    await router.replace(route.meta.requiresAuth ? route.fullPath : "/account");
+    await router.replace(route.meta.requiresAuth ? route.fullPath : "/threads");
   if (auth.status === "anonymous") await router.replace("/login");
 }
 </script>
 
 <template>
-  <div
-    class="shell"
-    :class="{
-      'workspace-shell':
-        (route.path.startsWith('/threads') ||
-          route.path.startsWith('/documents') ||
-          route.path.startsWith('/evaluations') ||
-          route.path.startsWith('/projects')) &&
-        auth.status === 'authenticated',
-    }"
-  >
+  <div v-if="isAuthenticatedWorkspace" class="app-workspace-shell">
+    <header class="ws-mobile-topbar">
+      <button
+        type="button"
+        class="quiet-button ws-mobile-menu-btn"
+        :aria-expanded="workspace.mobileNavOpen"
+        aria-label="打开导航栏"
+        @click="workspace.openMobileNav()"
+      >
+        菜单
+      </button>
+      <span class="ws-mobile-title">{{ mobileHeading }}</span>
+      <RouterLink
+        class="quiet-button ws-mobile-new-btn"
+        :to="
+          workspace.activeScope
+            ? { path: '/threads', query: { project: workspace.activeScope } }
+            : '/threads'
+        "
+      >
+        新会话
+      </RouterLink>
+    </header>
+
+    <div
+      v-if="workspace.mobileNavOpen"
+      class="ws-backdrop"
+      aria-hidden="true"
+      @click="workspace.closeMobileNav()"
+    />
+
+    <WorkspaceSidebar />
+
+    <main class="ws-main">
+      <RouterView />
+    </main>
+  </div>
+
+  <div v-else class="shell">
     <header class="masthead">
       <RouterLink class="brand" to="/"
         >MiniMew<span class="brand-dot">.</span></RouterLink
       >
-      <nav
-        v-if="auth.status === 'authenticated'"
-        class="workspace-nav"
-        aria-label="主导航"
-      >
-        <RouterLink to="/threads">对话</RouterLink>
-        <RouterLink to="/projects">项目</RouterLink>
-        <RouterLink to="/documents">文档</RouterLink>
-        <RouterLink to="/evaluations">评测</RouterLink>
-        <RouterLink to="/account">账户</RouterLink>
-      </nav>
-      <span v-else class="header-label">我的空间</span>
+      <span class="header-label">我的空间</span>
     </header>
     <main>
       <section

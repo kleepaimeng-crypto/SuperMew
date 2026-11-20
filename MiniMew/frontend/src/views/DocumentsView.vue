@@ -5,11 +5,13 @@ import KnowledgeEmbedding from "../components/KnowledgeEmbedding.vue";
 import { activeJob, jobError, jobLabel } from "../documents";
 import { useDocumentsStore } from "../stores/documents";
 import { useAuthStore } from "../stores/auth";
+import { useWorkspaceStore } from "../stores/workspace";
 
 const route = useRoute(),
   router = useRouter(),
   documents = useDocumentsStore(),
-  auth = useAuthStore();
+  auth = useAuthStore(),
+  workspace = useWorkspaceStore();
 const file = ref<File | null>(null),
   fileInput = ref<HTMLInputElement>(),
   rebuilding = ref(false);
@@ -97,10 +99,26 @@ const date = (value: string) => new Date(value).toLocaleString("zh-CN");
 <template>
   <section class="document-workspace" aria-label="文档工作区">
     <aside class="document-sidebar" aria-label="我的文档">
-      <RouterLink v-if="projectId" :to="`/projects/${projectId}`"
-        >返回项目</RouterLink
-      >
+      <div class="doc-scope-banner" role="status">
+        <span class="scope-badge">{{
+          projectId
+            ? `项目知识库 · ${workspace.projectName(projectId)}`
+            : "个人知识库"
+        }}</span>
+        <div class="doc-scope-links">
+          <RouterLink
+            v-if="projectId"
+            class="quiet-link"
+            :to="`/projects/${projectId}`"
+            >返回项目</RouterLink
+          >
+          <RouterLink v-if="projectId" class="quiet-link" to="/documents"
+            >切换个人文档</RouterLink
+          >
+        </div>
+      </div>
       <RouterLink
+        class="quiet-link"
         :to="{
           path: '/documents',
           query: {

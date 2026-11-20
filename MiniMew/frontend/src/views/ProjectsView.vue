@@ -54,7 +54,7 @@ watch(
   },
 );
 void projects.load();
-onBeforeUnmount(() => projects.reset());
+onBeforeUnmount(() => void projects.select(undefined));
 async function create() {
   const id = await projects.create(name.value);
   if (id) {

@@ -2,6 +2,7 @@
 import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import { useChatStore } from "../stores/chat";
 import { useThreadsStore } from "../stores/threads";
+import { useWorkspaceStore } from "../stores/workspace";
 import { terminal } from "../chat";
 import AnswerBody from "./AnswerBody.vue";
 import ToolActivity from "./ToolActivity.vue";
@@ -10,6 +11,7 @@ import RunFailure from "./RunFailure.vue";
 const props = defineProps<{ threadId: string }>();
 const chat = useChatStore();
 const threads = useThreadsStore();
+const workspace = useWorkspaceStore();
 const feed = ref<HTMLElement | null>(null);
 const nearEnd = ref(true);
 watch(
@@ -50,7 +52,10 @@ async function followFeed() {
 
 async function send() {
   nearEnd.value = true;
-  if (await chat.submit()) void threads.loadList(true);
+  if (await chat.submit()) {
+    void threads.loadList(true);
+    void workspace.loadScopeThreads(threads.projectId, true);
+  }
 }
 function enter(event: KeyboardEvent) {
   if (!event.shiftKey && !event.isComposing) {

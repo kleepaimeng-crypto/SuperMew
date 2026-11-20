@@ -19,7 +19,7 @@ async function logout() {
     <span class="eyebrow">我的账户</span>
     <h1>你好，{{ auth.user.username }}。</h1>
     <p>你已登录 MiniMew。</p>
-    <RouterLink class="text-link" to="/threads">进入我的对话 →</RouterLink>
+    <RouterLink class="text-link" to="/threads">进入新会话 →</RouterLink>
     <dl>
       <div>
         <dt>用户名</dt>

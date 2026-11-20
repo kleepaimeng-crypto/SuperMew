@@ -50,6 +50,12 @@ for (const width of [1280, 390]) {
             },
       }),
     );
+    await page.route("**/v1/threads**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
+    await page.route("**/v1/projects**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
     await page.route("**/v1/account/model-settings**", async (route) => {
       const req = route.request(),
         path = new URL(req.url()).pathname;
@@ -178,6 +184,12 @@ test("设置读取失败可重试，未配置密钥存储不能提交", async ({
         : { access_token: "test-token", token_type: "bearer", expires_in: 900 },
     }),
   );
+  await page.route("**/v1/threads**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
+  await page.route("**/v1/projects**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
   await page.route("**/v1/account/model-settings**", (route) =>
     route.fulfill({
       status: failed ? 503 : 200,
@@ -197,7 +209,9 @@ test("设置读取失败可重试，未配置密钥存储不能提交", async ({
     }),
   );
   await page.goto("/account");
-  await expect(page.getByRole("alert")).toContainText("模型设置加载失败");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "模型设置加载失败",
+  );
   await page.screenshot({
     path: "../.impeccable/review/account-models/load-error.png",
     fullPage: true,

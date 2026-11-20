@@ -144,7 +144,9 @@ const date = (v: string) => new Date(v).toLocaleString("zh-CN");
       <button class="primary" :disabled="store.busy" @click="fresh">
         新建实验
       </button>
-      <p class="evaluation-note">真实本地检索 · 受控生成与评分</p>
+      <p class="evaluation-note">
+        全局评测工作台 · 真实本地检索 · 受控生成与评分（不随左侧项目切换范围）
+      </p>
       <nav aria-label="实验历史" class="evaluation-history">
         <RouterLink
           v-for="item in store.jobs"
