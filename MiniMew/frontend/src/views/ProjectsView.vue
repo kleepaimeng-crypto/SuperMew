@@ -67,157 +67,164 @@ async function save() {
 }
 </script>
 <template>
-  <section class="project-workspace" aria-label="项目工作区">
-    <aside class="project-directory">
-      <h1>项目</h1>
-      <p>每个项目有自己的对话、文档和手工记忆。</p>
-      <form @submit.prevent="create">
-        <label for="project-name">新项目名称</label
-        ><input
-          id="project-name"
-          v-model="name"
-          maxlength="100"
-          required
-          :disabled="projects.busy"
-        /><button class="primary" :disabled="projects.busy || !name.trim()">
-          新建项目
-        </button>
-      </form>
-      <nav aria-label="我的项目">
-        <RouterLink
-          v-for="project in projects.items"
-          :key="project.id"
-          :to="`/projects/${project.id}`"
-          :aria-current="id === project.id ? 'page' : undefined"
-          >{{ project.name }}</RouterLink
+  <section class="page-container" aria-label="项目工作区">
+    <header class="page-header">
+      <div class="page-header-left">
+        <h1>项目</h1>
+        <p class="page-header-sub">每个项目有自己的对话、文档和手工记忆。</p>
+      </div>
+      <div class="page-header-actions">
+        <button
+          class="secondary"
+          :disabled="projects.loading"
+          @click="projects.load()"
         >
-      </nav>
-      <p v-if="!projects.items.length && !projects.loading">还没有项目。</p>
-      <button
-        v-if="projects.nextOffset !== null"
-        :disabled="projects.loading"
-        @click="projects.load(true)"
-      >
-        更多项目</button
-      ><button class="quiet-button" @click="projects.load()">刷新项目</button>
-    </aside>
-    <div class="project-content">
-      <div v-if="projects.error" role="alert" class="project-error">
-        <p>{{ projects.error }}</p>
-        <button @click="id ? projects.select(id) : projects.load()">
-          重新加载
+          刷新项目
         </button>
       </div>
-      <template v-if="projects.selected">
-        <h2>{{ projects.selected.name }}</h2>
-        <div class="project-links">
-          <RouterLink :to="{ path: '/threads', query: { project: id } }"
-            >打开项目对话</RouterLink
-          ><RouterLink :to="{ path: '/documents', query: { project: id } }"
-            >管理项目文档</RouterLink
+    </header>
+
+    <div class="page-split-grid">
+      <aside class="panel-card-subtle project-directory">
+        <form @submit.prevent="create">
+          <label for="project-name">新项目名称</label
+          ><input
+            id="project-name"
+            v-model="name"
+            maxlength="100"
+            required
+            placeholder="输入项目名称"
+            :disabled="projects.busy"
+          /><button class="primary" :disabled="projects.busy || !name.trim()">
+            新建项目
+          </button>
+        </form>
+        <nav aria-label="我的项目">
+          <RouterLink
+            v-for="project in projects.items"
+            :key="project.id"
+            :to="`/projects/${project.id}`"
+            :aria-current="id === project.id ? 'page' : undefined"
+            >{{ project.name }}</RouterLink
           >
+        </nav>
+        <p v-if="!projects.items.length && !projects.loading" class="muted">
+          还没有项目。
+        </p>
+        <button
+          v-if="projects.nextOffset !== null"
+          class="load-more"
+          :disabled="projects.loading"
+          @click="projects.load(true)"
+        >
+          更多项目
+        </button>
+      </aside>
+      <div class="panel-card project-content">
+        <div v-if="projects.error" role="alert" class="project-error">
+          <p>{{ projects.error }}</p>
+          <button @click="id ? projects.select(id) : projects.load()">
+            重新加载
+          </button>
         </div>
-        <section class="project-memories" aria-label="项目记忆">
-          <h3>项目记忆</h3>
-          <p>
-            由你明确保存，同项目的新对话可以读取。修改不影响已开始的执行；文档下线不会自动删除你保存的记忆。
-          </p>
-          <p class="project-note">
-            最多启用20条，每条不超过500字符。每轮固定本次采用的内容与版本，不自动提取聊天。
-          </p>
-          <form @submit.prevent="save">
-            <label for="memory-content">保存重要信息</label
-            ><textarea
-              id="memory-content"
-              v-model="content"
-              maxlength="500"
-              rows="3"
-              required
-              :disabled="projects.busy"
-              placeholder="例如：实验只使用2024年以前的数据。"
-            ></textarea
-            ><button
-              class="primary"
-              :disabled="projects.busy || !content.trim()"
+        <template v-if="projects.selected">
+          <h2>{{ projects.selected.name }}</h2>
+          <div class="project-links">
+            <RouterLink :to="{ path: '/threads', query: { project: id } }"
+              >打开项目对话</RouterLink
+            ><RouterLink :to="{ path: '/documents', query: { project: id } }"
+              >管理项目文档</RouterLink
             >
-              保存项目记忆
-            </button>
-          </form>
-          <p v-if="!projects.memories.length">暂未保存记忆。</p>
-          <form
-            v-for="memory in projects.memories"
-            :key="memory.id"
-            class="memory-item"
-            @submit.prevent="
-              projects.save(
-                drafts[memory.id]!.content,
-                memory,
-                drafts[memory.id]!.enabled,
-              )
-            "
-          >
-            <template v-if="drafts[memory.id]"
-              ><label :for="`memory-${memory.id}`"
-                >手工记忆 · 版本 {{ memory.revision }}</label
+          </div>
+          <section class="project-memories" aria-label="项目记忆">
+            <h3>项目记忆</h3>
+            <p>
+              由你明确保存，同项目的新对话可以读取。修改不影响已开始的执行；文档下线不会自动删除你保存的记忆。
+            </p>
+            <p class="project-note">
+              最多启用20条，每条不超过500字符。每轮固定本次采用的内容与版本，不自动提取聊天。
+            </p>
+            <form @submit.prevent="save">
+              <label for="memory-content">保存重要信息</label
               ><textarea
-                :id="`memory-${memory.id}`"
-                v-model="drafts[memory.id]!.content"
+                id="memory-content"
+                v-model="content"
                 maxlength="500"
                 rows="3"
                 required
                 :disabled="projects.busy"
+                placeholder="例如：实验只使用2024年以前的数据。"
               ></textarea
-              ><label class="memory-toggle"
-                ><input
-                  v-model="drafts[memory.id]!.enabled"
-                  type="checkbox"
-                  :disabled="projects.busy"
-                />用于后续对话</label
+              ><button
+                class="primary"
+                :disabled="projects.busy || !content.trim()"
               >
-              <div class="memory-actions">
-                <button :disabled="projects.busy">保存修改</button
-                ><button
-                  type="button"
-                  :disabled="projects.busy"
-                  @click="confirmRemove(memory)"
-                >
-                  删除记忆
-                </button>
-              </div></template
+                保存项目记忆
+              </button>
+            </form>
+            <p v-if="!projects.memories.length">暂未保存记忆。</p>
+            <form
+              v-for="memory in projects.memories"
+              :key="memory.id"
+              class="memory-item"
+              @submit.prevent="
+                projects.save(
+                  drafts[memory.id]!.content,
+                  memory,
+                  drafts[memory.id]!.enabled,
+                )
+              "
             >
-          </form>
-        </section>
-      </template>
-      <template v-else-if="!id"
-        ><h2>为一项工作建立独立空间</h2>
-        <p>
-          项目内的多段对话共用这个项目的资料和记忆。普通对话继续使用原来的个人知识库。
-        </p>
-        <RouterLink to="/threads">进入普通对话</RouterLink></template
-      >
-      <p v-else-if="!projects.error" role="status">正在读取项目…</p>
+              <template v-if="drafts[memory.id]"
+                ><label :for="`memory-${memory.id}`"
+                  >手工记忆 · 版本 {{ memory.revision }}</label
+                ><textarea
+                  :id="`memory-${memory.id}`"
+                  v-model="drafts[memory.id]!.content"
+                  maxlength="500"
+                  rows="3"
+                  required
+                  :disabled="projects.busy"
+                ></textarea
+                ><label class="memory-toggle"
+                  ><input
+                    v-model="drafts[memory.id]!.enabled"
+                    type="checkbox"
+                    :disabled="projects.busy"
+                  />用于后续对话</label
+                >
+                <div class="memory-actions">
+                  <button :disabled="projects.busy">保存修改</button
+                  ><button
+                    type="button"
+                    :disabled="projects.busy"
+                    @click="confirmRemove(memory)"
+                  >
+                    删除记忆
+                  </button>
+                </div></template
+              >
+            </form>
+          </section>
+        </template>
+        <template v-else-if="!id"
+          ><h2>为一项工作建立独立空间</h2>
+          <p>
+            项目内的多段对话共用这个项目的资料和记忆。普通对话继续使用原来的个人知识库。
+          </p>
+          <RouterLink to="/threads">进入普通对话</RouterLink></template
+        >
+        <p v-else-if="!projects.error" role="status">正在读取项目…</p>
+      </div>
     </div>
   </section>
 </template>
 <style scoped>
-.project-workspace {
-  display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
-  gap: 28px;
-  width: 100%;
-  min-height: 100%;
-  padding: 24px 28px;
-}
 .project-directory {
-  padding-right: 22px;
-  border-right: 1px solid var(--border);
   min-width: 0;
 }
-h1 {
-  font-size: 20px;
-}
 h2 {
-  font-size: 22px;
+  font-size: 20px;
   overflow-wrap: anywhere;
 }
 h3 {

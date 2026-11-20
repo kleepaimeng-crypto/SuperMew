@@ -475,47 +475,118 @@ button:disabled {
   margin-top: 16px;
 }
 
-/* ===== 账户页 ===== */
-.account-page {
-  max-width: 780px;
+/* ===== 账户页与二级页面统一卡片容器 ===== */
+.page-container {
+  max-width: 1180px;
   width: 100%;
   margin: 0 auto;
-  padding: 28px 32px 48px;
+  padding: 32px 36px 56px;
 }
 
-.account-page h1 {
-  margin-top: 6px;
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.page-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.page-header-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-header h1 {
+  font-size: 24px;
+  margin: 0;
+}
+
+.page-header-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-muted);
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-split-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.panel-card {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px 28px;
+  box-shadow: var(--shadow-xs);
+  min-width: 0;
+}
+
+.panel-card-subtle {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  min-width: 0;
+}
+
+.account-page {
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 36px 36px 56px;
+}
+
+.account-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .account-page dl {
-  margin: 20px 0 24px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 4px 18px;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
 }
 
 .account-page dl div {
   display: flex;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.account-page dl div:last-child {
-  border-bottom: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 0;
 }
 
 .account-page dt {
-  width: 120px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ink-muted);
 }
 
 .account-page dd {
   margin: 0;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 550;
   color: var(--ink);
   overflow-wrap: anywhere;
 }
@@ -523,7 +594,7 @@ button:disabled {
 /* ===== 已登录工作区外壳（白色 + 淡蓝） ===== */
 .app-workspace-shell {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   height: 100svh;
   overflow: hidden;
   background: var(--bg-canvas);
@@ -554,11 +625,11 @@ button:disabled {
 }
 
 .ws-brand {
-  font-size: 19px;
+  font-size: 21px;
 }
 
 .ws-primary-action {
-  padding: 0 12px 12px;
+  padding: 0 14px 14px;
 }
 
 .ws-new-chat-btn {
@@ -567,10 +638,10 @@ button:disabled {
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  height: 38px;
-  padding: 0 12px;
+  height: 42px;
+  padding: 0 14px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 550;
   background: var(--accent);
   color: #ffffff;
@@ -610,10 +681,10 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  height: 34px;
-  padding: 0 10px;
+  height: 38px;
+  padding: 0 12px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--ink-secondary);
   transition:
@@ -743,9 +814,12 @@ button:disabled {
 }
 
 .ws-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 26px;
   padding: 0 7px;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 6px;
   flex-shrink: 0;
 }
@@ -1037,17 +1111,17 @@ button:disabled {
   gap: 6px;
 }
 
-/* ===== 新会话居中主区域 ===== */
+/* ===== 新会话居中主区域（放大舒适比例） ===== */
 .new-chat-stage {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 24px 56px;
+  padding: 32px 28px 64px;
   background:
     radial-gradient(
-      680px 300px at 50% 18%,
-      rgba(59, 130, 246, 0.06),
+      760px 340px at 50% 18%,
+      rgba(59, 130, 246, 0.065),
       transparent 70%
     ),
     var(--bg-canvas);
@@ -1055,13 +1129,13 @@ button:disabled {
 
 .new-chat-card {
   width: 100%;
-  max-width: 740px;
+  max-width: 840px;
   animation: appear 0.2s ease-out;
 }
 
 .new-chat-header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
 
 .new-chat-scope-row {
@@ -1069,21 +1143,21 @@ button:disabled {
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .new-chat-header h1 {
-  font-size: clamp(24px, 3vw, 30px);
+  font-size: clamp(28px, 3.2vw, 38px);
   font-weight: 650;
   letter-spacing: -0.025em;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   color: var(--ink);
 }
 
 .new-chat-header p {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ink-muted);
 }
 
@@ -1091,8 +1165,8 @@ button:disabled {
 .composer-card {
   background: var(--bg-canvas);
   border: 1px solid #d5e0ee;
-  border-radius: 16px;
-  padding: 14px 16px 12px;
+  border-radius: 18px;
+  padding: 18px 20px 14px;
   box-shadow: var(--shadow-composer);
   transition:
     border-color 0.15s,
@@ -1123,16 +1197,21 @@ button:disabled {
   width: 100%;
   border: 0;
   background: transparent;
-  padding: 2px 2px 8px;
+  padding: 2px 2px 10px;
   margin: 0;
   resize: none;
-  min-height: 54px;
-  max-height: 220px;
-  font-size: 15px;
-  line-height: 1.6;
+  min-height: 84px;
+  max-height: 240px;
+  font-size: 16px;
+  line-height: 1.65;
   color: var(--ink);
   caret-color: var(--accent);
   outline: none;
+}
+
+.chat-composer-dock .composer-card textarea {
+  min-height: 60px;
+  font-size: 15px;
 }
 
 .composer-card textarea[readonly] {
@@ -1145,7 +1224,7 @@ button:disabled {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  padding-top: 8px;
+  padding-top: 10px;
   border-top: 1px solid #eef2f8;
 }
 
@@ -1165,14 +1244,14 @@ button:disabled {
 
 .composer-skill-select {
   width: auto;
-  max-width: 220px;
-  height: 32px;
-  padding: 0 26px 0 10px;
+  max-width: 240px;
+  height: 36px;
+  padding: 0 28px 0 12px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--bg-subtle);
   color: var(--ink-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -1183,16 +1262,16 @@ button:disabled {
 }
 
 .composer-send-btn {
-  height: 34px;
-  padding: 0 16px;
+  height: 38px;
+  padding: 0 20px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 550;
 }
 
 .composer-footer-note {
-  margin: 10px 4px 0;
-  font-size: 12px;
+  margin: 12px 4px 0;
+  font-size: 13px;
   color: var(--ink-muted);
   text-align: center;
 }
@@ -1225,7 +1304,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 780px;
+  max-width: 840px;
   width: 100%;
   margin: 0 auto;
   padding: 6px 20px 0;
@@ -1243,7 +1322,7 @@ button:disabled {
 }
 
 .message-feed-inner {
-  max-width: 780px;
+  max-width: 840px;
   width: 100%;
   margin: 0 auto;
 }
@@ -1396,7 +1475,7 @@ button:disabled {
 }
 
 .chat-composer-dock-inner {
-  max-width: 780px;
+  max-width: 840px;
   width: 100%;
   margin: 0 auto;
 }
@@ -1497,6 +1576,23 @@ button:disabled {
 
   .account-page {
     padding: 20px 16px 36px;
+  }
+
+  .account-page dl {
+    grid-template-columns: 1fr;
+  }
+
+  .page-container {
+    padding: 18px 16px 36px;
+  }
+
+  .page-split-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .panel-card {
+    padding: 18px 16px;
   }
 
   .user-message {
