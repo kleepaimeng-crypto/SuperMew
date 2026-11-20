@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from check_runtime import temporary_database
 from fastapi.testclient import TestClient
+from fixture_models import MODEL_ENVIRONMENT_KEYS, model_environment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -25,7 +26,7 @@ from minimew.documents.artifacts import read_artifact
 from minimew.execution.messages import ModelTurn, ToolCall
 from minimew.execution.provider import ProviderCompleted
 from minimew.knowledge_runtime import KnowledgeRuntime
-from minimew.model_control import ModelConfiguration, set_current_model
+from minimew.model_control import ModelConfiguration
 from minimew.models import IndexArtifact
 from minimew.settings import Settings
 from minimew.vector_store.adapter import CandidateIndex
@@ -124,6 +125,7 @@ def build_once():
 async def main(malformed_first=False):
     report = {"mode": "real_cpu_milvus_controlled_answer", "paid_model_calls": 0, "passed": False}
     names = (
+        *MODEL_ENVIRONMENT_KEYS,
         "MINIMEW_DB_NAME",
         "MINIMEW_DOCUMENT_UPLOAD_DIR",
         "MINIMEW_KNOWLEDGE_ENABLED",
@@ -153,10 +155,8 @@ async def main(malformed_first=False):
                 engine = create_engine(Settings())
                 sessions = async_sessionmaker(engine, expire_on_commit=False)
                 try:
-                    async with sessions() as session:
-                        await set_current_model(
-                            session,
-                            "owned-knowledge-check",
+                    os.environ.update(
+                        model_environment(
                             ModelConfiguration(
                                 provider="openai_compatible",
                                 model_name="controlled-answer",
@@ -166,7 +166,9 @@ async def main(malformed_first=False):
                                 timeout_seconds=60.0,
                                 thinking={"type": "disabled"},
                             ),
+                            adapter="generic",
                         )
+                    )
                     with TestClient(app_module.create_app()) as client:
                         credentials = {
                             "username": "knowledge_" + uuid4().hex[:16],

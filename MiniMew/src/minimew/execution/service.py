@@ -586,7 +586,7 @@ class RunExecutor:
     ) -> ModelTurn:
         try:
             stream = self.provider.stream(request)
-        except ProviderFailure:
+        except (ProviderFailure, ExecutionStorageUnavailable):
             raise
         except Exception as failure:
             raise ProviderFailure(
@@ -675,7 +675,7 @@ class RunExecutor:
             return None
         except TimeoutError:
             raise ProviderFailure("PROVIDER_TIMEOUT") from None
-        except ProviderFailure:
+        except (ProviderFailure, ExecutionStorageUnavailable):
             raise
         except Exception as failure:
             raise ProviderFailure(

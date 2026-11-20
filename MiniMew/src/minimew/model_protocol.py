@@ -5,7 +5,15 @@ import json
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from minimew.hitl.policy import HitlPolicy
 from minimew.rag.protocol import RagPolicy
@@ -31,6 +39,13 @@ class ModelConfiguration(FrozenModel):
     max_output_tokens: int = Field(ge=1, le=65536)
     timeout_seconds: float = Field(gt=0, le=300)
     thinking: ThinkingPolicy
+
+    @model_serializer(mode="wrap")
+    def legacy_shape(self, handler):
+        payload = handler(self)
+        if self.adapter is None:
+            payload.pop("adapter", None)
+        return payload
 
     @field_validator("base_url")
     @classmethod

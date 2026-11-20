@@ -26,6 +26,7 @@ const adapter = ref("deepseek"),
 const apiKey = ref(""),
   maxTokens = ref(4096),
   timeout = ref(120),
+  temperature = ref(0.2),
   knowledge = ref(true);
 let epoch = 0;
 let controller = new AbortController();
@@ -59,7 +60,8 @@ function parseSettings(value: unknown): Settings {
         typeof m.key_configured !== "boolean" ||
         !Number.isInteger(m.revision) ||
         !Number.isInteger(m.max_output_tokens) ||
-        typeof m.timeout_seconds !== "number",
+        typeof m.timeout_seconds !== "number" ||
+        typeof m.temperature !== "number",
     )
   )
     throw new Error("Invalid model settings");
@@ -99,7 +101,7 @@ async function load() {
   try {
     const [settings, catalog] = await Promise.all([call(), call("/presets")]);
     if (!valid(e)) return;
-    data.value = parseSettings(settings);
+    const parsed = parseSettings(settings);
     if (
       !Array.isArray(catalog) ||
       catalog.some(
@@ -114,6 +116,7 @@ async function load() {
     )
       throw new Error("Invalid model presets");
     presets.value = catalog;
+    data.value = parsed;
     knowledge.value = data.value.knowledge_enabled;
   } catch {
     if (valid(e)) error.value = "模型设置加载失败，请重试。";
@@ -130,6 +133,7 @@ function resetForm() {
   baseUrl.value = "";
   maxTokens.value = 4096;
   timeout.value = 120;
+  temperature.value = 0.2;
 }
 function choosePreset() {
   modelName.value = selectedPreset.value?.models[0] ?? "";
@@ -149,6 +153,7 @@ function open(model?: Model) {
     baseUrl.value = model.base_url;
     maxTokens.value = model.max_output_tokens;
     timeout.value = model.timeout_seconds;
+    temperature.value = model.temperature;
   } else {
     adapter.value = "deepseek";
     choosePreset();
@@ -186,13 +191,17 @@ function save() {
   const body = {
     name:
       name.value.trim() ||
-      `${selectedPreset.value?.name ?? "自定义"} · ${modelName.value}`,
+      `${selectedPreset.value?.name ?? "自定义"} · ${modelName.value}`.slice(
+        0,
+        80,
+      ),
     adapter: adapter.value,
     model_name: modelName.value,
     base_url: baseUrl.value || null,
     api_key: apiKey.value || null,
     max_output_tokens: maxTokens.value,
     timeout_seconds: timeout.value,
+    temperature: temperature.value,
   };
   void mutate(
     () =>
@@ -409,6 +418,18 @@ onBeforeUnmount(() => {
                 使用其他地域或业务空间时，填写与密钥匹配的地址。
               </p></template
             >
+            <template v-if="adapter !== 'kimi'">
+              <label for="model-temperature">Temperature</label>
+              <input
+                id="model-temperature"
+                v-model.number="temperature"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                required
+              />
+            </template>
             <div class="model-numbers">
               <div>
                 <label for="model-tokens">最大输出 Token</label
@@ -502,6 +523,9 @@ h3 {
   font-size: 14px;
   line-height: 1.65;
 }
+.model-list strong {
+  overflow-wrap: anywhere;
+}
 .current-model {
   margin: 24px 0 16px;
   overflow-wrap: anywhere;
@@ -554,6 +578,9 @@ summary:focus-visible {
 }
 .field-hint {
   margin: 6px 0 16px;
+}
+input::placeholder {
+  color: #536c5d;
 }
 .advanced-model {
   margin: 22px 0;

@@ -42,6 +42,26 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 本功能迁移head为`0022`。升级前须使用旧版完成或取消旧pending/running/waiting_input/resume_pending；有这类任务时迁移明确拒绝，不自动取消或补猜Skill。旧终态原样保留，新Run快照不可修改，已有Skill历史时拒绝降级。启用需显式迁移并配套更新API、Index Worker与前端；本次仅隔离库验收，没有升级开发库/重启用户服务。实现/数据流/测试见[9.4实施记录](chapters/09-扩展能力与交付.md#94内置skill工作包实施2026-11-19)。
 
+## 账户模型与能力设置（9.5＋11.1）
+
+账户页可保存多份模型配置并选择当前项。预设提供DeepSeek、Kimi/月之暗面、通义千问/阿里云百炼的常用模型、地址和参数；选择模型后填写API Key。通用配置可自填名称、模型API ID、Base URL和Key，首版使用公网HTTPS OpenAI兼容Chat Completions协议。预设目录核对日期2026-11-19，模型名由服务商解释；本地快照不保证远端别名后的权重不变。Kimi按自身协议处理，界面不添加用户不需要的思考提示；支持关闭的DeepSeek/千问预设默认关闭思考。
+
+Key由服务端认证加密保存，公开读取只显示已保存状态；编辑留空保留原Key，替换Key产生新版本，删除配置会撤销该配置的全部凭据版本。旧Run使用其原模型和私有凭据引用；撤销后不能再用该Key继续调用，也不自动换用新Key或默认模型。账户使用偏好可控制新Run是否使用已有知识检索，不能开启未部署能力或扩大文档权限。
+
+账户未选择个人模型时，聊天默认配置唯一来自`MINIMEW_DEFAULT_MODEL_*`环境设置，默认Key沿用`MINIMEW_DEEPSEEK_API_KEY`；不再读取历史全实例Profile/Assignment作为聊天默认。环境值在应用启动时读取，修改需重新启动配套服务。当前选择修改只影响之后的新Run；原请求幂等重试和HITL恢复不重选配置。
+
+启用前，在MiniMew目录显式初始化本机加密主密钥，再迁移至`0023`并更新前后端/API/Index Worker：
+
+```powershell
+uv sync --dev --locked --all-extras --inexact
+uv run --no-sync python -m minimew.account_models init-key
+uv run --env-file .env --no-sync alembic upgrade head
+```
+
+初始化命令只向本机`.env`写入`MINIMEW_CREDENTIAL_MASTER_KEY`，不打印Key；已有有效值保持不变。此密钥必须独立备份，不能提交Git，也不能在换设备时随机重建来代替旧值，否则原密文无法解密。本包没有自动修改开发库、生成开发主密钥或重启用户服务。主密钥未配置时默认聊天仍可使用，账户Key写入明确拒绝。
+
+0023新增账户配置/选择和私有凭据，Run冻结凭据引用及知识使用偏好。旧Run不重写模型/消息/Journal，仍保留原部署凭据与知识许可语义；有凭据历史或关闭知识能力的事实时拒绝降级，避免丢失授权语义。接口、模块职责、迁移及验收见[本包实施记录](chapters/09-扩展能力与交付.md#95111实施与代码框架2026-11-20)。真实三家收费API未验收；Provider使用内存HTTP传输验证，不把受控结果当真实模型质量。
+
 ## 运行最小后端
 
 需要 Python 3.12、uv 和正在运行的 Docker Desktop（Linux containers）。在 PowerShell 中进入本目录后运行：
@@ -81,7 +101,7 @@ docker compose stop postgres
 docker compose up -d --wait
 ```
 
-`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0022 (head)`。0022增加Run的不可变Skill选择意图和内容快照，旧活动协议须先排空，旧终态不回填；存在Skill历史拒绝降级。0021在同一Journal增量加入有界`process.detail`，补齐阶段、模型用途/尝试、材料缺口/子问题和文档目录摘要；不改写旧`process.step`，存在详情历史时拒绝降级。0020扩展原Journal过程事件与执行/归属guard，过程历史不降级丢弃。0019增加Project、手工记忆、Thread/KB项目归属、文档下线与Run记忆快照；旧数据保留个人模式，存在项目或下线文档时拒绝降级以免丢失隔离/撤销语义。0018增加持久评测Job/Case/Corpus，供独立Evaluation Worker与工作台使用。0017新增本段execution_deadline_at并允许有效owner续短租约；升级会拒绝任何旧协议running，必须先用旧版正常排空。旧终态不补造期限，已提交waiting_input/resume_pending保持可续接，不猜测运行进度。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
+`alembic upgrade head` 是显式迁移命令，API 启动不执行迁移。版本链为 `0001`（空起点）→ `0002`（users、threads）→ `0003`（用户登录凭据）→ `0004`（刷新凭据记录）→ `0005`（runs、messages 与 Thread.last_sequence）→ `0006`（模型配置与不可改写快照）→ `0007`（执行生命周期与 Journal）→ `0008`（正文分片与失败前缀保护）→ `0009`（Event/Outbox 原子保存）→ `0010`（取消请求与取消终态）→ `0011`（个人知识库、文档版本、索引任务与提交映射）。`alembic current` 应显示 `0023 (head)`。0023增加账户模型、加密凭据与Run私有引用，旧Run事实保留，有账户/能力历史时拒绝降级。0022增加Run的不可变Skill选择意图和内容快照，旧活动协议须先排空，旧终态不回填；存在Skill历史拒绝降级。0021在同一Journal增量加入有界`process.detail`，补齐阶段、模型用途/尝试、材料缺口/子问题和文档目录摘要；不改写旧`process.step`，存在详情历史时拒绝降级。0020扩展原Journal过程事件与执行/归属guard，过程历史不降级丢弃。0019增加Project、手工记忆、Thread/KB项目归属、文档下线与Run记忆快照；旧数据保留个人模式，存在项目或下线文档时拒绝降级以免丢失隔离/撤销语义。0018增加持久评测Job/Case/Corpus，供独立Evaluation Worker与工作台使用。0017新增本段execution_deadline_at并允许有效owner续短租约；升级会拒绝任何旧协议running，必须先用旧版正常排空。旧终态不补造期限，已提交waiting_input/resume_pending保持可续接，不猜测运行进度。0016显式拒绝已接收恢复记录的NULL摘要/正文，防止SQL CHECK的三值逻辑放行；不重写已执行0015。0015新增Run私有Checkpoint/一次性恢复接收记录及等待/待恢复状态约束，保留已有Run、消息、引用、快照与Journal；升级后须重启配套API和Worker。0014扩展持久工具观测类型及guard、保留旧Journal；0013新增答案依据快照及Message/Run关联约束，旧消息不补造引用；0012新增不可变索引产物、清理账本和Worker心跳，支持staged重新领取与有界重试；保留0011已有文档和Job。0005 为已有 Thread 增加默认 0 的序号，0006 原样保留历史 Run/消息，不为旧任务补猜模型；0007 保留已有 pending 和消息，不补造旧事件；0008 原样保留消息与事件，允许后续追加正文分片，并保护失败正文与已提交分片一致；0009 为新事件增加同事务通知待办，不改写历史事件或回填历史通知；0010 保留旧 Run/快照/正文/事件/Outbox，旧取消时间为 NULL，并允许未领取就取消。更早版本仍受下述旧用户检查限制。0011 只新增文档域表与约束/trigger，原用户、对话、Run/消息/事件与模型配置原样保留；版本内容和构建快照不可改写，任务领取使用独立 lease/fence。ORM 的 `Base.metadata` 已接入迁移环境，`uv run --env-file .env --no-sync alembic check` 可检查结构漂移。自动生成的迁移仍需人工检查。此异步迁移环境参照 [Alembic 官方说明](https://alembic.sqlalchemy.org/en/latest/cookbook.html#using-asyncio-with-alembic)。
 
 0003 在锁定 users 表后检查旧数据：只要存在无凭据旧用户就拒绝升级，事务回滚保留用户、对话和迁移版本，不生成默认密码。出现 `Existing users require an explicit credential migration plan` 时停止，先明确处理旧账号的方案，不自行删库或清用户。0003 禁止 downgrade，避免静默丢弃登录凭据；有数据的环境需要经过审查的恢复方案。
 
@@ -718,6 +738,8 @@ API 先预留带快照的 pending Run；2.7 的后台调度器自动领取并使
 
 ## 模型配置与快照（2.2）
 
+**历史说明：以下记录2.2的全实例Profile管理。0023后的账户聊天使用上方“账户模型与能力设置”中的账户选择或.env默认；`model_cli set/show`只维护历史Profile，不切换当前聊天。`show-run`仍读取已有Run自己的真实快照。**
+
 `model_profiles` 保存无 Secret 的模型配置和正整数版本；`model_assignments` 保存当前 answer 角色的选择。本阶段只有一个模型角色。迁移只建立空选择，不替用户选择模型；当前配置以 PostgreSQL 为准。配置管理使用本地命令，后续再接管理网页。
 
 用户选择 DeepSeek V4 Flash、关闭深度思考。仓库中的 `model-profile.deepseek-v4-flash.json` 为无密钥配置：
@@ -985,7 +1007,7 @@ uv run --env-file .env --no-sync python scripts/check_notifications.py
 
 入口依赖为 `langchain-deepseek==1.1.1`；锁定 LangChain Core 1.7.4、OpenAI 集成 1.7.3、OpenAI SDK 3.44.0、LangSmith 0.14.17、httpx2 2.16.0。uv 解析时 SDK 从讨论候选 3.42.1 更新至兼容的 3.44.0；既有依赖版本保持。httpx2 供新 SDK 使用，既有 HTTP/测试继续使用 httpx 0.28.1。依据为 [LangChain DeepSeek 集成](https://docs.langchain.com/oss/python/integrations/chat/deepseek) 与 [DeepSeek 流式协议](https://api-docs.deepseek.com/api/create-chat-completion/)。
 
-`DeepSeekProvider` 只接受 `https://api.deepseek.com` 的根路径或 `/v1`（默认 HTTPS 端口），关闭重定向，不继承宿主代理/默认 SDK 身份或外部追踪。快照中 provider 标识仍为 `openai_compatible`，内部采用专用 `ChatDeepSeek`。客户端属于每次调用，忽略 reasoning 元信息；无工具模式要求有效文本和stop结束，工具模式校验完整参数及tool_calls/stop与结果一致后返回模型回合。截断、缺失完成、未声明工具和畸形流均失败，模型回合仍须由执行器消费后持久提交。SDK 自动重试为 0。
+`ChatProvider`是当前唯一Chat Completions适配器，替代旧专用DeepSeek Adapter。预设和通用配置复用相同SDK/流式正文、工具碎片校验和typed错误；按供应商处理思考、固定采样参数和工具续接。通用端点仅允许公网HTTPS/443，连接前核验DNS全部结果并固定本次IP、保留原TLS服务名，不跟随重定向或继承宿主代理/SDK身份/外部追踪。Kimi必要的工具续接信息仅进入有界私有内部消息/Checkpoint，不进入正文、公开过程或业务Message。凭据按同一Run的私有引用读取，存储故障与Provider故障区分；SDK重试为0，由原执行器拥有有界重试与期限。
 
 RunExecutor 最多尝试 2 次；仅暂时性网络/上游错误、尚无已提交正文、原 owner/lease 有效且原预算足够时重试。初始等待 0.5 秒，较长 Retry-After 同样受剩余预算约束；快照、输入、Run 和 owner 不更换。已保存正文后发生故障则失败并保留该前缀；存储故障不触发模型重试。
 

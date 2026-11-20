@@ -56,7 +56,8 @@ for (const width of [1280, 390]) {
       if (path.endsWith("/presets")) return route.fulfill({ json: presets });
       if (req.method() === "GET") return route.fulfill({ json: state });
       if (path.endsWith("/selection")) {
-        Object.assign(state, req.postDataJSON());
+        state.current_model_id = req.postDataJSON().model_id;
+        state.knowledge_enabled = req.postDataJSON().knowledge_enabled;
         return route.fulfill({ status: 204 });
       }
       if (req.method() === "DELETE") {
@@ -108,7 +109,18 @@ for (const width of [1280, 390]) {
       .getByRole("button", { name: "添加模型配置", exact: true })
       .click();
     await page.getByLabel("服务商", { exact: true }).selectOption("generic");
-    await page.getByLabel("模型", { exact: true }).fill("custom-text-agent");
+    expect(
+      await page
+        .getByLabel("模型", { exact: true })
+        .evaluate((el) => getComputedStyle(el, "::placeholder").color),
+    ).toBe("rgb(83, 108, 93)");
+    await page.screenshot({
+      path: `../.impeccable/review/account-models/empty-${width}.png`,
+      fullPage: true,
+    });
+    const customModel =
+      width === 390 ? "custom-" + "a".repeat(193) : "custom-text-agent";
+    await page.getByLabel("模型", { exact: true }).fill(customModel);
     await page.getByLabel("API Key", { exact: true }).fill("fake-custom-key");
     await page
       .getByLabel("Base URL", { exact: true })
@@ -121,6 +133,8 @@ for (const width of [1280, 390]) {
     await expect(
       page.getByText("配置已保存，尚未发起模型调用。"),
     ).toBeVisible();
+    expect(writes.at(-1).model_name).toBe(customModel);
+    expect(writes.at(-1).name.length).toBeLessThanOrEqual(80);
     await page.getByLabel("允许新任务检索当前范围的资料").uncheck();
     await page.getByRole("button", { name: "保存使用设置" }).click();
     await expect(
@@ -184,10 +198,18 @@ test("设置读取失败可重试，未配置密钥存储不能提交", async ({
   );
   await page.goto("/account");
   await expect(page.getByRole("alert")).toContainText("模型设置加载失败");
+  await page.screenshot({
+    path: "../.impeccable/review/account-models/load-error.png",
+    fullPage: true,
+  });
   failed = false;
   await page.getByRole("button", { name: "刷新设置" }).click();
   await expect(page.getByText("密钥存储尚未就绪")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "添加模型配置", exact: true }),
   ).toBeDisabled();
+  await page.screenshot({
+    path: "../.impeccable/review/account-models/storage-unavailable.png",
+    fullPage: true,
+  });
 });

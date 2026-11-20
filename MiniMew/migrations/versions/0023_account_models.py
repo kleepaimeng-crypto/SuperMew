@@ -97,7 +97,11 @@ def upgrade():
 
 def downgrade():
     op.execute("""DO $$ BEGIN IF EXISTS(SELECT 1 FROM model_credentials)
-      OR EXISTS(SELECT 1 FROM runs WHERE NOT knowledge_enabled) THEN
+      OR EXISTS(SELECT 1 FROM runs WHERE NOT knowledge_enabled)
+      OR EXISTS(SELECT 1 FROM account_model_preferences WHERE model_id IS NOT NULL
+        OR NOT knowledge_enabled)
+      OR EXISTS(SELECT 1 FROM runs WHERE
+        model_snapshot_json->'answer'->'configuration' ? 'adapter') THEN
       RAISE EXCEPTION 'Account model history prevents downgrade'; END IF; END $$""")
     op.execute("DROP TRIGGER guard_account_run ON runs")
     op.execute("DROP FUNCTION minimew_guard_account_run()")

@@ -19,6 +19,7 @@ class ModelWrite(AccountModel):
     api_key: SecretStr | None = Field(default=None, max_length=4096)
     max_output_tokens: int = Field(default=4096, ge=1, le=65536)
     timeout_seconds: float = Field(default=120, gt=0, le=300)
+    temperature: float = Field(default=0.2, ge=0, le=2)
 
     def configuration(self):
         item = preset(self.adapter)
@@ -43,7 +44,7 @@ class ModelWrite(AccountModel):
             adapter=self.adapter,
             model_name=self.model_name,
             base_url=address,
-            temperature=1.0 if self.adapter == "kimi" else 0.2,
+            temperature=1.0 if self.adapter == "kimi" else self.temperature,
             max_output_tokens=self.max_output_tokens,
             timeout_seconds=self.timeout_seconds,
             thinking={"type": "native" if self.adapter in {"kimi", "generic"} else "disabled"},
@@ -68,6 +69,7 @@ class ModelView(AccountModel):
     base_url: str
     max_output_tokens: int
     timeout_seconds: float
+    temperature: float
     key_configured: bool
 
 

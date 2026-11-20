@@ -5181,6 +5181,10 @@
             "type": "number",
             "title": "Timeout Seconds"
           },
+          "temperature": {
+            "type": "number",
+            "title": "Temperature"
+          },
           "key_configured": {
             "type": "boolean",
             "title": "Key Configured"
@@ -5197,6 +5201,7 @@
           "base_url",
           "max_output_tokens",
           "timeout_seconds",
+          "temperature",
           "key_configured"
         ],
         "title": "ModelView"
@@ -5261,6 +5266,13 @@
             "exclusiveMinimum": 0.0,
             "title": "Timeout Seconds",
             "default": 120
+          },
+          "temperature": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "default": 0.2
           }
         },
         "additionalProperties": false,

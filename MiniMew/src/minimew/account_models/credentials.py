@@ -6,6 +6,7 @@ from uuid import UUID
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import SecretStr
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from minimew.model_control import ModelConfigurationUnavailable
 
@@ -45,14 +46,19 @@ class CredentialResolver:
     async def __call__(self, owner: UUID, identity: UUID, base_url: str):
         from minimew.models import ModelCredential
 
-        async with self.sessions() as session:
-            item = await session.scalar(
-                select(ModelCredential).where(
-                    ModelCredential.id == identity,
-                    ModelCredential.user_id == owner,
-                    ModelCredential.revoked_at.is_(None),
+        try:
+            async with self.sessions() as session:
+                item = await session.scalar(
+                    select(ModelCredential).where(
+                        ModelCredential.id == identity,
+                        ModelCredential.user_id == owner,
+                        ModelCredential.revoked_at.is_(None),
+                    )
                 )
-            )
-            if item is None:
-                raise ModelConfigurationUnavailable
-            return decrypt(self.settings, item, base_url)
+                if item is None:
+                    raise ModelConfigurationUnavailable
+                return decrypt(self.settings, item, base_url)
+        except SQLAlchemyError:
+            from minimew.execution.control import ExecutionStorageUnavailable
+
+            raise ExecutionStorageUnavailable from None

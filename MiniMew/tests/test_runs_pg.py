@@ -326,18 +326,54 @@ def test_database_constraints_reject_cross_links_and_duplicates(client):
     assert asyncio.run(saved(thread))[1:] == (2, 1, 2)
 
 
+def account_model(client, headers, name, configuration, identity=None):
+    # 0023后聊天从账户项/.env解析；保留原冻结/版本/幂等断言，设置走正式账户接口。
+    from minimew.account_models.schemas import ModelWrite
+    from minimew.model_control import build_snapshot
+
+    data = ModelWrite(
+        name=name,
+        adapter="generic",
+        model_name=configuration.model_name,
+        base_url=configuration.base_url,
+        max_output_tokens=configuration.max_output_tokens,
+        timeout_seconds=configuration.timeout_seconds,
+        temperature=configuration.temperature,
+        api_key=None if identity else "test-account-key",
+    )
+    path = "/v1/account/model-settings/models" + (f"/{identity}" if identity else "")
+    response = client.request(
+        "PUT" if identity else "POST",
+        path,
+        headers=headers,
+        json=data.model_dump(mode="json", exclude={"api_key"})
+        | {"api_key": None if identity else "test-account-key"},
+    )
+    assert response.status_code == (200 if identity else 201)
+    value = response.json()
+    assert (
+        client.put(
+            "/v1/account/model-settings/selection",
+            headers=headers,
+            json=dict(model_id=value["id"], knowledge_enabled=True),
+        ).status_code
+        == 204
+    )
+    return build_snapshot(data.configuration(), UUID(value["id"]), value["revision"])
+
+
 def test_profile_change_freezes_old_run_and_replay_uses_original(client, model_configuration):
     name = "snapshot-" + uuid4().hex
-    original = asyncio.run(configure_model(name, model_configuration))
     headers, thread = account(client)
+    original = account_model(client, headers, name, model_configuration)
     first = submit(client, headers, thread)
     assert first.status_code == 201
     before = asyncio.run(run_snapshot(first.json()["id"]))
     assert before == original
-    changed = model_configuration.model_dump() | {"model_name": "test-model-v2", "temperature": 0.8}
-    from minimew.model_control import ModelConfiguration
-
-    updated = asyncio.run(configure_model(name, ModelConfiguration.model_validate(changed)))
+    changed = model_configuration.model_copy(
+        update={"model_name": "test-model-v2", "temperature": 0.8}
+    )
+    updated = account_model(client, headers, name, changed, original.answer.profile_id)
     assert updated.answer.profile_id == original.answer.profile_id
     assert updated.answer.profile_version == original.answer.profile_version + 1
     assert updated.catalog_hash() != original.catalog_hash()
@@ -347,18 +383,24 @@ def test_profile_change_freezes_old_run_and_replay_uses_original(client, model_c
     second = submit(client, headers, thread, key="next")
     assert second.status_code == 201
     assert asyncio.run(run_snapshot(second.json()["id"])) == updated
-    # 相同配置重复管理提交不产生无意义的新版本。
-    assert asyncio.run(configure_model(name, updated.answer.configuration)) == updated
-    # 公开业务响应不输出私有服务地址或快照正文。
+    assert (
+        account_model(
+            client, headers, name, updated.answer.configuration, updated.answer.profile_id
+        )
+        == updated
+    )
     assert "base_url" not in first.text and "model_snapshot" not in first.text
 
 
-def test_missing_or_invalid_current_config_rolls_back_but_replay_still_works(client):
+def test_missing_or_invalid_current_config_rolls_back_but_replay_still_works(
+    client, model_configuration
+):
     from sqlalchemy import update
 
-    from minimew.models import ModelAssignment, ModelProfile
+    from minimew.models import AccountModelConfiguration
 
     headers, thread = account(client)
+    selected = account_model(client, headers, "invalid-fixture", model_configuration)
     original = submit(client, headers, thread)
     assert original.status_code == 201
     empty_thread = client.post("/v1/threads", json={}, headers=headers).json()["id"]
@@ -367,20 +409,19 @@ def test_missing_or_invalid_current_config_rolls_back_but_replay_still_works(cli
         engine = create_engine(Settings())
         try:
             async with engine.begin() as conn:
-                if missing:
-                    await conn.execute(update(ModelAssignment).values(profile_id=None))
-                else:
-                    await conn.execute(
-                        update(ModelProfile)
-                        .where(
-                            ModelProfile.id == select(ModelAssignment.profile_id).scalar_subquery()
-                        )
-                        .values(configuration={"api_key": "private-test-secret"})
-                    )
+                values = (
+                    {"deleted_at": func.now()}
+                    if missing
+                    else {"configuration": {"api_key": "private-test-secret"}}
+                )
+                await conn.execute(
+                    update(AccountModelConfiguration)
+                    .where(AccountModelConfiguration.id == selected.answer.profile_id)
+                    .values(**values)
+                )
         finally:
             await engine.dispose()
 
-    # 非法持久配置和缺失选择均 fail-closed；不是“没有知识”。
     for missing in [False, True]:
         asyncio.run(invalidate(missing=missing))
         assert submit(client, headers, thread).json() == original.json()
@@ -465,15 +506,18 @@ def test_model_update_failure_rolls_back_configuration_version_and_assignment(
 
 def test_concurrent_model_updates_have_monotonic_versions(client, model_configuration):
     name = "concurrent-" + uuid4().hex
-    initial = asyncio.run(configure_model(name, model_configuration))
+    headers, thread = account(client)
+    initial = account_model(client, headers, name, model_configuration)
     gate = Barrier(2)
 
     def update_model(temperature):
         gate.wait(timeout=5)
-        return asyncio.run(
-            configure_model(
-                name, model_configuration.model_copy(update={"temperature": temperature})
-            )
+        return account_model(
+            client,
+            headers,
+            name,
+            model_configuration.model_copy(update={"temperature": temperature}),
+            initial.answer.profile_id,
         )
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -482,7 +526,6 @@ def test_concurrent_model_updates_have_monotonic_versions(client, model_configur
         initial.answer.profile_version + 1,
         initial.answer.profile_version + 2,
     ]
-    headers, thread = account(client)
     response = submit(client, headers, thread)
     assert response.status_code == 201
     assert asyncio.run(run_snapshot(response.json()["id"])) == max(
@@ -514,7 +557,14 @@ def test_local_management_cli_sets_and_reads_snapshot(client, tmp_path, model_co
     headers, thread = account(client)
     created = submit(client, headers, thread)
     assert created.status_code == 201
-    assert cli("show-run", created.json()["id"]) == first
+    snapshot = asyncio.run(run_snapshot(created.json()["id"]))
+    assert cli("show-run", created.json()["id"]) == {
+        "model_catalog_hash": snapshot.catalog_hash(),
+        "model_snapshot": snapshot.model_dump(mode="json"),
+    }
+    # 历史Profile CLI不再作为账户聊天的默认事实来源。
+    assert snapshot.answer.configuration.model_name == Settings().default_model_name
+    assert snapshot.answer.profile_id != UUID(first["model_snapshot"]["answer"]["profile_id"])
 
 
 def test_config_update_during_reservation_does_not_mix_snapshots(
@@ -522,40 +572,41 @@ def test_config_update_during_reservation_does_not_mix_snapshots(
 ):
     from threading import Event
 
+    import minimew.account_models.service as control
     import minimew.conversations as conversations
-    import minimew.model_control as control
 
     name = "race-" + uuid4().hex
-    before = asyncio.run(configure_model(name, model_configuration))
     headers, thread = account(client)
+    before = account_model(client, headers, name, model_configuration)
     captured, update_started, release = Event(), Event(), Event()
-    original_freeze = conversations.freeze_current_snapshot
-    original_assignment = control.assignment_row
+    original_freeze = conversations.freeze_account
+    original_preference = control.preference
 
-    async def pause_after_freeze(session):
-        snapshot = await original_freeze(session)
+    async def pause_after_freeze(*args, **kwargs):
+        snapshot = await original_freeze(*args, **kwargs)
         captured.set()
         if not await asyncio.to_thread(release.wait, 10):
             raise TimeoutError("test reservation gate")
         return snapshot
 
-    async def observe_update(session, *, shared):
-        if not shared:
+    async def observe_update(*args, **kwargs):
+        if captured.is_set():
             update_started.set()
-        return await original_assignment(session, shared=shared)
+        return await original_preference(*args, **kwargs)
 
     with monkeypatch.context() as patch, ThreadPoolExecutor(max_workers=2) as pool:
-        patch.setattr(conversations, "freeze_current_snapshot", pause_after_freeze)
-        patch.setattr(control, "assignment_row", observe_update)
+        patch.setattr(conversations, "freeze_account", pause_after_freeze)
+        patch.setattr(control, "preference", observe_update)
         request = pool.submit(submit, client, headers, thread)
         try:
             assert captured.wait(5)
             update = pool.submit(
-                lambda: asyncio.run(
-                    configure_model(
-                        name, model_configuration.model_copy(update={"temperature": 0.8})
-                    )
-                )
+                account_model,
+                client,
+                headers,
+                name,
+                model_configuration.model_copy(update={"temperature": 0.8}),
+                before.answer.profile_id,
             )
             assert update_started.wait(5)
         finally:

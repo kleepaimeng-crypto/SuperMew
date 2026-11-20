@@ -224,3 +224,101 @@ def test_kimi_private_continuation_round_trips_without_becoming_public_output(
 
     asyncio.run(scenario())
     assert len(calls) == 2
+
+
+def test_account_knowledge_preference_keeps_skill_resources_and_isolates_runs(model_configuration):
+    from execution_helpers import FakeProvider
+    from test_execution_retry import Repository
+    from test_tools import spec
+
+    from minimew.execution.messages import ModelTurn
+    from minimew.execution.provider import ProviderCompleted
+    from minimew.execution.service import RunExecutor
+    from minimew.execution.tools import ToolRegistry
+    from minimew.skills.catalog import load_skill
+    from minimew.skills.schemas import SkillSelection
+
+    seen = []
+
+    async def answer(data):
+        seen.append({tool.name for tool in data.tools})
+        yield ProviderCompleted(ModelTurn("text", "完成"))
+
+    async def unused(*args):
+        raise AssertionError("A direct answer must not execute tools")
+
+    async def scenario():
+        skill = load_skill(SkillSelection(id="document-qa"))
+        for allowed in [False, True]:
+            data = replace(request(model_configuration), knowledge_enabled=allowed, skill=skill)
+            repo = Repository(data)
+            executor = RunExecutor(
+                repo,
+                FakeProvider(answer),
+                registry=ToolRegistry((replace(spec(unused), name="knowledge_search"),)),
+                capabilities=frozenset({"documents.read"}),
+            )
+            assert await executor.execute(uuid4(), data.thread_id, data.run_id) == "succeeded"
+
+    asyncio.run(scenario())
+    assert seen == [{"read_skill_resource"}, {"knowledge_search", "read_skill_resource"}]
+
+
+def test_credential_storage_failure_remains_storage_error_through_provider_boundary():
+    from sqlalchemy.exc import OperationalError
+
+    from minimew.account_models.credentials import CredentialResolver
+    from minimew.execution.control import ExecutionStorageUnavailable
+    from minimew.execution.service import RunExecutor
+
+    class BrokenSession:
+        async def __aenter__(self):
+            raise OperationalError("select", {}, RuntimeError("offline"))
+
+        async def __aexit__(self, *args):
+            pass
+
+    async def scenario():
+        resolver = CredentialResolver(lambda: BrokenSession(), settings())
+
+        async def stream():
+            await resolver(uuid4(), uuid4(), "https://api.deepseek.com")
+            yield None
+
+        with pytest.raises(ExecutionStorageUnavailable):
+            await RunExecutor._next(stream(), asyncio.get_running_loop().time() + 2)
+
+    asyncio.run(scenario())
+
+
+def test_kimi_without_tools_does_not_retain_unused_private_reasoning(
+    transport, model_configuration
+):
+    config = ModelWrite(name="Kimi", adapter="kimi", model_name="kimi-k3").configuration()
+    data = request(model_configuration)
+    data = replace(
+        data,
+        snapshot=data.snapshot.model_copy(
+            update={"answer": data.snapshot.answer.model_copy(update={"configuration": config})}
+        ),
+    )
+
+    async def response(req):
+        return httpx2.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=wire(
+                chunk(reasoning="private-thought" * 2000), chunk("仅答案"), chunk(finish="stop")
+            ),
+        )
+
+    calls, _ = transport(response)
+
+    async def scenario():
+        result = [e async for e in ChatProvider(SecretStr("test-key")).stream(data)]
+        assert result[-1].turn.content == "仅答案"
+        assert result[-1].turn.reasoning_content is None
+        assert "private-thought" not in repr(result)
+
+    asyncio.run(scenario())
+    assert len(calls) == 1

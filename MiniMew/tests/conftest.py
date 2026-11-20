@@ -5,6 +5,15 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def test_jwt_settings(monkeypatch, tmp_path):
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("MINIMEW_CREDENTIAL_MASTER_KEY", Fernet.generate_key().decode())
+    # 新部署默认来自环境；保持原测试模型/预算，旧Profile管理另有事务测试。
+    monkeypatch.setenv("MINIMEW_DEFAULT_MODEL_NAME", "test-model-v1")
+    monkeypatch.setenv("MINIMEW_DEFAULT_MODEL_BASE_URL", "https://models.example.invalid/v1")
+    monkeypatch.setenv("MINIMEW_DEFAULT_MODEL_ADAPTER", "generic")
+    monkeypatch.setenv("MINIMEW_DEFAULT_MODEL_MAX_TOKENS", "1024")
+    monkeypatch.setenv("MINIMEW_DEFAULT_MODEL_TIMEOUT", "30")
     monkeypatch.setenv("MINIMEW_DIAGNOSTIC_LOG_DIR", str(tmp_path / "logs"))
     # 原生命周期用例保持原事件断言；过程专项显式恢复正式报告器。
     monkeypatch.setattr("minimew.execution.service.ProcessReporter", lambda *args: None)

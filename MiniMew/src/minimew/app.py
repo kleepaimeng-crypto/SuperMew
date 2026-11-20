@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.concurrency import run_in_threadpool
 
 from minimew.api.auth import router as auth_router
-from minimew.api.model_settings import router as model_settings_router
 from minimew.api.documents import UploadLimitMiddleware
 from minimew.api.documents import router as documents_router
 from minimew.api.evaluations import router as evaluations_router
 from minimew.api.health import router as health_router
+from minimew.api.model_settings import router as model_settings_router
 from minimew.api.runs import router as runs_router
 from minimew.api.skills import router as skills_router
 from minimew.api.threads import router as threads_router

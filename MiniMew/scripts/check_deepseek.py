@@ -8,11 +8,10 @@ from uuid import uuid4
 
 import httpx
 from check_runtime import ROOT, temporary_database
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from fixture_models import model_environment
 
 from minimew.app import create_app
-from minimew.database import create_engine
-from minimew.model_control import ModelConfiguration, set_current_model
+from minimew.model_control import ModelConfiguration
 from minimew.settings import Settings
 
 sys.path.insert(0, str(ROOT / "tests"))
@@ -29,13 +28,8 @@ async def main():
         configuration = ModelConfiguration.model_validate_json(
             (ROOT / "model-profile.deepseek-v4-flash.json").read_text(encoding="utf-8")
         ).model_copy(update={"max_output_tokens": 128, "timeout_seconds": 60.0})
-        engine = create_engine(settings.model_copy(update={"db_name": database}))
-        try:
-            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
-                await set_current_model(session, "deepseek-smoke", configuration)
-        finally:
-            await engine.dispose()
         updates = {
+            **model_environment(configuration, adapter="deepseek"),
             "MINIMEW_DB_NAME": database,
             "MINIMEW_NOTIFICATION_TESTS": "1",
             "MINIMEW_JWT_SECRET": "online-smoke-only-" + uuid4().hex,

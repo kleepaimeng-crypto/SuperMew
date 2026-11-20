@@ -1984,6 +1984,8 @@ export interface components {
       max_output_tokens: number;
       /** Timeout Seconds */
       timeout_seconds: number;
+      /** Temperature */
+      temperature: number;
       /** Key Configured */
       key_configured: boolean;
     };
@@ -2012,6 +2014,11 @@ export interface components {
        * @default 120
        */
       timeout_seconds: number;
+      /**
+       * Temperature
+       * @default 0.2
+       */
+      temperature: number;
     };
     /** PresetView */
     PresetView: {

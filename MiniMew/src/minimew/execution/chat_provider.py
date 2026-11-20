@@ -49,13 +49,14 @@ class _AnswerChat(ChatOpenAI):
     _fragments: dict[int, _ToolFragments] = PrivateAttr(default_factory=dict)
     _wire_finished: bool = PrivateAttr(default=False)
     preserve_reasoning: bool = Field(default=False, exclude=True, repr=False)
+    native_parameters: bool = Field(default=False, exclude=True, repr=False)
     _reasoning: str = PrivateAttr(default="")
 
     def _get_request_payload(self, input_, *, stop=None, **kwargs):
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
-        if not self.preserve_reasoning and "max_completion_tokens" in payload:
+        if not self.native_parameters and "max_completion_tokens" in payload:
             payload["max_tokens"] = payload.pop("max_completion_tokens")
-        if self.preserve_reasoning:
+        if self.native_parameters:
             for message, wire in zip(
                 self._convert_input(input_).to_messages(), payload["messages"], strict=True
             ):
@@ -259,7 +260,8 @@ class ChatProvider:
                     **({"response_format": {"type": "json_object"}} if request.json_output else {}),
                 },
                 expected_tools=frozenset(tool.name for tool in request.tools),
-                preserve_reasoning=family == "kimi",
+                native_parameters=family == "kimi",
+                preserve_reasoning=family == "kimi" and bool(request.tools),
             )
             messages = []
             if request.instructions:

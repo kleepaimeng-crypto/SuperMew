@@ -5,9 +5,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from minimew.account_models.service import freeze_account
 from minimew.conversation_schemas import CreateRunRequest, MessagePage, MessageResponse, RunResponse
 from minimew.execution.journal import append_event
-from minimew.account_models.service import freeze_account
 from minimew.models import Message, Run, Thread
 from minimew.skills.catalog import load_skill
 from minimew.skills.schemas import parse_snapshot, summary
@@ -99,6 +99,7 @@ async def reserve_run(
         else:
             # 已有幂等结果优先；凭据是否就绪只影响新的工作。
             from minimew.settings import Settings
+
             snapshot, credential_id, knowledge_enabled = await freeze_account(
                 session, user_id, settings or Settings(), credentials_available
             )

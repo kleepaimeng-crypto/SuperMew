@@ -6,9 +6,9 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from minimew.api.auth import router as auth_router
-from minimew.api.model_settings import router as model_settings_router
 from minimew.api.documents import router as documents_router
 from minimew.api.evaluations import router as evaluations_router
+from minimew.api.model_settings import router as model_settings_router
 from minimew.api.runs import router as runs_router
 from minimew.api.skills import router as skills_router
 from minimew.api.threads import router as threads_router

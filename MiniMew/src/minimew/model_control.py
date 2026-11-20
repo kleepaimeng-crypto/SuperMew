@@ -1,4 +1,4 @@
-"""模型配置的唯一管理入口与无 Secret 快照；不创建模型客户端或执行外部请求。"""
+"""共用无Secret快照及历史Profile维护；账户聊天由account_models解析当前配置。"""
 
 import json
 

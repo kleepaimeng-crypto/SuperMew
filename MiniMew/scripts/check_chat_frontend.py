@@ -12,11 +12,9 @@ from uuid import uuid4
 import httpx
 from check_models import ROOT
 from check_runtime import temporary_database
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from fixture_models import model_environment
 
-from minimew.database import create_engine
-from minimew.model_control import ModelConfiguration, set_current_model
-from minimew.settings import Settings
+from minimew.model_control import ModelConfiguration
 
 
 async def main(tests):
@@ -30,19 +28,13 @@ async def main(tests):
         raise SystemExit("npm is required")
     folder = ROOT / ".artifacts" / f"chat-browser-{uuid4().hex}"
     folder.mkdir(parents=True)
-    settings = Settings()
     async with temporary_database() as database:
-        engine = create_engine(settings.model_copy(update={"db_name": database}))
-        try:
-            async with async_sessionmaker(engine)() as session:
-                config = ModelConfiguration.model_validate_json(
-                    (ROOT / "model-profile.deepseek-v4-flash.json").read_text()
-                ).model_copy(update={"timeout_seconds": 15.0, "max_output_tokens": 128})
-                await set_current_model(session, "browser_fixture", config)
-        finally:
-            await engine.dispose()
+        config = ModelConfiguration.model_validate_json(
+            (ROOT / "model-profile.deepseek-v4-flash.json").read_text()
+        ).model_copy(update={"timeout_seconds": 15.0, "max_output_tokens": 128})
         environment = dict(
             os.environ,
+            **model_environment(config, adapter="deepseek"),
             MINIMEW_DB_NAME=database,
             MINIMEW_INTEGRATION_DB=database,
             MINIMEW_CHAT_BROWSER_TESTS="1",

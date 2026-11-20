@@ -13,12 +13,13 @@ from uuid import uuid4
 import httpx
 from check_models import ROOT
 from check_runtime import temporary_database
+from fixture_models import model_environment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from minimew.database import create_engine
 from minimew.documents.artifacts import read_artifact
-from minimew.model_control import ModelConfiguration, set_current_model
+from minimew.model_control import ModelConfiguration
 from minimew.models import Document, IndexArtifact, IndexJob, IndexWorkerHeartbeat, KnowledgeBase
 from minimew.settings import Settings
 from minimew.vector_store.adapter import CandidateIndex
@@ -85,10 +86,8 @@ async def main():
             engine = create_engine(Settings().model_copy(update={"db_name": database}))
             sessions = async_sessionmaker(engine, expire_on_commit=False)
             if knowledge:
-                async with sessions() as session:
-                    await set_current_model(
-                        session,
-                        "knowledge-browser",
+                environment.update(
+                    model_environment(
                         ModelConfiguration(
                             provider="openai_compatible",
                             model_name="controlled-answer",
@@ -98,7 +97,9 @@ async def main():
                             timeout_seconds=30.0,
                             thinking={"type": "disabled"},
                         ),
+                        adapter="generic",
                     )
+                )
             api = worker = backend = None
             logs = []
             try:

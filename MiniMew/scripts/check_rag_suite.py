@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 from check_knowledge import build_once, offline_notifications
 from check_runtime import temporary_database
 from fastapi.testclient import TestClient
+from fixture_models import MODEL_ENVIRONMENT_KEYS, model_environment
 from rag_cases import (
     ScriptedModel,
     coverage,
@@ -35,7 +36,7 @@ from minimew.execution.service import RunExecutor
 from minimew.execution.tools import ToolContext, ToolRegistry
 from minimew.knowledge import CAPABILITY, KnowledgeService
 from minimew.knowledge_runtime import KnowledgeRuntime
-from minimew.model_control import ModelConfiguration, set_current_model
+from minimew.model_control import ModelConfiguration
 from minimew.models import IndexArtifact, Run
 from minimew.rag.pipeline import RagPipeline
 from minimew.rag.protocol import RagPolicy
@@ -250,6 +251,7 @@ async def main(samples, write_observation=False, write_repair_observation=False)
     destination = ROOT / ".artifacts/rag-suite-check.json"
     destination.parent.mkdir(exist_ok=True)
     names = (
+        *MODEL_ENVIRONMENT_KEYS,
         "MINIMEW_DB_NAME",
         "MINIMEW_DOCUMENT_UPLOAD_DIR",
         "MINIMEW_KNOWLEDGE_ENABLED",
@@ -280,10 +282,8 @@ async def main(samples, write_observation=False, write_repair_observation=False)
                 runtime = KnowledgeRuntime()
                 manifests = []
                 try:
-                    async with sessions() as session:
-                        await set_current_model(
-                            session,
-                            "owned-rag-suite",
+                    os.environ.update(
+                        model_environment(
                             ModelConfiguration(
                                 provider="openai_compatible",
                                 model_name="controlled-no-network",
@@ -293,7 +293,9 @@ async def main(samples, write_observation=False, write_repair_observation=False)
                                 timeout_seconds=60.0,
                                 thinking={"type": "disabled"},
                             ),
+                            adapter="generic",
                         )
+                    )
                     with TestClient(app_module.create_app()) as client:
                         credentials = {
                             "username": "rag_" + uuid4().hex[:16],

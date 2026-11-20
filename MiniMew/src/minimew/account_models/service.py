@@ -62,12 +62,18 @@ async def freeze_account(session, owner, settings, credentials_available=True):
     if item.model_id is None:
         if not credentials_available or not settings.model_credentials_available:
             raise ModelConfigurationUnavailable
-        configuration = default_configuration(settings)
+        try:
+            configuration = default_configuration(settings)
+        except ValueError:
+            raise ModelConfigurationUnavailable from None
         identity = uuid5(NAMESPACE_URL, "minimew:environment:" + configuration.model_dump_json())
         snapshot = build_snapshot(configuration, identity, 1)
         return snapshot, None, item.knowledge_enabled
-    model = await owned(session, owner, item.model_id)
-    configuration = ModelConfiguration.model_validate(model.configuration)
+    try:
+        model = await owned(session, owner, item.model_id)
+        configuration = ModelConfiguration.model_validate(model.configuration)
+    except (ModelNotFound, ValueError):
+        raise ModelConfigurationUnavailable from None
     credential = await session.get(ModelCredential, model.credential_id)
     if credential is None or credential.user_id != owner or credential.revoked_at is not None:
         raise ModelConfigurationUnavailable
@@ -118,6 +124,12 @@ async def write_model(session, owner, data, settings, identity=None):
             )
             session.add(model)
         else:
+            if (
+                model.name == data.name
+                and model.configuration == configuration.model_dump(mode="json")
+                and model.credential_id == credential_id
+            ):
+                return view(model)
             model.revision += 1
             model.name, model.configuration, model.credential_id = (
                 data.name,
@@ -139,6 +151,7 @@ def view(model):
         base_url=c["base_url"],
         max_output_tokens=c["max_output_tokens"],
         timeout_seconds=c["timeout_seconds"],
+        temperature=c["temperature"],
         key_configured=True,
     )
 

@@ -14,6 +14,7 @@ import httpx
 from check_knowledge import build_once, offline_notifications
 from check_runtime import temporary_database
 from fastapi.testclient import TestClient
+from fixture_models import MODEL_ENVIRONMENT_KEYS, model_environment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -21,7 +22,7 @@ import minimew.app as app_module
 from minimew.database import create_engine
 from minimew.documents.artifacts import read_artifact
 from minimew.knowledge_runtime import KnowledgeRuntime
-from minimew.model_control import ModelConfiguration, set_current_model
+from minimew.model_control import ModelConfiguration
 from minimew.models import IndexArtifact
 from minimew.settings import Settings
 from minimew.vector_store.adapter import CandidateIndex
@@ -101,6 +102,7 @@ async def main():
         "mode": "real_pg_cpu_milvus_pause_accept_resume_processes",
     }
     names = [
+        *MODEL_ENVIRONMENT_KEYS,
         "MINIMEW_DB_NAME",
         "MINIMEW_DOCUMENT_UPLOAD_DIR",
         "MINIMEW_KNOWLEDGE_ENABLED",
@@ -138,10 +140,8 @@ async def main():
                 engine = create_engine(Settings())
                 sessions = async_sessionmaker(engine, expire_on_commit=False)
                 try:
-                    async with sessions() as session:
-                        await set_current_model(
-                            session,
-                            "hitl-check",
+                    os.environ.update(
+                        model_environment(
                             ModelConfiguration(
                                 provider="openai_compatible",
                                 model_name="controlled-hitl",
@@ -151,7 +151,9 @@ async def main():
                                 timeout_seconds=60.0,
                                 thinking={"type": "disabled"},
                             ),
+                            adapter="generic",
                         )
+                    )
                     app_module.execution_lifespan = offline_notifications
                     app_module.notification_lifespan = offline_notifications
                     with TestClient(app_module.create_app()) as client:

@@ -93,12 +93,11 @@ class RunDispatcher:
 
 @asynccontextmanager
 async def execution_lifespan(sessions, settings):
+    from minimew.account_models.credentials import CredentialResolver
+    from minimew.execution.chat_provider import ChatProvider
     from minimew.execution.tools import ToolRegistry
     from minimew.knowledge import CAPABILITY
     from minimew.knowledge_runtime import knowledge_lifespan
-
-    from minimew.execution.chat_provider import ChatProvider
-    from minimew.account_models.credentials import CredentialResolver
 
     # 账户凭据可独立于部署默认Key工作；可用性在新Run解析与每次调用时核验。
     provider = ChatProvider(

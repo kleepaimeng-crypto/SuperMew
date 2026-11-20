@@ -44,7 +44,9 @@ def wait_run(browser, headers, thread, run):
 
 def runtime_app(monkeypatch, provider):
     monkeypatch.setattr("minimew.app.execution_lifespan", execution_lifespan)
-    monkeypatch.setattr("minimew.execution.chat_provider.ChatProvider", lambda key, **kwargs: provider)
+    monkeypatch.setattr(
+        "minimew.execution.chat_provider.ChatProvider", lambda key, **kwargs: provider
+    )
     monkeypatch.setenv("MINIMEW_EXECUTION_SCAN_SECONDS", "0.01")
     return create_app()
 
