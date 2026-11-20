@@ -4,6 +4,12 @@
 
 新增记录包含：发现日期/环境、现象与影响、复现条件、错误码及关联任务、根因、修复方法、历史数据处理、验证结果、提交和剩余限制。其他已知问题仅在有具体证据时追加，不把功能规划当Bug。
 
+## BUG-008：数据库升到 0023 后文档 Worker 仍要求升级
+
+- 发现：2026-11-20，Windows 本机。数据库已为 `0023 (head)`，启动文档 Worker 仍退出并提示 `Run MiniMew alembic upgrade head before starting the worker`。
+- 根因与修复：[Worker 启动入口](src/minimew/documents/worker.py)写死了 `0022`。现在比较 Alembic 迁移链的 head 与数据库实际版本，仍拒绝不匹配的数据库，并在退出信息里显示两边的版本。已有 `0023` 数据库可直接重新启动 Worker，无需再次迁移。
+- 验证：用真实本机 PostgreSQL 调用正式启动入口，`0023` 通过检查并到达模型初始化。模拟数据库为 `0022` 时，Worker 在初始化模型前退出并显示实际与预期版本。`pytest -q tests/test_migrations.py` 两项通过，修改文件通过 Ruff lint 与格式检查。启动探测在模型初始化前结束，未加载模型、连接 Milvus 或领取任务。
+
 ## BUG-004：普通 Markdown 长表格使文档构建失败
 
 - 发现：2026-11-18，Windows 本机；状态：**代码已修复、定向验证通过，待本机 API/Worker 重启与网页验收**。

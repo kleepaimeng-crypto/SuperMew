@@ -10,8 +10,12 @@ import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from pathlib import Path
 from uuid import UUID, uuid4
 
+from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import func, text
@@ -327,12 +331,22 @@ class IndexWorker:
 
 async def main(args):
     settings = Settings()
+    alembic_ini = Path(__file__).resolve().parents[3] / "alembic.ini"
+    expected_heads = set(ScriptDirectory.from_config(Config(str(alembic_ini))).get_heads())
     engine = create_engine(settings)
     backend = worker = None
     try:
         async with engine.connect() as connection:
-            if await connection.scalar(text("SELECT version_num FROM alembic_version")) != "0022":
-                raise SystemExit("Run MiniMew alembic upgrade head before starting the worker")
+            database_heads = await connection.run_sync(
+                lambda conn: set(MigrationContext.configure(conn).get_current_heads())
+            )
+            if not expected_heads or database_heads != expected_heads:
+                expected = ", ".join(sorted(expected_heads)) or "none"
+                current = ", ".join(sorted(database_heads)) or "none"
+                raise SystemExit(
+                    f"MiniMew worker schema mismatch: database={current}, code={expected}. "
+                    "Check MiniMew alembic current and alembic heads."
+                )
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         if args.requeue_cleanup:
             await IndexCleanupRepository(sessions).requeue(args.requeue_cleanup)
