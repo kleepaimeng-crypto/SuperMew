@@ -62,6 +62,12 @@ for (const width of [390, 1280]) {
           : { id: "user-a", username: "alice", created_at: time },
       }),
     );
+    await page.route("**/v1/threads**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
+    await page.route("**/v1/projects**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
     await page.route("**/v1/evaluation-jobs**", (route) => {
       const url = new URL(route.request().url()),
         path = url.pathname,
@@ -241,6 +247,12 @@ test("语料服务故障阻止提交，运行故障显示持久错误", async ({
         : { id: "user-a", username: "alice", created_at: time },
     }),
   );
+  await page.route("**/v1/threads**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
+  await page.route("**/v1/projects**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
   await page.route("**/v1/evaluation-jobs**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/corpora"))
@@ -264,7 +276,9 @@ test("语料服务故障阻止提交，运行故障显示持久错误", async ({
     });
   });
   await page.goto("/evaluations");
-  await expect(page.getByRole("alert")).toContainText("服务或连接异常");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "服务或连接异常",
+  );
   await expect(
     page.getByRole("button", { name: "创建并运行", exact: true }),
   ).toBeDisabled();
@@ -272,8 +286,11 @@ test("语料服务故障阻止提交，运行故障显示持久错误", async ({
   await expect(
     page.getByRole("heading", { name: "失败", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText(
-    "EVALUATION_WORKER_FAILED",
-  );
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("alert")
+      .filter({ hasText: "EVALUATION_WORKER_FAILED" }),
+  ).toBeVisible();
   await expect(page.getByRole("region", { name: "评测报告" })).toHaveCount(0);
 });

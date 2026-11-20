@@ -1,175 +1,115 @@
 <script setup lang="ts">
 import { computed, onUnmounted, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { useThreadsStore } from "../stores/threads";
-import { useAuthStore } from "../stores/auth";
+import { useRoute } from "vue-router";
 import ChatPanel from "../components/ChatPanel.vue";
+import NewChatPanel from "../components/NewChatPanel.vue";
+import { useThreadsStore } from "../stores/threads";
+import { scopeKeyFor, useWorkspaceStore } from "../stores/workspace";
 
 const route = useRoute();
-const router = useRouter();
 const threads = useThreadsStore();
-const auth = useAuthStore();
+const workspace = useWorkspaceStore();
+
 const projectId = computed(() =>
   typeof route.query.project === "string" ? route.query.project : null,
-);
-const projectQuery = computed(() =>
-  projectId.value ? { project: projectId.value } : {},
-);
-threads.setProject(projectId.value);
-watch(projectId, (value) => {
-  threads.setProject(value);
-  void threads.loadList(true);
-  if (id.value) void threads.selectThread(id.value);
-});
-const title = computed(
-  () =>
-    threads.items.find((thread) => thread.id === threads.selected?.id)?.title ??
-    threads.selected?.title,
 );
 const id = computed(() =>
   typeof route.params.threadId === "string" ? route.params.threadId : "",
 );
+
+threads.setProject(projectId.value);
+
+watch(projectId, (value) => {
+  threads.setProject(value);
+  if (id.value) void threads.selectThread(id.value);
+});
+
 watch(
   id,
   (value) =>
     value ? void threads.selectThread(value) : threads.clearSelection(),
   { immediate: true },
 );
-if (!threads.loaded) void threads.loadList(true);
+
 onUnmounted(() => threads.clearSelection());
 
-async function create() {
-  const threadId = await threads.createThread();
-  if (threadId)
-    await router.push({
-      path: `/threads/${threadId}`,
-      query: projectQuery.value,
-    });
-}
-async function logout() {
-  try {
-    await auth.logout();
-    await router.replace("/login");
-  } catch {
-    /* 根视图提供退出重试。 */
-  }
-}
+const title = computed(() => {
+  const bucket = workspace.ensureBucket(scopeKeyFor(projectId.value));
+  const selectedId = threads.selected?.id;
+  return (
+    bucket.items.find((thread) => thread.id === selectedId)?.title ??
+    threads.items.find((thread) => thread.id === selectedId)?.title ??
+    threads.selected?.title
+  );
+});
+
+const scopeLabel = computed(() =>
+  projectId.value
+    ? `项目 · ${workspace.projectName(projectId.value)}`
+    : "个人空间",
+);
 </script>
 
 <template>
-  <section class="thread-workspace">
-    <aside class="thread-sidebar" aria-label="对话列表">
-      <div class="sidebar-heading">
-        <h1>{{ projectId ? "项目对话" : "我的对话" }}</h1>
-        <RouterLink v-if="projectId" :to="`/projects/${projectId}`"
-          >返回项目</RouterLink
-        >
-        <button
-          class="quiet-button"
-          :disabled="threads.listLoading"
-          @click="threads.loadList(true)"
-        >
-          刷新列表
-        </button>
-      </div>
-      <button
-        class="primary new-thread"
-        :disabled="threads.creating"
-        @click="create"
+  <section class="thread-stage" aria-label="当前对话">
+    <NewChatPanel v-if="!id" :project-id="projectId" />
+
+    <div v-else-if="threads.detailLoading" class="thread-empty">
+      <span class="spinner" aria-hidden="true"></span>
+      <h2>正在打开对话</h2>
+    </div>
+
+    <div v-else-if="threads.unavailable" class="thread-empty">
+      <span class="eyebrow">无法打开</span>
+      <h2>对话不存在或不可访问</h2>
+      <p>请从左侧选择其他对话，或开始一段新会话。</p>
+      <RouterLink
+        class="text-link"
+        :to="
+          projectId
+            ? { path: '/threads', query: { project: projectId } }
+            : '/threads'
+        "
       >
-        {{ threads.creating ? "正在创建…" : "＋ 新建对话" }}
+        返回新会话 →
+      </RouterLink>
+    </div>
+
+    <div v-else-if="threads.detailError" class="thread-empty">
+      <h2>暂时无法打开对话</h2>
+      <p class="error" role="alert">{{ threads.detailError }}</p>
+      <button class="secondary" @click="threads.selectThread(id)">
+        重试打开对话
       </button>
-      <p v-if="threads.createError" class="error" role="alert">
-        {{ threads.createError }}
-      </p>
-      <div class="thread-list-area">
-        <p v-if="threads.listLoading && !threads.loaded" role="status">
-          正在加载对话…
-        </p>
-        <p
-          v-if="threads.loaded && !threads.items.length && !threads.listLoading"
-          class="muted"
-        >
-          还没有对话，创建第一段吧。
-        </p>
-        <ul class="thread-list">
-          <li v-for="thread in threads.items" :key="thread.id">
-            <RouterLink
-              :to="{ path: `/threads/${thread.id}`, query: projectQuery }"
-              :aria-current="
-                id.toLowerCase() === thread.id.toLowerCase()
-                  ? 'page'
-                  : undefined
-              "
-            >
-              <span class="thread-title">{{
-                thread.title || "未命名对话"
-              }}</span>
-              <time :datetime="thread.created_at">{{
-                new Date(thread.created_at).toLocaleString("zh-CN", {
-                  month: "2-digit",
-                  day: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              }}</time>
-            </RouterLink>
-          </li>
-        </ul>
-        <div v-if="threads.listError" class="list-error">
-          <p class="error" role="alert">{{ threads.listError }}</p>
-          <button class="secondary" @click="threads.loadList(!threads.loaded)">
-            重试加载列表
-          </button>
-        </div>
-        <button
-          v-else-if="threads.nextOffset !== null"
-          class="load-more"
-          :disabled="threads.listLoading"
-          @click="threads.loadList()"
-        >
-          {{ threads.listLoading ? "正在加载…" : "加载更多" }}
-        </button>
-      </div>
-      <div class="sidebar-account">
-        <span>{{ auth.user?.username }}</span
-        ><button class="quiet-button" :disabled="auth.busy" @click="logout">
-          退出登录
-        </button>
-      </div>
-    </aside>
-    <section class="thread-content" aria-label="当前对话">
-      <div v-if="threads.detailLoading" class="thread-empty">
-        <span class="spinner" aria-hidden="true"></span>
-        <h2>正在打开对话</h2>
-      </div>
-      <div v-else-if="threads.unavailable" class="thread-empty">
-        <span class="eyebrow">无法打开</span>
-        <h2>对话不存在或不可访问</h2>
-        <p>请从左侧选择其他对话，或新建一段对话。</p>
-        <RouterLink class="text-link" to="/threads">返回对话列表 →</RouterLink>
-      </div>
-      <div v-else-if="threads.detailError" class="thread-empty">
-        <h2>暂时无法打开对话</h2>
-        <p class="error" role="alert">{{ threads.detailError }}</p>
-        <button class="secondary" @click="threads.selectThread(id)">
-          重试打开对话
-        </button>
-      </div>
-      <template v-else-if="threads.selected">
-        <header class="thread-heading">
+    </div>
+
+    <div v-else-if="threads.selected" class="thread-active">
+      <header class="thread-heading">
+        <div class="thread-heading-left">
           <h2>{{ title || "未命名对话" }}</h2>
-        </header>
-        <ChatPanel
-          :key="threads.selected.id"
-          :thread-id="threads.selected.id"
-        />
-      </template>
-      <div v-else class="thread-empty">
-        <span class="empty-symbol" aria-hidden="true">◇</span>
-        <h2>选择一段对话</h2>
-        <p>从左侧打开已有对话，或创建一段新对话。</p>
-      </div>
-    </section>
+          <span class="scope-badge">{{ scopeLabel }}</span>
+        </div>
+        <div class="thread-heading-actions">
+          <RouterLink
+            v-if="projectId"
+            class="quiet-link"
+            :to="`/projects/${projectId}`"
+          >
+            项目概览
+          </RouterLink>
+          <RouterLink
+            class="quiet-link"
+            :to="
+              projectId
+                ? { path: '/documents', query: { project: projectId } }
+                : '/documents'
+            "
+          >
+            {{ projectId ? "项目文档" : "个人文档" }}
+          </RouterLink>
+        </div>
+      </header>
+      <ChatPanel :key="threads.selected.id" :thread-id="threads.selected.id" />
+    </div>
   </section>
 </template>

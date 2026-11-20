@@ -493,51 +493,57 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .model-settings {
-  margin-top: 40px;
-  padding-top: 28px;
-  border-top: 1px solid #dce3d8;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
 }
 .settings-heading,
 .model-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 .settings-heading {
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 h2 {
-  font-size: 24px;
+  font-size: 18px;
   margin: 0;
 }
 h3 {
-  font-size: 18px;
-  margin: 0 0 16px;
+  font-size: 15px;
+  margin: 0 0 12px;
 }
 .settings-description,
 .field-hint,
 .model-detail {
-  color: #536c5d;
-  font-size: 14px;
-  line-height: 1.65;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 .model-list strong {
   overflow-wrap: anywhere;
+  color: var(--ink);
 }
 .current-model {
-  margin: 24px 0 16px;
+  margin: 16px 0 14px;
+  padding: 10px 14px;
+  background: var(--bg-accent-softer);
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 .model-list {
   list-style: none;
   padding: 0;
-  margin: 0 0 20px;
+  margin: 0 0 16px;
 }
 .model-list li {
-  padding: 18px 0;
-  border-top: 1px solid #dce3d8;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
 }
 .model-detail {
   display: block;
@@ -545,9 +551,11 @@ h3 {
   margin: 4px 0 10px;
 }
 .model-form {
-  margin-top: 28px;
-  padding: 24px 0;
-  border-top: 1px solid #dce3d8;
+  margin-top: 20px;
+  padding: 20px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 fieldset {
   min-width: 0;
@@ -557,73 +565,72 @@ fieldset {
 }
 label {
   display: block;
-  margin: 16px 0 7px;
-  font-size: 14px;
-  font-weight: 600;
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-secondary);
 }
 select {
   width: 100%;
-  min-height: 49px;
-  border: 1px solid #c4cebf;
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: #fcfdf9;
-  color: #294e39;
+  height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--bg-canvas);
+  color: var(--ink);
   font: inherit;
 }
 select:focus-visible,
 summary:focus-visible {
-  outline: 2px solid #3f6a50;
-  outline-offset: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .field-hint {
-  margin: 6px 0 16px;
+  margin: 5px 0 12px;
 }
 input::placeholder {
-  color: #536c5d;
+  color: #64748b;
 }
 .advanced-model {
-  margin: 22px 0;
+  margin: 16px 0;
 }
 summary {
   cursor: pointer;
-  padding: 8px 0;
-  color: #294e39;
+  padding: 6px 0;
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 500;
 }
 .model-numbers {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
 }
 .capability-setting {
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid #dce3d8;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
 }
 .checkbox-label {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 .checkbox-label input {
-  width: 18px;
-  min-height: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   margin: 3px 0 0;
-  accent-color: #294e39;
+  accent-color: var(--accent);
   flex-shrink: 0;
 }
 .delete-model {
-  margin-top: 12px;
-  color: #733f30;
+  margin-top: 10px;
+  color: var(--danger);
   line-height: 1.6;
 }
 .delete-model button {
-  margin-right: 10px;
-}
-button {
-  min-height: 44px;
+  margin-right: 8px;
 }
 @media (max-width: 520px) {
   .model-numbers {

@@ -107,51 +107,54 @@ watch(
 
 <style scoped>
 .answer-section + .answer-section {
-  margin-top: 22px;
+  margin-top: 18px;
 }
 h4 {
   margin: 0;
   font-size: 13px;
-  font-weight: 650;
-  color: #435e4a;
+  font-weight: 600;
+  color: var(--accent-text);
 }
 .answer-text {
-  margin-top: 8px;
+  margin-top: 6px;
   white-space: pre-wrap;
-  line-height: 1.8;
+  line-height: 1.75;
   font-size: 15px;
+  color: var(--ink);
 }
 .answer-context,
 .evidence-location {
-  color: #536552;
+  color: var(--ink-muted);
   font-size: 12px;
   margin: 4px 0 0;
   line-height: 1.6;
 }
 .citation-button {
-  display: inline-block;
-  border: 0;
-  background: #e8eee4;
-  color: #294e39;
-  padding: 2px 5px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--accent-border);
+  background: var(--bg-accent-softer);
+  color: var(--accent-text);
+  padding: 0 6px;
   margin: 0 2px;
-  border-radius: 4px;
-  min-height: 28px;
+  border-radius: 5px;
+  height: 22px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   vertical-align: baseline;
 }
 .citation-button:hover,
 .citation-button[aria-expanded="true"] {
-  background: #d4e2ce;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  background: var(--bg-accent-soft);
+  border-color: var(--accent);
 }
 .evidence-detail {
-  margin-top: 18px;
-  padding: 14px 0;
-  border-top: 1px solid #cdd8c8;
-  border-bottom: 1px solid #cdd8c8;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
 .evidence-heading {
   display: flex;
@@ -161,30 +164,30 @@ h4 {
   gap: 8px;
 }
 blockquote {
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   white-space: pre-wrap;
-  font-size: 14px;
-  line-height: 1.8;
-  color: #202c29;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--ink-secondary);
   overflow-wrap: anywhere;
 }
 .answer-loading,
 .answer-error {
-  color: #536552;
+  color: var(--ink-muted);
   font-size: 12px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 .answer-error {
-  color: #76542f;
+  color: var(--warn);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 @media (pointer: coarse) {
   .citation-button {
-    min-height: 44px;
-    padding: 4px 8px;
+    height: 30px;
+    padding: 0 8px;
   }
 }
 </style>

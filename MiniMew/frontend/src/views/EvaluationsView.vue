@@ -129,498 +129,516 @@ async function fresh() {
 const date = (v: string) => new Date(v).toLocaleString("zh-CN");
 </script>
 <template>
-  <section class="evaluation-workspace" aria-label="评测工作台">
-    <aside class="evaluation-directory">
-      <div class="evaluation-heading">
-        <h1>评测</h1>
+  <section class="page-container" aria-label="评测工作台">
+    <header class="page-header">
+      <div class="page-header-left">
+        <div class="page-header-title-row">
+          <h1>评测</h1>
+          <span class="scope-badge">全局评测工作台</span>
+        </div>
+        <p class="page-header-sub">
+          真实本地检索 ·
+          受控生成与评分（语料与任务跨项目共享，不随左侧项目切换范围）
+        </p>
+      </div>
+      <div class="page-header-actions">
         <button
-          class="quiet-button"
+          class="secondary"
           :disabled="store.loading"
           @click="store.load('jobs')"
         >
           刷新历史
         </button>
-      </div>
-      <button class="primary" :disabled="store.busy" @click="fresh">
-        新建实验
-      </button>
-      <p class="evaluation-note">真实本地检索 · 受控生成与评分</p>
-      <nav aria-label="实验历史" class="evaluation-history">
-        <RouterLink
-          v-for="item in store.jobs"
-          :key="item.job_id"
-          :to="`/evaluations/${item.job_id}`"
-          :aria-current="jobId === item.job_id ? 'page' : undefined"
-        >
-          <strong>{{ item.dataset_id }}</strong
-          ><span
-            >{{ label(item.status)
-            }}<template v-if="item.decision">
-              · {{ label(item.decision) }}</template
-            ></span
-          ><small>{{ date(item.created_at) }}</small>
-        </RouterLink>
-      </nav>
-      <p v-if="!store.jobs.length && !store.loading">还没有评测实验。</p>
-      <button
-        v-if="store.nextJobs !== null"
-        :disabled="store.loading"
-        @click="store.load('jobs', true)"
-      >
-        更多历史
-      </button>
-    </aside>
-    <div class="evaluation-content">
-      <div v-if="store.error" class="evaluation-alert" role="alert">
-        <p>{{ store.error }}</p>
-        <button
-          :disabled="store.busy"
-          @click="jobId ? store.select(jobId) : store.load('corpora')"
-        >
-          重新读取
+        <button class="primary" :disabled="store.busy" @click="fresh">
+          新建实验
         </button>
       </div>
-      <template v-if="!jobId">
-        <header>
-          <h2>用固定案例检查 RAG</h2>
-          <p>选择已准备的资料，运行相同问题，再检查回答与预期的差距。</p>
-        </header>
-        <form @submit.prevent="create">
-          <fieldset :disabled="store.busy || !!store.pending">
-            <legend>1 · 选择语料</legend>
-            <label for="corpus">已准备的评测资料</label>
-            <select id="corpus" v-model="corpus" required>
-              <option value="" disabled>请选择语料</option>
-              <option
-                v-for="item in store.corpora"
-                :key="item.corpus_id"
-                :value="item.corpus_id"
-              >
-                {{ item.source_ids.join("、") }} ·
-                {{ item.corpus_id.slice(0, 8) }} · 有效至
-                {{ date(item.expires_at) }}
-              </option>
-            </select>
-            <p v-if="!store.corpora.length" class="evaluation-note">
-              暂无可用资料。请先通过 CLI 准备评测语料，再刷新目录。
-            </p>
-            <button
-              type="button"
-              class="quiet-button"
-              @click="store.load('corpora')"
-            >
-              刷新语料
-            </button>
-            <button
-              v-if="store.nextCorpora !== null"
-              type="button"
-              @click="store.load('corpora', true)"
-            >
-              更多语料
-            </button>
-          </fieldset>
-          <fieldset :key="uploadKey" :disabled="store.busy || !!store.pending">
-            <legend>2 · 导入案例</legend>
-            <label for="dataset">Dataset · 题目与人工评分标准</label
-            ><input
-              id="dataset"
-              type="file"
-              accept=".json,application/json"
-              @change="choose($event, 'dataset')"
-            />
-            <p v-if="datasetName" class="evaluation-note">
-              已读取 {{ datasetName }}
-            </p>
-            <label for="scenario">Scenario · 受控输出脚本</label
-            ><input
-              id="scenario"
-              type="file"
-              accept=".json,application/json"
-              @change="choose($event, 'scenario')"
-            />
-            <p v-if="scenarioName" class="evaluation-note">
-              已读取 {{ scenarioName }}
-            </p>
-            <p>脚本分别定义策略、回答与评分输出；人工标准只进入评分侧。</p>
-            <p v-if="fileError" class="error" role="alert">{{ fileError }}</p>
-            <details>
-              <summary>受控实验能验证什么？</summary>
-              <p>
-                验证真实检索、执行恢复和报告流程。答案和评分输出来自脚本，通过不代表真实模型的语义质量。引用仍须通过正式答案校验。
-              </p>
-            </details>
-          </fieldset>
-          <fieldset :disabled="store.busy || !!store.pending">
-            <legend>3 · 确认执行预算</legend>
-            <div class="evaluation-budgets">
-              <label
-                >总模型尝试上限<input
-                  v-model.number="limit"
-                  type="number"
-                  min="1"
-                  max="10000"
-                  required
-              /></label>
-              <label
-                >每题执行预算（秒）<input
-                  v-model.number="caseSeconds"
-                  type="number"
-                  min="10"
-                  max="600"
-                  required
-              /></label>
-              <label
-                >实验总期限（秒）<input
-                  v-model.number="jobSeconds"
-                  type="number"
-                  min="30"
-                  max="7200"
-                  required
-              /></label>
-            </div>
-          </fieldset>
-          <div class="evaluation-actions">
-            <button
-              type="button"
-              :disabled="!ready || store.busy || !!store.pending"
-              @click="store.validate(body())"
-            >
-              校验输入</button
-            ><button
-              class="primary"
-              :disabled="store.busy || (!store.checked && !store.pending)"
-              type="submit"
-            >
-              {{
-                store.pending
-                  ? "重试原提交"
-                  : store.busy
-                    ? "正在处理…"
-                    : "创建并运行"
-              }}
-            </button>
-          </div>
-          <p v-if="store.checked" role="status">
-            校验通过，可创建受控实验。创建时会再次核验资料与预算。
-          </p>
-        </form>
-      </template>
-      <template v-else-if="store.selected">
-        <header class="evaluation-heading">
-          <div>
-            <h2>
-              {{ label(store.selected.status)
-              }}<span
-                v-if="
-                  store.selected.cancel_requested &&
-                  active(store.selected.status)
-                "
-              >
-                · 取消中</span
-              >
-            </h2>
-            <small>{{ store.selected.job_id }}</small>
-          </div>
-          <button
-            v-if="active(store.selected.status)"
-            :disabled="store.busy || store.selected.cancel_requested"
-            @click="store.cancel"
+    </header>
+
+    <div class="page-split-grid">
+      <aside class="panel-card-subtle evaluation-directory">
+        <h2 class="eval-dir-title">实验历史</h2>
+        <nav aria-label="实验历史" class="evaluation-history">
+          <RouterLink
+            v-for="item in store.jobs"
+            :key="item.job_id"
+            :to="`/evaluations/${item.job_id}`"
+            :aria-current="jobId === item.job_id ? 'page' : undefined"
           >
-            请求取消
-          </button>
-        </header>
-        <p class="evaluation-note">
-          受控实验：真实本地检索，脚本生成与评分。{{
-            active(store.selected.status) ? "页面会定时读取已保存进度。" : ""
-          }}
-        </p>
-        <p
-          v-if="store.selected.error_code"
-          class="evaluation-alert"
-          role="alert"
+            <strong>{{ item.dataset_id }}</strong
+            ><span
+              >{{ label(item.status)
+              }}<template v-if="item.decision">
+                · {{ label(item.decision) }}</template
+              ></span
+            ><small>{{ date(item.created_at) }}</small>
+          </RouterLink>
+        </nav>
+        <p v-if="!store.jobs.length && !store.loading">还没有评测实验。</p>
+        <button
+          v-if="store.nextJobs !== null"
+          :disabled="store.loading"
+          @click="store.load('jobs', true)"
         >
-          执行错误：{{ store.selected.error_code }}
-        </p>
-        <section aria-label="逐题执行" class="evaluation-section">
-          <h3>逐题定位</h3>
-          <p>选择案例查看已保存的答卷、引用与执行情况。</p>
-          <div class="evaluation-case-list">
-            <button
-              v-for="item in store.selected.cases"
-              :key="item.case_id"
-              :aria-pressed="store.caseDetail?.case_id === item.case_id"
-              @click="store.chooseCase(item.case_id)"
-            >
-              {{ item.case_id }} <span>{{ label(item.status) }}</span>
-            </button>
-          </div>
-          <p v-if="store.caseError" role="alert" class="error">
-            {{ store.caseError }}
-          </p>
-          <article v-if="store.caseDetail" class="evaluation-case">
-            <h4>{{ store.caseDetail.question }}</h4>
-            <p>
-              {{ label(store.caseDetail.status) }} · 请求补充：{{
-                store.caseDetail.requested ? "是" : "否"
-              }}
-              · 已接收：{{ store.caseDetail.accepted ? "是" : "否" }} ·
-              已续接：{{ store.caseDetail.resumed ? "是" : "否" }}
-            </p>
-            <p v-if="store.caseDetail.error_code" class="error">
-              执行错误：{{ store.caseDetail.error_code }}
-            </p>
-            <p v-if="store.caseDetail.counts">
-              生成/策略模型尝试 {{ store.caseDetail.counts.model_attempts }} ·
-              检索 {{ store.caseDetail.counts.retrieval_calls }} · 工具
-              {{ store.caseDetail.counts.tool_calls }}
-            </p>
-            <h5>已保存答卷</h5>
-            <pre v-if="store.caseDetail.answer">{{
-              store.caseDetail.answer
-            }}</pre>
-            <p v-else>尚无已保存答卷。</p>
-            <ul v-if="store.caseDetail.materials.length">
-              <li v-for="m in store.caseDetail.materials" :key="m.material_id">
-                [{{ m.material_id }}] {{ m.source_id }} · 字符区间 [{{
-                  m.start
-                }}, {{ m.end }})
-              </li>
-            </ul>
-            <p v-if="store.caseDetail.judge">
-              受控 Judge：正确性 {{ store.caseDetail.judge.correctness }} /
-              完整性 {{ store.caseDetail.judge.completeness }} / 依据性
-              {{ store.caseDetail.judge.grounding }}（各项 0–2）
-            </p>
-            <p v-else>
-              Judge 未评价<span v-if="store.caseDetail.judge_error"
-                >：{{ store.caseDetail.judge_error }}</span
-              >
-            </p>
-          </article>
-        </section>
-        <template v-if="store.report">
-          <section class="evaluation-section" aria-label="比较报告">
-            <h3>报告与 baseline</h3>
-            <p>
-              选择已完成的实验作为参照；指纹不一致时，需要明确允许变化的实验变量。
-            </p>
-            <label for="baseline">参照实验</label
-            ><select id="baseline" v-model="baseline">
-              <option value="">请选择 baseline</option>
-              <option
-                v-for="item in options"
-                :key="item.job_id"
-                :value="item.job_id"
-              >
-                {{ item.dataset_id }} · {{ date(item.created_at) }} ·
-                {{ item.job_id.slice(0, 8) }}
-              </option>
-            </select>
-            <fieldset class="evaluation-variables">
-              <legend>本次允许变化的变量</legend>
-              <label v-for="(name, key) in variables" :key="key"
-                ><input v-model="changes" type="checkbox" :value="key" />{{
-                  name
-                }}</label
-              >
-            </fieldset>
-            <button
-              :disabled="!baseline || store.comparing"
-              @click="store.compare(baseline, changes)"
-            >
-              {{ store.comparing ? "比较中…" : "比较报告" }}
-            </button>
-            <p v-if="store.compareError" class="error" role="alert">
-              {{ store.compareError }}
-            </p>
-          </section>
-          <section
-            v-if="currentReport"
-            class="evaluation-section"
-            aria-label="评测报告"
+          更多历史
+        </button>
+      </aside>
+      <div class="panel-card evaluation-content">
+        <div v-if="store.error" class="evaluation-alert" role="alert">
+          <p>{{ store.error }}</p>
+          <button
+            :disabled="store.busy"
+            @click="jobId ? store.select(jobId) : store.load('corpora')"
           >
-            <h3>
-              {{ store.comparison ? "比较结果" : "实验报告" }} ·
-              {{ label(currentReport.decision) }}
-            </h3>
-            <p>来源：真实本地检索 / 受控生成 / 受控 Judge</p>
-            <p>
-              模型总尝试（含 Judge）：{{ currentReport.total_model_attempts }}
-            </p>
-            <div class="evaluation-table">
-              <table>
-                <caption>
-                  结构指标（不等于答案语义正确性）
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">指标</th>
-                    <th scope="col">结果</th>
-                    <th scope="col">已评价 / 应评价</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="(value, key) in currentReport.structural.report
-                      .quality.metrics"
-                    :key="key"
-                  >
-                    <th scope="row">{{ metrics[key] ?? key }}</th>
-                    <td>{{ value.value === null ? "未评价" : value.value }}</td>
-                    <td>{{ value.evaluated }} / {{ value.eligible }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="evaluation-table">
-              <table>
-                <caption>
-                  受控 Judge（各项 0–2；未评价不补零）
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Case</th>
-                    <th scope="col">正确性</th>
-                    <th scope="col">完整性</th>
-                    <th scope="col">依据性</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="item in currentReport.evaluations"
-                    :key="item.case_id"
-                  >
-                    <th scope="row">{{ item.case_id }}</th>
-                    <td>{{ item.judge?.correctness ?? "未评价" }}</td>
-                    <td>{{ item.judge?.completeness ?? "未评价" }}</td>
-                    <td>{{ item.judge?.grounding ?? "未评价" }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p v-for="d in currentReport.judge_deltas" :key="d.metric">
-              {{ d.metric }}：{{ d.baseline ?? "未评价" }} →
-              {{ d.candidate ?? "未评价" }} · 差值 {{ d.change ?? "不可用" }}
-            </p>
-            <p
-              v-for="d in currentReport.structural.gate.differences"
-              :key="d.field"
-            >
-              实验差异：{{ variables[d.field] }} ·
-              {{ d.permitted ? "允许变化" : "未允许变化" }}
-            </p>
-            <details>
-              <summary>Gate 规则与诊断</summary>
-              <ul>
-                <li
-                  v-for="rule in currentReport.structural.gate.rules"
-                  :key="rule.name"
+            重新读取
+          </button>
+        </div>
+        <template v-if="!jobId">
+          <header>
+            <h2>用固定案例检查 RAG</h2>
+            <p>选择已准备的资料，运行相同问题，再检查回答与预期的差距。</p>
+          </header>
+          <form @submit.prevent="create">
+            <fieldset :disabled="store.busy || !!store.pending">
+              <legend>1 · 选择语料</legend>
+              <label for="corpus">已准备的评测资料</label>
+              <select id="corpus" v-model="corpus" required>
+                <option value="" disabled>请选择语料</option>
+                <option
+                  v-for="item in store.corpora"
+                  :key="item.corpus_id"
+                  :value="item.corpus_id"
                 >
-                  [{{ rule.status }}] {{ rule.name }}：期望
-                  {{ rule.expected }}，实际 {{ rule.actual }}
+                  {{ item.source_ids.join("、") }} ·
+                  {{ item.corpus_id.slice(0, 8) }} · 有效至
+                  {{ date(item.expires_at) }}
+                </option>
+              </select>
+              <p v-if="!store.corpora.length" class="evaluation-note">
+                暂无可用资料。请先通过 CLI 准备评测语料，再刷新目录。
+              </p>
+              <button
+                type="button"
+                class="quiet-button"
+                @click="store.load('corpora')"
+              >
+                刷新语料
+              </button>
+              <button
+                v-if="store.nextCorpora !== null"
+                type="button"
+                @click="store.load('corpora', true)"
+              >
+                更多语料
+              </button>
+            </fieldset>
+            <fieldset
+              :key="uploadKey"
+              :disabled="store.busy || !!store.pending"
+            >
+              <legend>2 · 导入案例</legend>
+              <label for="dataset">Dataset · 题目与人工评分标准</label
+              ><input
+                id="dataset"
+                type="file"
+                accept=".json,application/json"
+                @change="choose($event, 'dataset')"
+              />
+              <p v-if="datasetName" class="evaluation-note">
+                已读取 {{ datasetName }}
+              </p>
+              <label for="scenario">Scenario · 受控输出脚本</label
+              ><input
+                id="scenario"
+                type="file"
+                accept=".json,application/json"
+                @change="choose($event, 'scenario')"
+              />
+              <p v-if="scenarioName" class="evaluation-note">
+                已读取 {{ scenarioName }}
+              </p>
+              <p>脚本分别定义策略、回答与评分输出；人工标准只进入评分侧。</p>
+              <p v-if="fileError" class="error" role="alert">{{ fileError }}</p>
+              <details>
+                <summary>受控实验能验证什么？</summary>
+                <p>
+                  验证真实检索、执行恢复和报告流程。答案和评分输出来自脚本，通过不代表真实模型的语义质量。引用仍须通过正式答案校验。
+                </p>
+              </details>
+            </fieldset>
+            <fieldset :disabled="store.busy || !!store.pending">
+              <legend>3 · 确认执行预算</legend>
+              <div class="evaluation-budgets">
+                <label
+                  >总模型尝试上限<input
+                    v-model.number="limit"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    required
+                /></label>
+                <label
+                  >每题执行预算（秒）<input
+                    v-model.number="caseSeconds"
+                    type="number"
+                    min="10"
+                    max="600"
+                    required
+                /></label>
+                <label
+                  >实验总期限（秒）<input
+                    v-model.number="jobSeconds"
+                    type="number"
+                    min="30"
+                    max="7200"
+                    required
+                /></label>
+              </div>
+            </fieldset>
+            <div class="evaluation-actions">
+              <button
+                type="button"
+                :disabled="!ready || store.busy || !!store.pending"
+                @click="store.validate(body())"
+              >
+                校验输入</button
+              ><button
+                class="primary"
+                :disabled="store.busy || (!store.checked && !store.pending)"
+                type="submit"
+              >
+                {{
+                  store.pending
+                    ? "重试原提交"
+                    : store.busy
+                      ? "正在处理…"
+                      : "创建并运行"
+                }}
+              </button>
+            </div>
+            <p v-if="store.checked" role="status">
+              校验通过，可创建受控实验。创建时会再次核验资料与预算。
+            </p>
+          </form>
+        </template>
+        <template v-else-if="store.selected">
+          <header class="evaluation-heading">
+            <div>
+              <h2>
+                {{ label(store.selected.status)
+                }}<span
+                  v-if="
+                    store.selected.cancel_requested &&
+                    active(store.selected.status)
+                  "
+                >
+                  · 取消中</span
+                >
+              </h2>
+              <small>{{ store.selected.job_id }}</small>
+            </div>
+            <button
+              v-if="active(store.selected.status)"
+              :disabled="store.busy || store.selected.cancel_requested"
+              @click="store.cancel"
+            >
+              请求取消
+            </button>
+          </header>
+          <p class="evaluation-note">
+            受控实验：真实本地检索，脚本生成与评分。{{
+              active(store.selected.status) ? "页面会定时读取已保存进度。" : ""
+            }}
+          </p>
+          <p
+            v-if="store.selected.error_code"
+            class="evaluation-alert"
+            role="alert"
+          >
+            执行错误：{{ store.selected.error_code }}
+          </p>
+          <section aria-label="逐题执行" class="evaluation-section">
+            <h3>逐题定位</h3>
+            <p>选择案例查看已保存的答卷、引用与执行情况。</p>
+            <div class="evaluation-case-list">
+              <button
+                v-for="item in store.selected.cases"
+                :key="item.case_id"
+                :aria-pressed="store.caseDetail?.case_id === item.case_id"
+                @click="store.chooseCase(item.case_id)"
+              >
+                {{ item.case_id }} <span>{{ label(item.status) }}</span>
+              </button>
+            </div>
+            <p v-if="store.caseError" role="alert" class="error">
+              {{ store.caseError }}
+            </p>
+            <article v-if="store.caseDetail" class="evaluation-case">
+              <h4>{{ store.caseDetail.question }}</h4>
+              <p>
+                {{ label(store.caseDetail.status) }} · 请求补充：{{
+                  store.caseDetail.requested ? "是" : "否"
+                }}
+                · 已接收：{{ store.caseDetail.accepted ? "是" : "否" }} ·
+                已续接：{{ store.caseDetail.resumed ? "是" : "否" }}
+              </p>
+              <p v-if="store.caseDetail.error_code" class="error">
+                执行错误：{{ store.caseDetail.error_code }}
+              </p>
+              <p v-if="store.caseDetail.counts">
+                生成/策略模型尝试 {{ store.caseDetail.counts.model_attempts }} ·
+                检索 {{ store.caseDetail.counts.retrieval_calls }} · 工具
+                {{ store.caseDetail.counts.tool_calls }}
+              </p>
+              <h5>已保存答卷</h5>
+              <pre v-if="store.caseDetail.answer">{{
+                store.caseDetail.answer
+              }}</pre>
+              <p v-else>尚无已保存答卷。</p>
+              <ul v-if="store.caseDetail.materials.length">
+                <li
+                  v-for="m in store.caseDetail.materials"
+                  :key="m.material_id"
+                >
+                  [{{ m.material_id }}] {{ m.source_id }} · 字符区间 [{{
+                    m.start
+                  }}, {{ m.end }})
                 </li>
               </ul>
-            </details>
+              <p v-if="store.caseDetail.judge">
+                受控 Judge：正确性 {{ store.caseDetail.judge.correctness }} /
+                完整性 {{ store.caseDetail.judge.completeness }} / 依据性
+                {{ store.caseDetail.judge.grounding }}（各项 0–2）
+              </p>
+              <p v-else>
+                Judge 未评价<span v-if="store.caseDetail.judge_error"
+                  >：{{ store.caseDetail.judge_error }}</span
+                >
+              </p>
+            </article>
           </section>
+          <template v-if="store.report">
+            <section class="evaluation-section" aria-label="比较报告">
+              <h3>报告与 baseline</h3>
+              <p>
+                选择已完成的实验作为参照；指纹不一致时，需要明确允许变化的实验变量。
+              </p>
+              <label for="baseline">参照实验</label
+              ><select id="baseline" v-model="baseline">
+                <option value="">请选择 baseline</option>
+                <option
+                  v-for="item in options"
+                  :key="item.job_id"
+                  :value="item.job_id"
+                >
+                  {{ item.dataset_id }} · {{ date(item.created_at) }} ·
+                  {{ item.job_id.slice(0, 8) }}
+                </option>
+              </select>
+              <fieldset class="evaluation-variables">
+                <legend>本次允许变化的变量</legend>
+                <label v-for="(name, key) in variables" :key="key"
+                  ><input v-model="changes" type="checkbox" :value="key" />{{
+                    name
+                  }}</label
+                >
+              </fieldset>
+              <button
+                :disabled="!baseline || store.comparing"
+                @click="store.compare(baseline, changes)"
+              >
+                {{ store.comparing ? "比较中…" : "比较报告" }}
+              </button>
+              <p v-if="store.compareError" class="error" role="alert">
+                {{ store.compareError }}
+              </p>
+            </section>
+            <section
+              v-if="currentReport"
+              class="evaluation-section"
+              aria-label="评测报告"
+            >
+              <h3>
+                {{ store.comparison ? "比较结果" : "实验报告" }} ·
+                {{ label(currentReport.decision) }}
+              </h3>
+              <p>来源：真实本地检索 / 受控生成 / 受控 Judge</p>
+              <p>
+                模型总尝试（含 Judge）：{{ currentReport.total_model_attempts }}
+              </p>
+              <div class="evaluation-table">
+                <table>
+                  <caption>
+                    结构指标（不等于答案语义正确性）
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">指标</th>
+                      <th scope="col">结果</th>
+                      <th scope="col">已评价 / 应评价</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(value, key) in currentReport.structural.report
+                        .quality.metrics"
+                      :key="key"
+                    >
+                      <th scope="row">{{ metrics[key] ?? key }}</th>
+                      <td>
+                        {{ value.value === null ? "未评价" : value.value }}
+                      </td>
+                      <td>{{ value.evaluated }} / {{ value.eligible }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="evaluation-table">
+                <table>
+                  <caption>
+                    受控 Judge（各项 0–2；未评价不补零）
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Case</th>
+                      <th scope="col">正确性</th>
+                      <th scope="col">完整性</th>
+                      <th scope="col">依据性</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="item in currentReport.evaluations"
+                      :key="item.case_id"
+                    >
+                      <th scope="row">{{ item.case_id }}</th>
+                      <td>{{ item.judge?.correctness ?? "未评价" }}</td>
+                      <td>{{ item.judge?.completeness ?? "未评价" }}</td>
+                      <td>{{ item.judge?.grounding ?? "未评价" }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-for="d in currentReport.judge_deltas" :key="d.metric">
+                {{ d.metric }}：{{ d.baseline ?? "未评价" }} →
+                {{ d.candidate ?? "未评价" }} · 差值 {{ d.change ?? "不可用" }}
+              </p>
+              <p
+                v-for="d in currentReport.structural.gate.differences"
+                :key="d.field"
+              >
+                实验差异：{{ variables[d.field] }} ·
+                {{ d.permitted ? "允许变化" : "未允许变化" }}
+              </p>
+              <details>
+                <summary>Gate 规则与诊断</summary>
+                <ul>
+                  <li
+                    v-for="rule in currentReport.structural.gate.rules"
+                    :key="rule.name"
+                  >
+                    [{{ rule.status }}] {{ rule.name }}：期望
+                    {{ rule.expected }}，实际 {{ rule.actual }}
+                  </li>
+                </ul>
+              </details>
+            </section>
+          </template>
         </template>
-      </template>
-      <p v-else-if="jobId && !store.error" role="status">正在读取实验…</p>
+        <p v-else-if="jobId && !store.error" role="status">正在读取实验…</p>
+      </div>
     </div>
   </section>
 </template>
 <style scoped>
-.evaluation-workspace {
-  display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
-  gap: 32px;
-  min-height: 600px;
-  width: 100%;
-}
 .evaluation-directory {
-  border-right: 1px solid #dde2dc;
-  padding-right: 24px;
   min-width: 0;
 }
-.evaluation-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-h1 {
-  font-size: 22px;
-  letter-spacing: 0;
+.eval-dir-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  margin: 0 0 10px;
 }
 h2 {
-  font-size: 28px;
-  letter-spacing: 0;
-  margin: 12px 0;
+  font-size: 20px;
+  margin: 0 0 12px;
 }
 h3 {
-  font-size: 20px;
-  margin: 0 0 16px;
+  font-size: 16px;
+  margin: 0 0 12px;
 }
 h4 {
-  font-size: 17px;
+  font-size: 15px;
 }
 h5 {
-  font-size: 15px;
-  margin-bottom: 12px;
+  font-size: 14px;
+  margin-bottom: 8px;
 }
 .evaluation-content {
   min-width: 0;
-  max-width: 1000px;
+  max-width: 960px;
 }
 p {
   line-height: 1.65;
-  max-width: 75ch;
+  max-width: 72ch;
 }
 .evaluation-note,
 small {
-  font-size: 13px;
-  color: #536259;
+  font-size: 12px;
+  color: var(--ink-muted);
   overflow-wrap: anywhere;
+}
+.evaluation-directory > .primary {
+  width: 100%;
+  margin: 8px 0 10px;
 }
 .evaluation-history {
   display: flex;
   flex-direction: column;
-  margin: 24px 0;
-  max-height: 65vh;
+  gap: 3px;
+  margin: 14px 0;
+  max-height: 62vh;
   overflow: auto;
 }
 .evaluation-history a {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px 12px;
-  border-bottom: 1px solid #dde2dc;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-secondary);
   overflow-wrap: anywhere;
 }
 .evaluation-history a:hover {
-  background: #edf2ed;
+  background: var(--bg-muted);
+  color: var(--ink);
 }
 .evaluation-history a[aria-current="page"] {
-  background: #e4ece4;
+  background: var(--bg-accent-soft);
+  color: var(--accent-text);
+  font-weight: 550;
 }
 form {
-  margin-top: 28px;
+  margin-top: 20px;
 }
 fieldset {
   border: 0;
-  border-top: 1px solid #dde2dc;
-  padding: 24px 0;
-  margin: 16px 0;
+  border-top: 1px solid var(--border);
+  padding: 18px 0;
+  margin: 12px 0;
   min-width: 0;
 }
 legend {
-  padding: 0 12px 0 0;
+  padding: 0 10px 0 0;
   font-weight: 600;
+  color: var(--ink);
 }
 label {
   display: block;
-  font-size: 14px;
-  margin: 12px 0 8px;
+  font-size: 13px;
+  margin: 10px 0 6px;
 }
 select,
 input {
@@ -631,35 +649,38 @@ select,
 input[type="file"],
 input[type="number"] {
   width: 100%;
-  padding: 12px;
-  background: #fff;
-  border: 1px solid #bac7bc;
-  border-radius: 6px;
-  color: inherit;
+  height: auto;
+  padding: 9px 12px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--ink);
 }
 input[type="file"] {
-  font-size: 14px;
+  font-size: 13px;
 }
 .evaluation-budgets {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 .evaluation-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
 .evaluation-alert {
-  border: 1px solid #9a4c35;
-  background: #fbf0e9;
-  padding: 12px 16px;
+  border: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-radius: 10px;
+  padding: 10px 14px;
   overflow-wrap: anywhere;
 }
 .evaluation-section {
-  border-top: 1px solid #dde2dc;
-  padding-top: 28px;
-  margin-top: 32px;
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+  margin-top: 24px;
 }
 .evaluation-case-list {
   display: flex;
@@ -667,14 +688,15 @@ input[type="file"] {
   flex-wrap: wrap;
 }
 .evaluation-case-list button[aria-pressed="true"] {
-  outline: 2px solid #38624d;
-  outline-offset: 2px;
+  background: var(--bg-accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 .evaluation-case-list span {
   font-size: 12px;
 }
 .evaluation-case {
-  margin-top: 24px;
+  margin-top: 18px;
   padding: 4px 0;
 }
 .evaluation-case pre {
@@ -682,83 +704,87 @@ input[type="file"] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.7;
-  background: #eef2ec;
-  padding: 20px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
 }
 .evaluation-variables {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  margin: 16px 0;
-  padding: 12px 0;
+  gap: 14px;
+  margin: 12px 0;
+  padding: 8px 0;
 }
 .evaluation-variables label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
 }
 .evaluation-variables input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   padding: 0;
   margin: 0;
-}
-.evaluation-variables label {
-  white-space: nowrap;
+  accent-color: var(--accent);
 }
 .evaluation-table {
   overflow-x: auto;
-  margin: 24px 0;
+  margin: 18px 0;
 }
 table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 14px;
+  font-size: 13px;
 }
 caption {
   text-align: left;
   font-weight: 600;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 th,
 td {
-  border-bottom: 1px solid #dde2dc;
-  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 8px;
   white-space: nowrap;
 }
+th {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
 details {
-  margin: 20px 0;
+  margin: 14px 0;
   overflow-wrap: anywhere;
 }
 summary {
   cursor: pointer;
   font-weight: 600;
+  color: var(--accent-text);
 }
 li {
-  line-height: 1.7;
+  line-height: 1.65;
   overflow-wrap: anywhere;
 }
 @media (max-width: 800px) {
   .evaluation-workspace {
     grid-template-columns: 1fr;
-    gap: 24px;
+    gap: 18px;
+    padding: 16px;
   }
   .evaluation-directory {
     border-right: 0;
-    border-bottom: 1px solid #dde2dc;
-    padding: 0 0 24px;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 18px;
   }
   .evaluation-history {
-    max-height: 190px;
-    margin: 16px 0;
+    max-height: 180px;
+    margin: 12px 0;
   }
   .evaluation-budgets {
     grid-template-columns: 1fr;
-  }
-  h2 {
-    font-size: 25px;
   }
   .evaluation-table {
     max-width: 100%;

@@ -32,8 +32,23 @@ for (const width of [1280, 390]) {
             },
       }),
     );
+    await page.route("**/v1/threads**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
+    await page.route("**/v1/projects**", (route) =>
+      route.fulfill({ json: { items: [], next_offset: null } }),
+    );
     await page.route("**/v1/documents**", (route) =>
       route.fulfill({ json: { items: [], next_offset: null } }),
+    );
+    await page.route("**/v1/rerank-settings**", (route) =>
+      route.fulfill({
+        json: {
+          source: "local",
+          model: "BAAI/bge-reranker-base",
+          bailian_key_configured: false,
+        },
+      }),
     );
     await page.route("**/v1/embedding-profiles/selection**", async (route) => {
       const request = route.request();

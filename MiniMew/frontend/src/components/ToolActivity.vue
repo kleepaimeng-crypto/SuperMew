@@ -134,50 +134,53 @@ function toggled(event: Event) {
   border: 0;
   padding: 4px 0;
 }
-
 .tool-activity {
-  margin-top: 12px;
-  font-size: 14px;
-  line-height: 1.7;
-  color: #536552;
-  margin-bottom: 18px;
+  margin: 8px 0 14px;
+  padding: 8px 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-secondary);
 }
 summary {
   cursor: pointer;
   width: fit-content;
-  padding: 5px 0;
+  padding: 2px 0;
+  font-weight: 500;
+  color: var(--ink-secondary);
 }
 summary:hover {
-  color: #294e39;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  color: var(--accent);
 }
 ol {
   list-style: none;
   padding: 0;
-  margin: 8px 0;
+  margin: 6px 0 0;
 }
 li {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 20px;
-  max-width: 420px;
-  padding: 7px 0;
+  gap: 16px;
+  max-width: 460px;
+  padding: 5px 0;
   border-bottom: 0;
 }
 .tool-failure-reason {
   flex-basis: 100%;
   overflow-wrap: anywhere;
-  color: #76542f;
+  color: var(--warn);
 }
 .tool-state {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
 }
 .tool-failed,
 .tool-error {
-  color: #76542f;
+  color: var(--warn);
 }
 .tool-error {
   display: flex;
@@ -186,14 +189,14 @@ li {
   align-items: center;
 }
 p {
-  margin: 8px 0;
+  margin: 6px 0;
   color: inherit;
 }
 @media (pointer: coarse) {
   summary {
-    min-height: 44px;
+    min-height: 36px;
     display: list-item;
-    padding: 12px 0;
+    padding: 8px 0;
   }
 }
 </style>

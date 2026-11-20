@@ -28,7 +28,7 @@ async function submit() {
       notice.value = "账户已创建，请使用刚才的密码登录。";
     } else {
       await auth.login(credentials);
-      await router.replace("/account");
+      await router.replace("/threads");
     }
   } catch {
     /* Store 提供可公开的错误文案。 */

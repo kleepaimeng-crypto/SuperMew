@@ -22,7 +22,7 @@ export function makeRouter(pinia: Pinia) {
         component: EvaluationsView,
         meta: { requiresAuth: true },
       },
-      { path: "/", redirect: "/account" },
+      { path: "/", redirect: "/threads" },
       { path: "/login", component: AuthView },
       { path: "/register", component: AuthView },
       {
@@ -40,7 +40,7 @@ export function makeRouter(pinia: Pinia) {
         component: AccountView,
         meta: { requiresAuth: true },
       },
-      { path: "/:pathMatch(.*)*", redirect: "/account" },
+      { path: "/:pathMatch(.*)*", redirect: "/threads" },
     ],
   });
   router.beforeEach(async (to) => {
@@ -51,7 +51,7 @@ export function makeRouter(pinia: Pinia) {
       auth.status === "authenticated" &&
       ["/login", "/register"].includes(to.path)
     )
-      return "/account";
+      return "/threads";
     // error 交由根视图呈现重试，不当作 anonymous 跳转登录。
   });
   return router;

@@ -38,6 +38,11 @@ test("注册、登录、刷新恢复、退出；凭据不写入存储", async ({
     }
     await route.abort();
   });
+  await page.route("**/v1/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/v1/skills") return route.fulfill({ json: [] });
+    return route.fulfill({ json: { items: [], next_offset: null } });
+  });
   await page.goto("/account");
   await expect(page).toHaveURL(/\/login$/);
   await page.getByRole("link", { name: "创建账户", exact: true }).click();
@@ -47,6 +52,9 @@ test("注册、登录、刷新恢复、退出；凭据不写入存储", async ({
   await expect(page.getByRole("status")).toContainText("账户已创建");
   await page.getByLabel("密码", { exact: true }).fill("test-password-1234");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).toHaveURL(/\/threads$/);
+  await expect(page.getByRole("heading", { name: "开始新会话" })).toBeVisible();
+  await page.getByRole("link", { name: /alice/ }).click();
   await expect(
     page.getByRole("heading", { name: "你好，alice。" }),
   ).toBeVisible();
@@ -60,7 +68,7 @@ test("注册、登录、刷新恢复、退出；凭据不写入存储", async ({
       session: { ...sessionStorage },
     })),
   ).toEqual({ local: {}, session: {} });
-  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByRole("button", { name: "退出登录" }).first().click();
   await expect(page).toHaveURL(/\/login$/);
   await page.reload();
   await expect(
@@ -76,6 +84,9 @@ test("恢复失败不跳登录，重试成功后才显示账户；移动端无�
     route.fulfill({ status: fail ? 500 : 200, json: fail ? {} : token }),
   );
   await page.route("**/auth/me", (route) => route.fulfill({ json: profile }));
+  await page.route("**/v1/**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
   await page.goto("/account");
   await expect(page.getByRole("alert")).toContainText("服务暂时不可用");
   await expect(page).toHaveURL(/\/account$/);
@@ -129,8 +140,14 @@ test("退出失败后刷新页面优先重试退出，不恢复登录", async ({
   await page.route("**/auth/logout", (route) =>
     route.fulfill({ status: failLogout ? 500 : 204 }),
   );
+  await page.route("**/v1/**", (route) =>
+    route.fulfill({ json: { items: [], next_offset: null } }),
+  );
   await page.goto("/account");
-  await page.getByRole("button", { name: "退出登录" }).click();
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "退出登录" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "退出尚未完成" }),
   ).toBeVisible();
