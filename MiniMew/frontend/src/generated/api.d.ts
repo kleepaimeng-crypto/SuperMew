@@ -246,6 +246,75 @@ export interface paths {
     patch: operations["edit_v1_projects__project_id__memories__memory_id__patch"];
     trace?: never;
   };
+  "/v1/retrieval-models": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Templates */
+    get: operations["list_templates_v1_retrieval_models_get"];
+    put?: never;
+    /** Create Template */
+    post: operations["create_template_v1_retrieval_models_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/retrieval-models/{identity}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update Template */
+    put: operations["update_template_v1_retrieval_models__identity__put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/projects/{project_id}/models": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Models */
+    get: operations["project_models_v1_projects__project_id__models_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/projects/{project_id}/models/{purpose}/credential": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Rotate Project Key */
+    put: operations["rotate_project_key_v1_projects__project_id__models__purpose__credential_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/threads/{thread_id}/messages": {
     parameters: {
       query?: never;
@@ -295,7 +364,8 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    patch?: never;
+    /** Archive Thread */
+    patch: operations["archive_thread_v1_threads__thread_id__patch"];
     trace?: never;
   };
   "/v1/threads/{thread_id}/runs/{run_id}/resume-credential": {
@@ -798,6 +868,11 @@ export interface components {
       /** End */
       end: number;
     };
+    /** ArchiveThreadRequest */
+    ArchiveThreadRequest: {
+      /** Archived */
+      archived: boolean;
+    };
     /** ArtifactV2 */
     ArtifactV2: {
       /**
@@ -1132,6 +1207,14 @@ export interface components {
     CreateThreadRequest: {
       /** Project Id */
       project_id?: string | null;
+    };
+    /** CredentialWrite */
+    CredentialWrite: {
+      /**
+       * Api Key
+       * Format: password
+       */
+      api_key: string;
     };
     /** Dataset */
     Dataset: {
@@ -2312,6 +2395,15 @@ export interface components {
     ProjectInput: {
       /** Name */
       name: string;
+      /** Embedding Configuration Id */
+      embedding_configuration_id?: string | null;
+      /** Rerank Configuration Id */
+      rerank_configuration_id?: string | null;
+    };
+    /** ProjectModelsView */
+    ProjectModelsView: {
+      embedding: components["schemas"]["SelectionView"];
+      rerank: components["schemas"]["SelectionView"];
     };
     /** ProjectPage */
     ProjectPage: {
@@ -3069,6 +3161,23 @@ export interface components {
       /** Judge Fault */
       judge_fault?: ("timeout" | "invalid" | "transient") | null;
     };
+    /** SelectionView */
+    SelectionView: {
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "local" | "bailian";
+      /** Model Name */
+      model_name: string;
+      /** Base Url */
+      base_url?: string | null;
+      /**
+       * Key Configured
+       * @default false
+       */
+      key_configured: boolean;
+    };
     /** SelectionWrite */
     SelectionWrite: {
       /** Model Id */
@@ -3140,6 +3249,55 @@ export interface components {
       counts: components["schemas"]["Counts"];
       metrics: components["schemas"]["Metrics"];
     };
+    /** TemplateView */
+    TemplateView: {
+      /**
+       * Purpose
+       * @enum {string}
+       */
+      purpose: "embedding" | "rerank";
+      /**
+       * Provider
+       * @default bailian
+       * @constant
+       */
+      provider: "bailian";
+      /** Model Name */
+      model_name: string;
+      /** Base Url */
+      base_url: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Name */
+      name: string;
+      /** Key Configured */
+      key_configured: boolean;
+    };
+    /** TemplateWrite */
+    TemplateWrite: {
+      /**
+       * Purpose
+       * @enum {string}
+       */
+      purpose: "embedding" | "rerank";
+      /**
+       * Provider
+       * @default bailian
+       * @constant
+       */
+      provider: "bailian";
+      /** Model Name */
+      model_name: string;
+      /** Base Url */
+      base_url: string;
+      /** Name */
+      name: string;
+      /** Api Key */
+      api_key?: string | null;
+    };
     /** ThinkingPolicy */
     ThinkingPolicy: {
       /**
@@ -3164,6 +3322,11 @@ export interface components {
       id: string;
       /** Title */
       title: string;
+      /**
+       * Archived
+       * @default false
+       */
+      archived: boolean;
       /** Project Id */
       project_id?: string | null;
       /**
@@ -3976,6 +4139,161 @@ export interface operations {
       };
     };
   };
+  list_templates_v1_retrieval_models_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateView"][];
+        };
+      };
+    };
+  };
+  create_template_v1_retrieval_models_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TemplateWrite"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_template_v1_retrieval_models__identity__put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identity: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TemplateWrite"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TemplateView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_models_v1_projects__project_id__models_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectModelsView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  rotate_project_key_v1_projects__project_id__models__purpose__credential_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        project_id: string;
+        purpose: "embedding" | "rerank";
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CredentialWrite"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectModelsView"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   history_v1_threads__thread_id__messages_get: {
     parameters: {
       query?: {
@@ -4016,6 +4334,7 @@ export interface operations {
         limit?: number;
         offset?: number;
         project_id?: string | null;
+        archived?: boolean;
       };
       header?: never;
       path?: never;
@@ -4086,6 +4405,41 @@ export interface operations {
       cookie?: never;
     };
     requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ThreadResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  archive_thread_v1_threads__thread_id__patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        thread_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ArchiveThreadRequest"];
+      };
+    };
     responses: {
       /** @description Successful Response */
       200: {

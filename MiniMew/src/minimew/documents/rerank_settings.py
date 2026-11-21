@@ -44,6 +44,13 @@ async def read_settings(session, owner, project):
 
 async def save_settings(session, owner, project, data, settings):
     async with session.begin():
+        if project is not None:
+            from fastapi import HTTPException
+
+            from minimew.projects import owned_project
+
+            await owned_project(session, owner, project)
+            raise HTTPException(409, detail={"code": "PROJECT_MODELS_IMMUTABLE"})
         kb = await ensure_base(
             session, owner, project, settings.embedding_profile, settings.document_index_layout
         )
@@ -53,6 +60,7 @@ async def save_settings(session, owner, project, data, settings):
                 id=identity,
                 user_id=owner,
                 model_id=kb.id,
+                retrieval_url=RERANK_URL,
                 encrypted_value=encrypt(
                     settings, owner, identity, RERANK_URL, data.api_key.get_secret_value()
                 ),

@@ -167,6 +167,23 @@ async function logout() {
         </span>
         <span class="ws-scope-pill ws-scope-global">全局</span>
       </RouterLink>
+      <RouterLink
+        class="ws-nav-item"
+        :class="{ 'is-active': route.path === '/archives' }"
+        :to="{
+          path: '/archives',
+          query: workspace.activeScope
+            ? { project: workspace.activeScope }
+            : {},
+        }"
+        @click="navigateAndClose"
+      >
+        <span class="ws-nav-item-main"
+          ><span class="ws-nav-icon" aria-hidden="true">▤</span
+          ><span>已归档聊天</span></span
+        >
+        <span class="ws-scope-pill">{{ activeScopeLabel }}</span>
+      </RouterLink>
     </nav>
 
     <div class="ws-scroll-area">

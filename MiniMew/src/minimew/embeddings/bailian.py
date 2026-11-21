@@ -25,7 +25,7 @@ class BailianEmbedding:
         if credential_id is None:
             raise EmbeddingError("EMBEDDING_CREDENTIAL_UNAVAILABLE")
         try:
-            key = await self.credentials(user_id, credential_id, BASE_URL)
+            endpoint, key = await self.credentials.retrieval_endpoint(user_id, credential_id)
         except ModelConfigurationUnavailable:
             raise EmbeddingError("EMBEDDING_CREDENTIAL_UNAVAILABLE") from None
         except ExecutionStorageUnavailable:
@@ -41,7 +41,7 @@ class BailianEmbedding:
                 batch = texts[start : start + MAX_BATCH]
                 try:
                     response = await client.post(
-                        BASE_URL + "/embeddings",
+                        endpoint + "/embeddings",
                         headers={"Authorization": "Bearer " + key.get_secret_value()},
                         json={
                             "model": BAILIAN_PROFILE.model_id,

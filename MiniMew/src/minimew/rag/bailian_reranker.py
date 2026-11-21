@@ -29,7 +29,7 @@ class BailianReranker:
             raise RerankError("RERANK_DEADLINE_EXCEEDED")
         try:
             async with asyncio.timeout_at(deadline):
-                key = await self.credentials(owner, credential, RERANK_URL)
+                endpoint, key = await self.credentials.retrieval_endpoint(owner, credential)
                 async with httpx2.AsyncClient(
                     transport=self.transport_factory(),
                     trust_env=False,
@@ -37,7 +37,7 @@ class BailianReranker:
                     timeout=httpx2.Timeout(12.0, connect=4.0),
                 ) as client:
                     response = await client.post(
-                        RERANK_URL,
+                        endpoint,
                         headers={"Authorization": "Bearer " + key.get_secret_value()},
                         json={
                             "model": BAILIAN_RERANKER,

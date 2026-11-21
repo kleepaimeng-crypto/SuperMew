@@ -7,11 +7,17 @@ import ThreadsView from "./views/ThreadsView.vue";
 import DocumentsView from "./views/DocumentsView.vue";
 import ProjectsView from "./views/ProjectsView.vue";
 import EvaluationsView from "./views/EvaluationsView.vue";
+import ArchivesView from "./views/ArchivesView.vue";
 
 export function makeRouter(pinia: Pinia) {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
+      {
+        path: "/archives",
+        component: ArchivesView,
+        meta: { requiresAuth: true },
+      },
       {
         path: "/projects/:projectId?",
         component: ProjectsView,

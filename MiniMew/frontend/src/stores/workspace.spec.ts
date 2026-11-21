@@ -4,17 +4,20 @@ import { useAuthStore } from "./auth";
 import { PERSONAL_SCOPE, useWorkspaceStore } from "./workspace";
 
 const t1 = {
+  archived: false,
   id: "00000000-0000-0000-0000-000000000001",
   title: "个人会话一",
   created_at: "2026-11-20T00:00:00Z",
 };
 const t2 = {
+  archived: false,
   id: "00000000-0000-0000-0000-000000000002",
   title: "个人会话二",
   created_at: "2026-11-20T00:01:00Z",
 };
 const p1 = "11111111-1111-4111-8111-111111111111";
 const pt1 = {
+  archived: false,
   id: "00000000-0000-0000-0000-000000000010",
   project_id: p1,
   title: "项目会话一",
@@ -46,6 +49,61 @@ describe("useWorkspaceStore", () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("归档与恢复刷新两个列表，归档后的标题更新不会放回默认列表", async () => {
+    signIn();
+    let archived = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      if (init?.method === "PATCH") {
+        archived = JSON.parse(String(init.body)).archived;
+        return Promise.resolve(jsonResponse({ ...t1, archived }));
+      }
+      return Promise.resolve(
+        jsonResponse({
+          items:
+            (url.searchParams.get("archived") === "true") === archived
+              ? [{ ...t1, archived }]
+              : [],
+          next_offset: null,
+        }),
+      );
+    });
+    const workspace = useWorkspaceStore();
+    await workspace.loadScopeThreads(null, true);
+    expect(workspace.buckets.personal!.items).toHaveLength(1);
+    expect(await workspace.archiveThread(t1, true)).toBe(true);
+    expect(workspace.buckets.personal!.items).toHaveLength(0);
+    expect(workspace.buckets["personal:archived"]!.items[0]!.archived).toBe(
+      true,
+    );
+    workspace.upsertThread({ ...t1, archived: true });
+    expect(workspace.buckets.personal!.items).toHaveLength(0);
+    expect(
+      await workspace.archiveThread({ ...t1, archived: true }, false),
+    ).toBe(true);
+    expect(workspace.buckets.personal!.items).toHaveLength(1);
+    expect(workspace.buckets["personal:archived"]!.items).toHaveLength(0);
+  });
+
+  it("换账号后迟到的归档响应不会写入新账号列表", async () => {
+    const auth = signIn();
+    let finish!: (response: Response) => void;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const workspace = useWorkspaceStore();
+    const pending = workspace.archiveThread(t1, true);
+    signIn("user-b", "token-b");
+    finish(jsonResponse({ ...t1, archived: true }));
+    expect(await pending).toBe(false);
+    expect(auth.user?.id).toBe("user-b");
+    expect(workspace.buckets.personal!.items).toHaveLength(0);
+    expect(workspace.archiveError).toBe("");
   });
 
   it("个人空间与项目会话分桶隔离，互不串列表", async () => {

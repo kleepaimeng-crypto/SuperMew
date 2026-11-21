@@ -4,6 +4,7 @@ import { useAuthStore } from "./auth";
 import { useThreadsStore } from "./threads";
 
 const a = {
+  archived: false,
   id: "00000000-0000-0000-0000-000000000001",
   title: "A 对话",
   created_at: "2026-10-29T00:00:00Z",

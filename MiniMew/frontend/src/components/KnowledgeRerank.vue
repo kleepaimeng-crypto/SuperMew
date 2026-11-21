@@ -89,7 +89,12 @@ onBeforeUnmount(() => {
         重排模型 <strong>{{ settings.model }}</strong>
       </p>
       <p v-if="saved" role="status">已保存，从新对话请求开始生效。</p>
-      <details>
+      <p v-if="project">
+        项目模型已锁定。<RouterLink :to="`/projects/${project}`"
+          >查看模型配置或更新 Key</RouterLink
+        >
+      </p>
+      <details v-if="!project">
         <summary>更换重排模型</summary>
         <form @submit.prevent="save">
           <label for="rerank-source">重排来源</label>

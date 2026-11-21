@@ -12,6 +12,7 @@ from minimew.api.auth import CurrentUser
 from minimew.api.threads import no_store
 from minimew.database import SessionDependency
 from minimew.models import Project, ProjectMemory
+from minimew.settings import SettingsDependency
 
 
 class TextInput(BaseModel):
@@ -27,10 +28,13 @@ class TextInput(BaseModel):
 
 class ProjectInput(TextInput):
     name: str = Field(min_length=1, max_length=100)
+    embedding_configuration_id: UUID | None = None
+    rerank_configuration_id: UUID | None = None
 
 
-class ProjectView(ProjectInput):
+class ProjectView(TextInput):
     model_config = ConfigDict(from_attributes=True)
+    name: str
     id: UUID
     created_at: datetime
 
@@ -98,11 +102,16 @@ router = APIRouter(prefix="/v1/projects", tags=["projects"], dependencies=[Depen
 
 
 @router.post("", response_model=ProjectView, status_code=201)
-async def create(data: ProjectInput, user: CurrentUser, session: SessionDependency):
+async def create(
+    data: ProjectInput, user: CurrentUser, session: SessionDependency, settings: SettingsDependency
+):
+    from minimew.retrieval_models import bind_project
+
     async with session.begin():
         row = Project(user_id=user.id, name=data.name)
         session.add(row)
         await session.flush()
+        await bind_project(session, user.id, row.id, data, settings)
         return ProjectView.model_validate(row)
 
 

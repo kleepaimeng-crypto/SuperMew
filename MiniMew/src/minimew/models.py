@@ -112,7 +112,24 @@ class ModelCredential(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
     model_id: Mapped[UUID] = mapped_column(Uuid)
     encrypted_value: Mapped[str] = mapped_column(Text)
+    retrieval_url: Mapped[str | None] = mapped_column(String(2048))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RetrievalModelConfiguration(Base):
+    __tablename__ = "retrieval_model_configurations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["credential_id", "user_id"],
+            ["model_credentials.id", "model_credentials.user_id"],
+            name="fk_retrieval_models_credential_owner",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(80))
+    configuration: Mapped[dict] = mapped_column(JSONB)
+    credential_id: Mapped[UUID] = mapped_column(Uuid)
 
 
 class AccountModelConfiguration(Base):
@@ -193,6 +210,7 @@ class Thread(Base):
     )
     project_id: Mapped[UUID | None] = mapped_column(Uuid)
     title: Mapped[str] = mapped_column(String(200))
+    archived: Mapped[bool] = mapped_column(server_default=text("false"))
     last_sequence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -532,6 +550,9 @@ class KnowledgeBase(Base):
 
     __tablename__ = "knowledge_bases"
     __table_args__ = (
+        CheckConstraint(
+            "(project_id IS NULL) = (project_models IS NULL)", name="ck_kb_project_models"
+        ),
         Index(
             "uq_knowledge_bases_personal",
             "user_id",
@@ -572,6 +593,7 @@ class KnowledgeBase(Base):
     project_id: Mapped[UUID | None] = mapped_column(Uuid)
     build_configuration: Mapped[dict] = mapped_column(JSONB)
     build_fingerprint: Mapped[str] = mapped_column(String(64))
+    project_models: Mapped[dict | None] = mapped_column(JSONB)
     embedding_credential_id: Mapped[UUID | None] = mapped_column(Uuid)
     rerank_use_bailian: Mapped[bool] = mapped_column(server_default=text("false"))
     rerank_credential_id: Mapped[UUID | None] = mapped_column(Uuid)

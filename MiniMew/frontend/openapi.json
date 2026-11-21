@@ -724,6 +724,244 @@
         }
       }
     },
+    "/v1/retrieval-models": {
+      "get": {
+        "tags": ["retrieval-models"],
+        "summary": "List Templates",
+        "operationId": "list_templates_v1_retrieval_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateView"
+                  },
+                  "type": "array",
+                  "title": "Response List Templates V1 Retrieval Models Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": ["retrieval-models"],
+        "summary": "Create Template",
+        "operationId": "create_template_v1_retrieval_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/retrieval-models/{identity}": {
+      "put": {
+        "tags": ["retrieval-models"],
+        "summary": "Update Template",
+        "operationId": "update_template_v1_retrieval_models__identity__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/models": {
+      "get": {
+        "tags": ["retrieval-models"],
+        "summary": "Project Models",
+        "operationId": "project_models_v1_projects__project_id__models_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectModelsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{project_id}/models/{purpose}/credential": {
+      "put": {
+        "tags": ["retrieval-models"],
+        "summary": "Rotate Project Key",
+        "operationId": "rotate_project_key_v1_projects__project_id__models__purpose__credential_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": ["embedding", "rerank"],
+              "type": "string",
+              "title": "Purpose"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectModelsView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/threads/{thread_id}/messages": {
       "get": {
         "tags": ["threads"],
@@ -891,6 +1129,16 @@
               ],
               "title": "Project Id"
             }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Archived"
+            }
           }
         ],
         "responses": {
@@ -918,6 +1166,60 @@
       }
     },
     "/v1/threads/{thread_id}": {
+      "patch": {
+        "tags": ["threads"],
+        "summary": "Archive Thread",
+        "operationId": "archive_thread_v1_threads__thread_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Thread Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveThreadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["threads"],
         "summary": "Get Thread",
@@ -2810,6 +3112,18 @@
         "required": ["kind", "start", "end"],
         "title": "AnswerSection"
       },
+      "ArchiveThreadRequest": {
+        "properties": {
+          "archived": {
+            "type": "boolean",
+            "title": "Archived"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["archived"],
+        "title": "ArchiveThreadRequest"
+      },
       "ArtifactV2": {
         "properties": {
           "schema_version": {
@@ -3602,6 +3916,22 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateThreadRequest"
+      },
+      "CredentialWrite": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "format": "password",
+            "title": "Api Key",
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["api_key"],
+        "title": "CredentialWrite"
       },
       "Dataset": {
         "properties": {
@@ -6050,12 +6380,49 @@
             "maxLength": 100,
             "minLength": 1,
             "title": "Name"
+          },
+          "embedding_configuration_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Configuration Id"
+          },
+          "rerank_configuration_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Configuration Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": ["name"],
         "title": "ProjectInput"
+      },
+      "ProjectModelsView": {
+        "properties": {
+          "embedding": {
+            "$ref": "#/components/schemas/SelectionView"
+          },
+          "rerank": {
+            "$ref": "#/components/schemas/SelectionView"
+          }
+        },
+        "type": "object",
+        "required": ["embedding", "rerank"],
+        "title": "ProjectModelsView"
       },
       "ProjectPage": {
         "properties": {
@@ -6086,8 +6453,6 @@
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
             "title": "Name"
           },
           "id": {
@@ -7388,6 +7753,38 @@
         "required": ["case_id", "roles", "answer"],
         "title": "Scenario"
       },
+      "SelectionView": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["local", "bailian"],
+            "title": "Source"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "key_configured": {
+            "type": "boolean",
+            "title": "Key Configured",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["source", "model_name"],
+        "title": "SelectionView"
+      },
       "SelectionWrite": {
         "properties": {
           "model_id": {
@@ -7578,6 +7975,104 @@
         ],
         "title": "Summary"
       },
+      "TemplateView": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": ["embedding", "rerank"],
+            "title": "Purpose"
+          },
+          "provider": {
+            "type": "string",
+            "const": "bailian",
+            "title": "Provider",
+            "default": "bailian"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "base_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Base Url"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "key_configured": {
+            "type": "boolean",
+            "title": "Key Configured"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "purpose",
+          "model_name",
+          "base_url",
+          "id",
+          "name",
+          "key_configured"
+        ],
+        "title": "TemplateView"
+      },
+      "TemplateWrite": {
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": ["embedding", "rerank"],
+            "title": "Purpose"
+          },
+          "provider": {
+            "type": "string",
+            "const": "bailian",
+            "title": "Provider",
+            "default": "bailian"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "base_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Base Url"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[^\\x00]+$",
+            "title": "Name"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096,
+                "minLength": 1,
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["purpose", "model_name", "base_url", "name"],
+        "title": "TemplateWrite"
+      },
       "ThinkingPolicy": {
         "properties": {
           "type": {
@@ -7626,6 +8121,11 @@
           "title": {
             "type": "string",
             "title": "Title"
+          },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived",
+            "default": false
           },
           "project_id": {
             "anyOf": [

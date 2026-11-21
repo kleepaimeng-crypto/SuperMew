@@ -97,13 +97,20 @@ async def _view(session, kb, settings):
         current_source="bailian" if build.embedding.id == BAILIAN_ID else "local",
         current_model=build.embedding.model_id,
         dimensions=build.embedding.dimension,
-        bailian_key_configured=(await saved_credential(session, kb)) is not None,
+        bailian_key_configured=bool(
+            (kb and kb.embedding_credential_id) or await saved_credential(session, kb)
+        ),
         rebuild=rebuild,
     )
 
 
 async def start_rebuild(session, user_id, project_id, change, settings):
     async with session.begin():
+        if project_id is not None:
+            await owned_project(session, user_id, project_id)
+            from fastapi import HTTPException
+
+            raise HTTPException(409, detail={"code": "PROJECT_MODELS_IMMUTABLE"})
         kb = await ensure_base(
             session, user_id, project_id, settings.embedding_profile, settings.document_index_layout
         )
@@ -130,6 +137,7 @@ async def start_rebuild(session, user_id, project_id, change, settings):
                         id=credential_id,
                         user_id=user_id,
                         model_id=kb.id,
+                        retrieval_url=BASE_URL,
                         encrypted_value=encrypt(
                             settings,
                             user_id,

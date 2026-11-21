@@ -25,13 +25,32 @@ SETTINGS = "/v1/rerank-settings"
 def test_scope_and_frozen_binding_survive_switch_back(client):  # noqa: F811
     owner_headers, owner = account(client)
     other_headers, _ = account(client)
+    preset = client.post(
+        "/v1/retrieval-models",
+        headers=owner_headers,
+        json={
+            "name": "重排配置",
+            "purpose": "rerank",
+            "model_name": "qwen3-rerank",
+            "base_url": RERANK_URL,
+            "api_key": "fixture-secret-old",
+        },
+    )
+    assert preset.status_code == 201, preset.text
 
-    def project(name):
-        result = client.post("/v1/projects", headers=owner_headers, json={"name": name})
+    def project(name, cloud=False):
+        result = client.post(
+            "/v1/projects",
+            headers=owner_headers,
+            json={
+                "name": name,
+                "rerank_configuration_id": preset.json()["id"] if cloud else None,
+            },
+        )
         assert result.status_code == 201
         return result.json()["id"]
 
-    first, second = project("项目甲"), project("项目乙")
+    first, second = project("项目甲", cloud=True), project("项目乙")
     params = {"project_id": first}
     doc = upload(client, owner_headers).json()
     assert client.get(SETTINGS, params=params, headers=other_headers).status_code == 404
@@ -39,17 +58,27 @@ def test_scope_and_frozen_binding_survive_switch_back(client):  # noqa: F811
         client.put(
             SETTINGS, params=params, headers=owner_headers, json={"source": "bailian"}
         ).json()["detail"]["code"]
-        == "RERANK_KEY_REQUIRED"
+        == "PROJECT_MODELS_IMMUTABLE"
     )
 
     def select_model(source, key=None):
+        if key is not None:
+            rotated = client.put(
+                f"/v1/projects/{first}/models/rerank/credential",
+                headers=owner_headers,
+                json={"api_key": key},
+            )
+            assert rotated.status_code == 200, rotated.text
         result = client.put(
             SETTINGS,
             params=params,
             headers=owner_headers,
             json={"source": source, **({"api_key": key} if key else {})},
         )
-        assert result.status_code == 200, result.text
+        assert result.status_code == 409, result.text
+        assert result.json()["detail"]["code"] == "PROJECT_MODELS_IMMUTABLE"
+        result = client.get(SETTINGS, params=params, headers=owner_headers)
+        assert result.status_code == 200
         assert result.headers["cache-control"] == "no-store"
         assert "fixture-secret" not in result.text and "credential_id" not in result.text
         return result.json()
@@ -79,7 +108,7 @@ def test_scope_and_frozen_binding_survive_switch_back(client):  # noqa: F811
         assert response.status_code == 201, response.text
     run_ids = [UUID(r.json()["id"]) for r in (run_a, run_b, run_personal)]
     assert select_model("bailian", "fixture-secret-new")["model"] == BAILIAN_RERANKER
-    assert select_model("local")["model"] == LOCAL_RERANKER
+    assert select_model("local")["model"] == BAILIAN_RERANKER
     assert reserve(thread_a, "alpha").json()["id"] == str(run_ids[0])
     after = reserve(thread_a, "local-change")
     assert after.status_code == 201, after.text
@@ -97,18 +126,21 @@ def test_scope_and_frozen_binding_survive_switch_back(client):  # noqa: F811
             assert snapshot_for_run(cloud).rag.reranker == BAILIAN_RERANKER
             assert cloud.rerank_credential_id is not None and cloud.credential_id is None
             assert all(row.rerank_credential_id is None for row in (project_local, personal_local))
+            assert (
+                snapshot_for_run(await session.get(Run, UUID(after.json()["id"]))).rag.reranker
+                == BAILIAN_RERANKER
+            )
             assert all(
                 snapshot_for_run(row).rag.reranker == LOCAL_RERANKER
                 for row in (
                     project_local,
                     personal_local,
-                    await session.get(Run, UUID(after.json()["id"])),
                 )
             )
             kb = await session.scalar(
                 select(KnowledgeBase).where(KnowledgeBase.project_id == UUID(first))
             )
-            assert not kb.rerank_use_bailian and kb.embedding_credential_id is None
+            assert kb.rerank_use_bailian and kb.embedding_credential_id is None
             assert kb.rerank_credential_id != cloud.rerank_credential_id
             credential = await session.get(ModelCredential, cloud.rerank_credential_id)
             assert "fixture-secret" not in credential.encrypted_value

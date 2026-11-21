@@ -46,6 +46,7 @@ class ThreadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     title: str
+    archived: bool = False
     project_id: UUID | None = None
     created_at: datetime
 
@@ -79,6 +80,7 @@ async def list_threads(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     project_id: UUID | None = None,
+    archived: bool = False,
 ) -> ThreadListResponse:
     async with session.begin():
         if project_id is not None:
@@ -88,7 +90,11 @@ async def list_threads(
         rows = (
             await session.scalars(
                 select(Thread)
-                .where(Thread.user_id == user.id, Thread.project_id == project_id)
+                .where(
+                    Thread.user_id == user.id,
+                    Thread.project_id == project_id,
+                    Thread.archived == archived,
+                )
                 .order_by(Thread.created_at.desc(), Thread.id.desc())
                 .offset(offset)
                 .limit(limit + 1)
@@ -98,6 +104,31 @@ async def list_threads(
             items=[ThreadResponse.model_validate(row) for row in rows[:limit]],
             next_offset=offset + limit if len(rows) > limit else None,
         )
+
+
+class ArchiveThreadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    archived: bool
+
+
+@router.patch("/{thread_id}", response_model=ThreadResponse)
+async def archive_thread(
+    thread_id: UUID,
+    data: ArchiveThreadRequest,
+    user: CurrentUser,
+    session: SessionDependency,
+):
+    async with session.begin():
+        thread = await session.scalar(
+            select(Thread)
+            .where(Thread.id == thread_id, Thread.user_id == user.id)
+            .with_for_update()
+        )
+        if thread is None:
+            raise HTTPException(404, "Thread not found")
+        thread.archived = data.archived
+        await session.flush()
+        return ThreadResponse.model_validate(thread)
 
 
 @router.get("/{thread_id}", response_model=ThreadResponse)

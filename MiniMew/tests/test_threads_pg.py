@@ -59,7 +59,8 @@ def test_create_persists_default_title_and_cannot_read_other_users_thread(client
     response = client.post("/v1/threads", json={}, headers=owner)
     assert response.status_code == 201, response.text
     thread = response.json()
-    assert set(thread) == {"id", "title", "created_at"}
+    assert set(thread) == {"id", "title", "created_at", "project_id", "archived"}
+    assert thread["archived"] is False and thread["project_id"] is None
     assert thread["title"] == "新对话"
     assert response.headers["cache-control"] == "no-store"
     rows = asyncio.run(saved_threads(owner_id))

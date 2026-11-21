@@ -130,7 +130,12 @@ onBeforeUnmount(() => {
         </p>
         <p v-else>索引重建完成，已切换到 {{ rebuild.target_model }}。</p>
       </div>
-      <details v-if="rebuild?.status !== 'building'">
+      <p v-if="project">
+        项目模型已锁定。<RouterLink :to="`/projects/${project}`"
+          >查看模型配置或更新 Key</RouterLink
+        >
+      </p>
+      <details v-if="!project && rebuild?.status !== 'building'">
         <summary>更换编码模型</summary>
         <form @submit.prevent="start">
           <label for="embedding-source">目标模型</label>

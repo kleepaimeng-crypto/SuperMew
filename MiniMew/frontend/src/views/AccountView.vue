@@ -2,6 +2,7 @@
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import AccountModels from "../components/AccountModels.vue";
+import RetrievalModels from "../components/RetrievalModels.vue";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -54,6 +55,9 @@ async function logout() {
 
       <section class="panel-card">
         <AccountModels />
+      </section>
+      <section class="panel-card">
+        <RetrievalModels :key="auth.user.id" />
       </section>
     </div>
   </section>

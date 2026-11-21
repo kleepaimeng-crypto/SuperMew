@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { reactive, ref, watch } from "vue";
 import { ApiError, request } from "../api";
-import { parseThreadPage, type Thread } from "../threads";
+import { parseThread, parseThreadPage, type Thread } from "../threads";
 import { useAuthStore } from "./auth";
 import { useProjectsStore } from "./projects";
 
@@ -46,6 +46,8 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     [PERSONAL_SCOPE]: emptyBucket(),
   });
   const mobileNavOpen = ref(false);
+  const archiveBusy = ref(false),
+    archiveError = ref("");
 
   let epoch = 0;
   const meta = new Map<string, ScopeMeta>();
@@ -70,6 +72,8 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     expandedScopes[PERSONAL_SCOPE] = true;
     activeScope.value = null;
     mobileNavOpen.value = false;
+    archiveBusy.value = false;
+    archiveError.value = "";
   }
 
   watch(() => auth.user?.id, reset, { flush: "sync" });
@@ -88,9 +92,11 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     ctx: NonNullable<ReturnType<typeof context>>,
     path: string,
     signal: AbortSignal,
+    method = "GET",
+    body?: unknown,
   ) {
     try {
-      return await request(path, "GET", undefined, ctx.token, signal);
+      return await request(path, method, body, ctx.token, signal);
     } catch (cause) {
       if (
         !(cause instanceof ApiError) ||
@@ -103,7 +109,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
         throw cause;
       const nextToken = auth.accessToken;
       try {
-        return await request(path, "GET", undefined, nextToken, signal);
+        return await request(path, method, body, nextToken, signal);
       } catch (retryFailure) {
         if (retryFailure instanceof ApiError && retryFailure.status === 401)
           auth.requireRecovery(nextToken);
@@ -115,9 +121,10 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   async function loadScopeThreads(
     projectId: string | null,
     restart = false,
+    archived = false,
   ): Promise<void> {
     const ctx = context();
-    const key = scopeKeyFor(projectId);
+    const key = scopeKeyFor(projectId) + (archived ? ":archived" : "");
     const bucket = ensureBucket(key);
     const entry = meta.get(key)!;
     if (!ctx || (!restart && bucket.loading)) return;
@@ -138,7 +145,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
       const page = parseThreadPage(
         await authorizedGet(
           ctx,
-          `/v1/threads?limit=20&offset=${offset}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}`,
+          `/v1/threads?limit=20&offset=${offset}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""}${archived ? "&archived=true" : ""}`,
           controller.signal,
         ),
         offset,
@@ -193,11 +200,48 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     const projectId = thread.project_id ?? null;
     const key = scopeKeyFor(projectId);
     const bucket = ensureBucket(key);
+    if (thread.archived) {
+      bucket.items = bucket.items.filter((item) => item.id !== thread.id);
+      return;
+    }
     bucket.items = [
       thread,
       ...bucket.items.filter((item) => item.id !== thread.id),
     ];
     expandedScopes[key] = true;
+  }
+
+  async function archiveThread(thread: Thread, archived: boolean) {
+    const ctx = context();
+    if (!ctx || archiveBusy.value) return false;
+    archiveBusy.value = true;
+    archiveError.value = "";
+    try {
+      const saved = parseThread(
+        await authorizedGet(
+          ctx,
+          `/v1/threads/${thread.id}`,
+          new AbortController().signal,
+          "PATCH",
+          { archived },
+        ),
+      );
+      if (!current(ctx)) return false;
+      if (saved.id !== thread.id || saved.archived !== archived)
+        throw new Error("Invalid archive response");
+      const scope = saved.project_id ?? null;
+      await Promise.all([
+        loadScopeThreads(scope, true),
+        loadScopeThreads(scope, true, true),
+      ]);
+      return current(ctx);
+    } catch {
+      if (current(ctx))
+        archiveError.value = "操作结果未确认，请刷新列表后重试。";
+      return false;
+    } finally {
+      if (current(ctx)) archiveBusy.value = false;
+    }
   }
 
   function syncProjectsIfNeeded() {
@@ -228,6 +272,9 @@ export const useWorkspaceStore = defineStore("workspace", () => {
   }
 
   return {
+    archiveBusy,
+    archiveError,
+    archiveThread,
     activeScope,
     expandedScopes,
     buckets,

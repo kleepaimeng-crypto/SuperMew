@@ -62,3 +62,30 @@ class CredentialResolver:
             from minimew.execution.control import ExecutionStorageUnavailable
 
             raise ExecutionStorageUnavailable from None
+
+    async def retrieval_endpoint(self, owner: UUID, identity: UUID):
+        from minimew.account_models.network import public_url
+        from minimew.models import ModelCredential
+
+        try:
+            async with self.sessions() as session:
+                item = await session.scalar(
+                    select(ModelCredential).where(
+                        ModelCredential.id == identity,
+                        ModelCredential.user_id == owner,
+                        ModelCredential.revoked_at.is_(None),
+                    )
+                )
+                if item is None:
+                    raise ModelConfigurationUnavailable
+                try:
+                    if item.retrieval_url is None:
+                        raise ModelConfigurationUnavailable
+                    endpoint = public_url(item.retrieval_url)
+                    return endpoint, decrypt(self.settings, item, endpoint)
+                except ValueError:
+                    raise ModelConfigurationUnavailable from None
+        except SQLAlchemyError:
+            from minimew.execution.control import ExecutionStorageUnavailable
+
+            raise ExecutionStorageUnavailable from None

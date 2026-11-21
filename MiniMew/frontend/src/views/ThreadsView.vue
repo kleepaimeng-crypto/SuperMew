@@ -10,6 +10,17 @@ const route = useRoute();
 const threads = useThreadsStore();
 const workspace = useWorkspaceStore();
 
+async function toggleArchive() {
+  if (
+    threads.selected &&
+    (await workspace.archiveThread(
+      threads.selected,
+      !threads.selected.archived,
+    ))
+  )
+    await threads.selectThread(id.value);
+}
+
 const projectId = computed(() =>
   typeof route.query.project === "string" ? route.query.project : null,
 );
@@ -90,6 +101,13 @@ const scopeLabel = computed(() =>
           <span class="scope-badge">{{ scopeLabel }}</span>
         </div>
         <div class="thread-heading-actions">
+          <button
+            class="quiet-button"
+            :disabled="workspace.archiveBusy"
+            @click="toggleArchive"
+          >
+            {{ threads.selected.archived ? "恢复会话" : "归档会话" }}
+          </button>
           <RouterLink
             v-if="projectId"
             class="quiet-link"
@@ -109,6 +127,12 @@ const scopeLabel = computed(() =>
           </RouterLink>
         </div>
       </header>
+      <p v-if="workspace.archiveError" class="error" role="alert">
+        {{ workspace.archiveError }}
+      </p>
+      <p v-if="threads.selected.archived" role="status">
+        此会话已归档，历史记录保留。
+      </p>
       <ChatPanel :key="threads.selected.id" :thread-id="threads.selected.id" />
     </div>
   </section>

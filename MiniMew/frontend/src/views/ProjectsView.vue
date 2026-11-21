@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useProjectsStore } from "../stores/projects";
 import { useAuthStore } from "../stores/auth";
+import ProjectModels from "../components/ProjectModels.vue";
+import { parseTemplates, type Template } from "../retrievalModels";
 const route = useRoute(),
   router = useRouter(),
   projects = useProjectsStore(),
@@ -10,6 +12,27 @@ const route = useRoute(),
 const name = ref(""),
   content = ref(""),
   drafts = ref<Record<string, { content: string; enabled: boolean }>>({});
+const templates = ref<Template[]>([]),
+  templateError = ref(""),
+  templateLoading = ref(true);
+const embeddingChoice = ref(""),
+  rerankChoice = ref("");
+let open = true;
+async function loadTemplates() {
+  templateLoading.value = true;
+  templateError.value = "";
+  try {
+    const rows = parseTemplates(
+      await projects.modelRequest("/v1/retrieval-models"),
+    );
+    if (open) templates.value = rows;
+  } catch {
+    if (open) templateError.value = "无法加载模型配置，请重试。";
+  } finally {
+    if (open) templateLoading.value = false;
+  }
+}
+onMounted(loadTemplates);
 const confirmRemove = (memory: (typeof projects.memories)[number]) => {
   if (
     window.confirm(
@@ -37,6 +60,8 @@ watch(
   () => {
     name.value = content.value = "";
     drafts.value = {};
+    templates.value = [];
+    embeddingChoice.value = rerankChoice.value = "";
   },
 );
 watch(
@@ -54,9 +79,15 @@ watch(
   },
 );
 void projects.load();
-onBeforeUnmount(() => void projects.select(undefined));
+onBeforeUnmount(() => {
+  open = false;
+  void projects.select(undefined);
+});
 async function create() {
-  const id = await projects.create(name.value);
+  const id = await projects.create(name.value, {
+    embedding_configuration_id: embeddingChoice.value || null,
+    rerank_configuration_id: rerankChoice.value || null,
+  });
   if (id) {
     name.value = "";
     await router.push(`/projects/${id}`);
@@ -95,7 +126,57 @@ async function save() {
             required
             placeholder="输入项目名称"
             :disabled="projects.busy"
-          /><button class="primary" :disabled="projects.busy || !name.trim()">
+          />
+          <label for="project-embedding">Embedding 模型</label>
+          <select
+            id="project-embedding"
+            v-model="embeddingChoice"
+            :disabled="projects.busy || templateLoading"
+          >
+            <option value="">本地 BAAI/bge-small-zh-v1.5</option>
+            <option
+              v-for="item in templates.filter((t) => t.purpose === 'embedding')"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.name }} · {{ item.model_name }}
+            </option>
+          </select>
+          <label for="project-rerank">Rerank 模型</label>
+          <select
+            id="project-rerank"
+            v-model="rerankChoice"
+            :disabled="projects.busy || templateLoading"
+          >
+            <option value="">本地 BAAI/bge-reranker-base</option>
+            <option
+              v-for="item in templates.filter((t) => t.purpose === 'rerank')"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.name }} · {{ item.model_name }}
+            </option>
+          </select>
+          <p class="project-note">
+            创建后模型与部署模式不可更换。云端配置可在<RouterLink to="/account"
+              >账户设置</RouterLink
+            >中保存复用；云端模式会向所选服务发送待编码文本或检索候选。
+          </p>
+          <p v-if="templateError" class="error" role="alert">
+            {{ templateError }}
+          </p>
+          <button v-if="templateError" type="button" @click="loadTemplates">
+            重试加载配置
+          </button>
+          <button
+            class="primary"
+            :disabled="
+              projects.busy ||
+              !name.trim() ||
+              templateLoading ||
+              !!templateError
+            "
+          >
             新建项目
           </button>
         </form>
@@ -136,6 +217,10 @@ async function save() {
               >管理项目文档</RouterLink
             >
           </div>
+          <ProjectModels
+            :key="`${auth.user?.id}:${projects.selected.id}`"
+            :project="projects.selected.id"
+          />
           <section class="project-memories" aria-label="项目记忆">
             <h3>项目记忆</h3>
             <p>
@@ -243,9 +328,13 @@ label {
   margin: 10px 0 6px;
 }
 input,
-textarea {
+textarea,
+select {
   font: inherit;
   max-width: 100%;
+}
+select {
+  width: 100%;
 }
 .project-directory form .primary {
   margin-top: 10px;

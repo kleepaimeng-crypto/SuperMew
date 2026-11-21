@@ -45,7 +45,9 @@ def test_pipeline_uses_selected_api_and_preserves_original_passages(code):
     runtime.bailian_reranker = BailianReranker(
         None, None, transport_factory=lambda: httpx2.MockTransport(respond)
     )
-    runtime.bailian_reranker.credentials = AsyncMock(return_value=SecretStr("fixture-secret"))
+    runtime.bailian_reranker.credentials = SimpleNamespace(
+        retrieval_endpoint=AsyncMock(return_value=(RERANK_URL, SecretStr("fixture-secret")))
+    )
     runtime.reranker = None
     policy = RagPolicy(
         strategy="hybrid", reranker=BAILIAN_RERANKER, revision=BAILIAN_RERANK_REVISION
@@ -73,8 +75,8 @@ def test_pipeline_uses_selected_api_and_preserves_original_passages(code):
     )
     assert len(result.rows) == len(rows)
     assert {row["score_kind"] for row in result.rows} == {"rerank_raw" if code == 200 else "rrf"}
-    runtime.bailian_reranker.credentials.assert_awaited_once_with(
-        scope.user_id, credential, RERANK_URL
+    runtime.bailian_reranker.credentials.retrieval_endpoint.assert_awaited_once_with(
+        scope.user_id, credential
     )
     steps = [call.args[0] for call in timeline.await_args_list]
     assert any(s["kind"] == "rerank" and BAILIAN_RERANKER in s["summary"] for s in steps)

@@ -13,11 +13,13 @@ from minimew.api.runs import router as runs_router
 from minimew.api.skills import router as skills_router
 from minimew.api.threads import router as threads_router
 from minimew.projects import router as projects_router
+from minimew.retrieval_models import router as retrieval_models_router
 
 app = FastAPI(title="MiniMew API", version="1.0.0")
 app.include_router(auth_router)
 app.include_router(model_settings_router)
 app.include_router(projects_router)
+app.include_router(retrieval_models_router)
 app.include_router(threads_router)
 app.include_router(runs_router)
 app.include_router(skills_router)

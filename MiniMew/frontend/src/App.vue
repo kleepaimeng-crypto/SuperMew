@@ -23,6 +23,7 @@ const mobileHeading = computed(() => {
   if (route.path.startsWith("/evaluations")) return "评测";
   if (route.path.startsWith("/projects")) return "项目";
   if (route.path.startsWith("/account")) return "账户";
+  if (route.path.startsWith("/archives")) return "已归档聊天";
   return route.params.threadId ? "对话" : "新会话";
 });
 
@@ -48,7 +49,11 @@ watch(
       workspace.setActiveScope(paramProject, false);
       return;
     }
-    if (path.startsWith("/threads") || path.startsWith("/documents")) {
+    if (
+      path.startsWith("/threads") ||
+      path.startsWith("/documents") ||
+      path.startsWith("/archives")
+    ) {
       const next = typeof queryProject === "string" ? queryProject : null;
       workspace.setActiveScope(next, path.startsWith("/threads"));
     }

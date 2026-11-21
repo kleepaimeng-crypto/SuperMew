@@ -4,6 +4,16 @@ MiniMew 是以当前 SuperMew 为参考的分阶段学习与复现计划。目�
 
 本目录包含独立的 FastAPI 后端、Vue 聊天前端、文档入库基础与学习文档，使用自己的依赖锁文件和虚拟环境，不接入上级 SuperMew 的执行链。学习进度统一见交接文档。
 
+### 聊天归档与项目检索模型
+
+打开聊天后，可在标题栏归档或恢复。左侧“已归档聊天”显示当前个人空间或项目的归档会话，支持打开历史、刷新和恢复；归档只隐藏默认列表，不删除消息，也不取消正在执行的 Run。
+
+在账户设置的“检索模型配置”中保存可复用云端配置，再在创建项目时分别选择 Embedding 和 Rerank。当前沿用已有适配器：本地 `BAAI/bge-small-zh-v1.5` / `BAAI/bge-reranker-base`，或百炼 `text-embedding-v4` / `qwen3-rerank`。云端预设保存服务地址、模型名称和加密 Key，不支持任意协议或模型名称。创建表单默认选择上述本地模型；云端需要先保存对应配置。
+
+项目创建后，模型、服务商、服务地址和部署模式只读；在项目概览单独更新失效 Key。修改账户中的可复用配置只影响之后创建的项目；项目 Key 更新也不影响其他项目或已有 Run 的私有凭据引用。个人知识库继续保留原模型切换与重建流程。项目文档页只展示已绑定模型，并链接到项目概览。
+
+启用前需配套部署前后端、Index Worker / Evaluation Worker，并显式执行迁移 `0026`；本工作包没有升级开发库或重启现有服务。迁移锁定已有项目实际使用的模型，不重建索引；尚未建立知识库的项目按迁移进程的原 `MINIMEW_EMBEDDING_PROFILE` / `MINIMEW_DOCUMENT_INDEX_LAYOUT` 配置补齐，因此迁移时须加载原 `.env`。项目 Embedding 重建未结束或配置不完整时明确拒绝升级，应先在旧版本中处理。已有归档、项目模型绑定或检索端点凭据时拒绝降级，避免丢失事实。使用原加密主密钥并保留备份，不重新生成覆盖它。实现与定向验收见[项目配置工作包](chapters/11-模型配置与检索模型选择.md#项目固定模型与可复用配置工作包2026-11-21)。
+
 换设备先读 [当前检查点与续接决定](AGENT_HANDOFF.md#当前检查点) 和 [换设备与同步](AGENT_HANDOFF.md#换设备与同步)：其中保存已确认选择、下一步范围、恢复 Agent 的提示及本机配置/数据的迁移边界。具体代码职责见对应章节实施记录，不依赖旧聊天或本机 memory。
 
 设备环境单独记录：本轮 Windows 台式设备的工具、容器、模型缓存及初始化验证见 [设备环境记录](devices/windows-desktop.md)。这些是带日期的设备快照，共同学习进度仍以交接文档为准。
@@ -801,7 +811,7 @@ uv run --env-file .env --no-sync python -m minimew.model_cli show-run <run_id>
 | [execution/repository.py](src/minimew/execution/repository.py) | 用独立 Session 管理领取、输入读取、分片追加、结果提交与保留失败前缀的过期终结 |
 | [execution/journal.py](src/minimew/execution/journal.py) | 校验契约、分配单 Run 事件序号并追加持久事件 |
 | [execution/service.py](src/minimew/execution/service.py) | 串联领取、输入、Provider 调用和结果提交；独占模型有界重试与绝对预算 |
-| [execution/deepseek.py](src/minimew/execution/deepseek.py) | LangChain/DeepSeek SDK 适配、关闭思考、流/错误转换和每次调用的客户端清理 |
+| [execution/chat_provider.py](src/minimew/execution/chat_provider.py) | 正式聊天模型适配、按冻结配置调用Provider、流/错误转换和每次调用的客户端清理 |
 | [execution/dispatcher.py](src/minimew/execution/dispatcher.py) | 随应用扫描可执行 pending、限制本实例并发、定期终结过期 running 与停机清理 |
 | [execution/queries.py](src/minimew/execution/queries.py) | 校验用户/Thread/Run 归属，按游标分页读取已提交事件 |
 | [execution/streaming.py](src/minimew/execution/streaming.py) | 每次订阅独立读取并传输事件，管理心跳、到期、发送背压和断连清理；不执行模型或改写 Run |

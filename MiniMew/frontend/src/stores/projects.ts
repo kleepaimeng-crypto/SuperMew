@@ -161,14 +161,20 @@ export const useProjectsStore = defineStore("projects", () => {
       if (valid(ctx) && order === selection) error.value = message(cause);
     }
   }
-  async function create(name: string) {
+  async function create(
+    name: string,
+    modelChoices: {
+      embedding_configuration_id?: string | null;
+      rerank_configuration_id?: string | null;
+    } = {},
+  ) {
     const ctx = context(),
       order = selection;
     busy.value = true;
     error.value = "";
     try {
       const item = parseProject(
-        await call(ctx, "/v1/projects", "POST", { name }),
+        await call(ctx, "/v1/projects", "POST", { name, ...modelChoices }),
       );
       if (!valid(ctx)) return null;
       await load();
@@ -220,7 +226,14 @@ export const useProjectsStore = defineStore("projects", () => {
       if (valid(ctx) && selected.value?.id === project) busy.value = false;
     }
   }
+  async function modelRequest(path: string, method = "GET", body?: unknown) {
+    const ctx = context();
+    const result = await call(ctx, path, method, body);
+    if (!valid(ctx)) throw new Error("Account changed");
+    return result;
+  }
   return {
+    modelRequest,
     items,
     selected,
     memories,

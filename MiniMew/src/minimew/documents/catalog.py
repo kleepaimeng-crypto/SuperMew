@@ -50,6 +50,15 @@ async def ensure_base(session, user_id, project_id, default_profile, index_layou
 
     if project_id is not None:
         await owned_project(session, user_id, project_id)
+        existing = await session.scalar(
+            select(KnowledgeBase)
+            .where(KnowledgeBase.user_id == user_id, KnowledgeBase.project_id == project_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if existing is None or existing.project_models is None:
+            raise BuildUnavailable
+        return existing
     initial = BuildConfiguration.model_validate(
         {
             **preset(default_profile).model_dump(),

@@ -25,6 +25,8 @@ export function parseThread(value: unknown): Thread {
   ) {
     throw new Error("Invalid thread response");
   }
+  if ("archived" in value && typeof value.archived !== "boolean")
+    throw new Error("Invalid archive status");
   if (
     "project_id" in value &&
     value.project_id !== null &&
@@ -35,6 +37,7 @@ export function parseThread(value: unknown): Thread {
     id: value.id,
     title: value.title,
     created_at: value.created_at,
+    archived: "archived" in value ? (value.archived as boolean) : false,
     ...("project_id" in value
       ? { project_id: value.project_id as string | null }
       : {}),
