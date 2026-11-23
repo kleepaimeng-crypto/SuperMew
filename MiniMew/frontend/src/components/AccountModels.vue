@@ -261,232 +261,271 @@ onBeforeUnmount(() => {
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <template v-if="data">
-      <p class="current-model">
-        当前使用：<strong>{{
-          current?.name ?? `服务端默认 · ${data.default_model_name}`
-        }}</strong>
-      </p>
-      <p
-        v-if="!current && !data.default_configured"
-        class="settings-description"
-      >
-        服务端默认模型尚未配置密钥，请添加自己的模型配置。
-      </p>
-      <ul v-if="data.models.length" class="model-list">
-        <li v-for="model in data.models" :key="model.id">
-          <div>
-            <strong>{{ model.name }}</strong
-            ><span class="model-detail"
-              >{{ model.model_name }} ·
-              {{ model.key_configured ? "密钥已保存" : "未设置密钥" }}</span
-            >
-          </div>
-          <div class="model-actions">
-            <button
-              class="secondary"
-              :disabled="busy || loading || model.id === data.current_model_id"
-              @click="select(model.id)"
-            >
-              {{ model.id === data.current_model_id ? "当前使用" : "设为当前" }}
-            </button>
-            <button
-              class="quiet-button"
-              :disabled="busy || loading"
-              @click="open(model)"
-            >
-              编辑
-            </button>
-            <button
-              class="quiet-button"
-              :disabled="busy || loading"
-              @click="deleting = model.id"
-            >
-              删除
-            </button>
-          </div>
-          <div v-if="deleting === model.id" class="delete-model">
-            <p>删除会撤销这份配置的密钥，已有任务将无法再用它继续调用。</p>
-            <button
-              class="secondary"
-              :disabled="busy"
-              @click="
-                mutate(
-                  () => call(`/models/${model.id}`, 'DELETE'),
-                  '配置已删除，密钥已撤销。',
-                )
-              "
-            >
-              确认删除
-            </button>
-            <button
-              class="quiet-button"
-              :disabled="busy"
-              @click="deleting = null"
-            >
-              保留配置
-            </button>
-          </div>
-        </li>
-      </ul>
-      <p v-else class="settings-description">
-        还没有个人模型配置，当前沿用服务端默认。
-      </p>
-      <div class="model-actions">
-        <button
-          :disabled="busy || loading || !data.credential_storage_ready"
-          @click="open()"
-        >
-          添加模型配置
-        </button>
-        <button
-          v-if="current"
-          class="secondary"
-          :disabled="busy || loading"
-          @click="select(null)"
-        >
-          恢复服务端默认
-        </button>
-      </div>
-      <p v-if="!data.credential_storage_ready" class="settings-description">
-        密钥存储尚未就绪，请联系维护者完成配置。
-      </p>
-      <form v-if="formOpen" class="model-form" @submit.prevent="save">
-        <h3>{{ editing ? "编辑模型配置" : "添加模型配置" }}</h3>
-        <fieldset :disabled="busy || loading">
-          <label for="model-vendor">服务商</label>
-          <select id="model-vendor" v-model="adapter" @change="choosePreset">
-            <option v-for="item in presets" :key="item.id" :value="item.id">
-              {{ item.name }}
-            </option>
-            <option value="generic">通用 OpenAI 兼容服务</option>
-          </select>
-          <label for="model-id">模型</label>
-          <select v-if="selectedPreset" id="model-id" v-model="modelName">
-            <option
-              v-for="model in selectedPreset.models"
-              :key="model"
-              :value="model"
-            >
-              {{ model }}
-            </option>
-          </select>
-          <input
-            v-else
-            id="model-id"
-            v-model="modelName"
-            required
-            maxlength="200"
-            placeholder="填写服务商提供的模型 API ID"
-          />
-          <label for="model-key"
-            >API Key{{ editing ? "（留空保留原密钥）" : "" }}</label
+      <div class="account-models-layout">
+        <div class="models-main-col">
+          <p class="current-model">
+            当前使用：<strong>{{
+              current?.name ?? `服务端默认 · ${data.default_model_name}`
+            }}</strong>
+          </p>
+          <p
+            v-if="!current && !data.default_configured"
+            class="settings-description"
           >
-          <input
-            id="model-key"
-            v-model="apiKey"
-            type="password"
-            :required="!editing"
-            maxlength="4096"
-            autocomplete="off"
-            spellcheck="false"
-          />
-          <p class="field-hint">密钥加密保存，之后不会显示原值。</p>
-          <div v-if="adapter === 'generic'" class="endpoint-field">
-            <label for="generic-endpoint">Base URL</label
-            ><input
-              id="generic-endpoint"
-              v-model="baseUrl"
-              required
-              type="url"
-              placeholder="https://api.example.com/v1"
-              maxlength="2048"
-            />
-          </div>
-          <details class="advanced-model">
-            <summary>更多设置</summary>
-            <label for="model-label">配置名称（可选）</label
-            ><input id="model-label" v-model="name" maxlength="80" />
-            <template v-if="adapter === 'qwen'"
-              ><label for="qwen-endpoint">接口地址</label
-              ><input
-                id="qwen-endpoint"
-                v-model="baseUrl"
-                type="url"
-                required
-              />
-              <p class="field-hint">
-                使用其他地域或业务空间时，填写与密钥匹配的地址。
-              </p></template
-            >
-            <template v-if="adapter !== 'kimi'">
-              <label for="model-temperature">Temperature</label>
-              <input
-                id="model-temperature"
-                v-model.number="temperature"
-                type="number"
-                min="0"
-                max="2"
-                step="0.1"
-                required
-              />
-            </template>
-            <div class="model-numbers">
-              <div>
-                <label for="model-tokens">最大输出 Token</label
-                ><input
-                  id="model-tokens"
-                  v-model.number="maxTokens"
-                  type="number"
-                  min="1"
-                  max="65536"
-                  required
-                />
+            服务端默认模型尚未配置密钥，请添加自己的模型配置。
+          </p>
+          <ul v-if="data.models.length" class="model-list">
+            <li v-for="model in data.models" :key="model.id" class="model-card">
+              <div class="model-card-row">
+                <div class="model-card-info">
+                  <strong>{{ model.name }}</strong>
+                  <span class="model-detail"
+                    >{{ model.model_name }} ·
+                    {{
+                      model.key_configured ? "密钥已保存" : "未设置密钥"
+                    }}</span
+                  >
+                </div>
+                <div class="model-actions">
+                  <button
+                    class="secondary"
+                    :disabled="
+                      busy || loading || model.id === data.current_model_id
+                    "
+                    @click="select(model.id)"
+                  >
+                    {{
+                      model.id === data.current_model_id
+                        ? "当前使用"
+                        : "设为当前"
+                    }}
+                  </button>
+                  <button
+                    class="quiet-button"
+                    :disabled="busy || loading"
+                    @click="open(model)"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    class="quiet-button"
+                    :disabled="busy || loading"
+                    @click="deleting = model.id"
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
-              <div>
-                <label for="model-timeout">任务期限（秒）</label
-                ><input
-                  id="model-timeout"
-                  v-model.number="timeout"
-                  type="number"
-                  min="1"
-                  max="300"
-                  required
-                />
+              <div v-if="deleting === model.id" class="delete-model">
+                <p>删除会撤销这份配置的密钥，已有任务将无法再用它继续调用。</p>
+                <button
+                  class="secondary"
+                  :disabled="busy"
+                  @click="
+                    mutate(
+                      () => call(`/models/${model.id}`, 'DELETE'),
+                      '配置已删除，密钥已撤销。',
+                    )
+                  "
+                >
+                  确认删除
+                </button>
+                <button
+                  class="quiet-button"
+                  :disabled="busy"
+                  @click="deleting = null"
+                >
+                  保留配置
+                </button>
               </div>
-            </div>
-          </details>
+            </li>
+          </ul>
+          <p v-else class="settings-description">
+            还没有个人模型配置，当前沿用服务端默认。
+          </p>
           <div class="model-actions">
-            <button type="submit">{{ busy ? "正在保存…" : "保存配置" }}</button
-            ><button type="button" class="quiet-button" @click="resetForm">
-              取消编辑
+            <button
+              class="primary"
+              :disabled="busy || loading || !data.credential_storage_ready"
+              @click="open()"
+            >
+              添加模型配置
+            </button>
+            <button
+              v-if="current"
+              class="secondary"
+              :disabled="busy || loading"
+              @click="select(null)"
+            >
+              恢复服务端默认
             </button>
           </div>
-        </fieldset>
-      </form>
-      <section class="capability-setting" aria-labelledby="knowledge-heading">
-        <h3 id="knowledge-heading">知识检索</h3>
-        <label class="checkbox-label"
-          ><input
-            v-model="knowledge"
-            type="checkbox"
-            :disabled="busy || loading"
-          />允许新任务检索当前范围的资料</label
+          <p v-if="!data.credential_storage_ready" class="settings-description">
+            密钥存储尚未就绪，请联系维护者完成配置。
+          </p>
+          <form v-if="formOpen" class="model-form" @submit.prevent="save">
+            <h3>{{ editing ? "编辑模型配置" : "添加模型配置" }}</h3>
+            <fieldset :disabled="busy || loading">
+              <div class="model-form-grid">
+                <div>
+                  <label for="model-vendor">服务商</label>
+                  <select
+                    id="model-vendor"
+                    v-model="adapter"
+                    @change="choosePreset"
+                  >
+                    <option
+                      v-for="item in presets"
+                      :key="item.id"
+                      :value="item.id"
+                    >
+                      {{ item.name }}
+                    </option>
+                    <option value="generic">通用 OpenAI 兼容服务</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="model-id">模型</label>
+                  <select
+                    v-if="selectedPreset"
+                    id="model-id"
+                    v-model="modelName"
+                  >
+                    <option
+                      v-for="model in selectedPreset.models"
+                      :key="model"
+                      :value="model"
+                    >
+                      {{ model }}
+                    </option>
+                  </select>
+                  <input
+                    v-else
+                    id="model-id"
+                    v-model="modelName"
+                    required
+                    maxlength="200"
+                    placeholder="填写服务商提供的模型 API ID"
+                  />
+                </div>
+              </div>
+              <label for="model-key"
+                >API Key{{ editing ? "（留空保留原密钥）" : "" }}</label
+              >
+              <input
+                id="model-key"
+                v-model="apiKey"
+                type="password"
+                :required="!editing"
+                maxlength="4096"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <p class="field-hint">密钥加密保存，之后不会显示原值。</p>
+              <div v-if="adapter === 'generic'" class="endpoint-field">
+                <label for="generic-endpoint">Base URL</label
+                ><input
+                  id="generic-endpoint"
+                  v-model="baseUrl"
+                  required
+                  type="url"
+                  placeholder="https://api.example.com/v1"
+                  maxlength="2048"
+                />
+              </div>
+              <details class="advanced-model">
+                <summary>更多设置</summary>
+                <label for="model-label">配置名称（可选）</label
+                ><input id="model-label" v-model="name" maxlength="80" />
+                <template v-if="adapter === 'qwen'"
+                  ><label for="qwen-endpoint">接口地址</label
+                  ><input
+                    id="qwen-endpoint"
+                    v-model="baseUrl"
+                    type="url"
+                    required
+                  />
+                  <p class="field-hint">
+                    使用其他地域或业务空间时，填写与密钥匹配的地址。
+                  </p></template
+                >
+                <template v-if="adapter !== 'kimi'">
+                  <label for="model-temperature">Temperature</label>
+                  <input
+                    id="model-temperature"
+                    v-model.number="temperature"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    required
+                  />
+                </template>
+                <div class="model-numbers">
+                  <div>
+                    <label for="model-tokens">最大输出 Token</label
+                    ><input
+                      id="model-tokens"
+                      v-model.number="maxTokens"
+                      type="number"
+                      min="1"
+                      max="65536"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label for="model-timeout">任务期限（秒）</label
+                    ><input
+                      id="model-timeout"
+                      v-model.number="timeout"
+                      type="number"
+                      min="1"
+                      max="300"
+                      required
+                    />
+                  </div>
+                </div>
+              </details>
+              <div class="model-actions">
+                <button class="primary" type="submit">
+                  {{ busy ? "正在保存…" : "保存配置" }}
+                </button>
+                <button type="button" class="quiet-button" @click="resetForm">
+                  取消编辑
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </div>
+
+        <section
+          class="panel-card-subtle capability-setting"
+          aria-labelledby="knowledge-heading"
         >
-        <p class="settings-description">
-          {{
-            data.knowledge_available
-              ? "知识服务已启用，检索范围仍由当前对话所属空间决定。"
-              : "服务端尚未启用知识服务；此处保留你的使用偏好。"
-          }}
-        </p>
-        <button
-          class="secondary"
-          :disabled="busy || loading || knowledge === data.knowledge_enabled"
-          @click="select(data.current_model_id)"
-        >
-          保存使用设置
-        </button>
-      </section>
+          <h3 id="knowledge-heading">知识检索</h3>
+          <label class="checkbox-label"
+            ><input
+              v-model="knowledge"
+              type="checkbox"
+              :disabled="busy || loading"
+            />允许新任务检索当前范围的资料</label
+          >
+          <p class="settings-description">
+            {{
+              data.knowledge_available
+                ? "知识服务已启用，检索范围仍由当前对话所属空间决定。"
+                : "服务端尚未启用知识服务；此处保留你的使用偏好。"
+            }}
+          </p>
+          <button
+            class="secondary"
+            :disabled="busy || loading || knowledge === data.knowledge_enabled"
+            @click="select(data.current_model_id)"
+          >
+            保存使用设置
+          </button>
+        </section>
+      </div>
     </template>
   </section>
 </template>
@@ -527,35 +566,96 @@ h3 {
   overflow-wrap: anywhere;
   color: var(--ink);
 }
+.account-models-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.85fr);
+  gap: 24px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.models-main-col {
+  min-width: 0;
+}
+
 .current-model {
-  margin: 16px 0 14px;
-  padding: 10px 14px;
+  margin: 0 0 14px;
+  padding: 12px 16px;
   background: var(--bg-accent-softer);
   border: 1px solid var(--accent-border);
   border-radius: 10px;
   color: var(--ink);
   overflow-wrap: anywhere;
 }
+
 .model-list {
   list-style: none;
   padding: 0;
   margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.model-list li {
-  padding: 14px 0;
-  border-top: 1px solid var(--border);
+
+.model-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-subtle);
 }
+
+.model-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.model-card-info {
+  min-width: 0;
+}
+
 .model-detail {
   display: block;
   overflow-wrap: anywhere;
-  margin: 4px 0 10px;
+  margin: 4px 0 0;
 }
+
 .model-form {
-  margin-top: 20px;
+  margin-top: 18px;
   padding: 20px;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: 12px;
+}
+
+.model-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.capability-setting {
+  margin-top: 0;
+  padding: 20px;
+}
+
+.capability-setting h3 {
+  margin: 0 0 10px;
+}
+
+@media (max-width: 1040px) {
+  .account-models-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .model-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 fieldset {
   min-width: 0;
@@ -605,11 +705,6 @@ summary {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-}
-.capability-setting {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
 }
 .checkbox-label {
   display: flex;

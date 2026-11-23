@@ -46,6 +46,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     [PERSONAL_SCOPE]: emptyBucket(),
   });
   const mobileNavOpen = ref(false);
+  const sidebarCollapsed = ref(false);
   const archiveBusy = ref(false),
     archiveError = ref("");
 
@@ -271,6 +272,10 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     mobileNavOpen.value = false;
   }
 
+  function toggleSidebar() {
+    sidebarCollapsed.value = !sidebarCollapsed.value;
+  }
+
   return {
     archiveBusy,
     archiveError,
@@ -279,6 +284,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     expandedScopes,
     buckets,
     mobileNavOpen,
+    sidebarCollapsed,
     ensureBucket,
     loadScopeThreads,
     setActiveScope,
@@ -288,6 +294,7 @@ export const useWorkspaceStore = defineStore("workspace", () => {
     projectName,
     openMobileNav,
     closeMobileNav,
+    toggleSidebar,
     reset,
   };
 });

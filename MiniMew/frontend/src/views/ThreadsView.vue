@@ -127,10 +127,14 @@ const scopeLabel = computed(() =>
           </RouterLink>
         </div>
       </header>
-      <p v-if="workspace.archiveError" class="error" role="alert">
+      <p v-if="workspace.archiveError" class="thread-error-banner" role="alert">
         {{ workspace.archiveError }}
       </p>
-      <p v-if="threads.selected.archived" role="status">
+      <p
+        v-if="threads.selected.archived"
+        class="thread-archived-banner"
+        role="status"
+      >
         此会话已归档，历史记录保留。
       </p>
       <ChatPanel :key="threads.selected.id" :thread-id="threads.selected.id" />

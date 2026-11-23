@@ -143,42 +143,51 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .rerank-settings {
-  border-block-end: 1px solid var(--border, #d6ddd8);
-  padding-block-end: 1rem;
-  margin-block-end: 1rem;
   overflow-wrap: anywhere;
 }
 .rerank-settings h2 {
-  font-size: 1rem;
-  margin: 0;
+  font-size: 17px;
+  margin: 0 0 8px;
 }
 .rerank-settings p {
-  margin: 0.4rem 0;
+  margin: 6px 0;
+  font-size: 14px;
+}
+.rerank-settings a {
+  color: var(--accent);
+  font-weight: 500;
+}
+.rerank-settings a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .rerank-settings details {
-  margin-top: 0.7rem;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 .rerank-settings summary {
   cursor: pointer;
   width: fit-content;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 550;
 }
 .rerank-settings form {
-  display: grid;
-  gap: 0.45rem;
-  justify-items: start;
-  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.rerank-settings form label {
+  margin: 6px 0 0;
 }
 .rerank-settings select,
 .rerank-settings input {
-  width: min(100%, 23rem);
+  width: min(100%, 26rem);
 }
-.rerank-settings select {
-  min-height: 2.5rem;
-  padding-inline: 0.65rem;
-  border: 1px solid #b8c6bb;
-  border-radius: 5px;
-  background: #fff;
-  color: inherit;
-  font: inherit;
+.rerank-settings form button {
+  align-self: flex-start;
+  margin-top: 6px;
 }
 </style>

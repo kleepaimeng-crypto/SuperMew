@@ -237,26 +237,32 @@ const date = (v: string) => new Date(v).toLocaleString("zh-CN");
               :disabled="store.busy || !!store.pending"
             >
               <legend>2 · 导入案例</legend>
-              <label for="dataset">Dataset · 题目与人工评分标准</label
-              ><input
-                id="dataset"
-                type="file"
-                accept=".json,application/json"
-                @change="choose($event, 'dataset')"
-              />
-              <p v-if="datasetName" class="evaluation-note">
-                已读取 {{ datasetName }}
-              </p>
-              <label for="scenario">Scenario · 受控输出脚本</label
-              ><input
-                id="scenario"
-                type="file"
-                accept=".json,application/json"
-                @change="choose($event, 'scenario')"
-              />
-              <p v-if="scenarioName" class="evaluation-note">
-                已读取 {{ scenarioName }}
-              </p>
+              <div class="evaluation-files-grid">
+                <div>
+                  <label for="dataset">Dataset · 题目与人工评分标准</label>
+                  <input
+                    id="dataset"
+                    type="file"
+                    accept=".json,application/json"
+                    @change="choose($event, 'dataset')"
+                  />
+                  <p v-if="datasetName" class="evaluation-note">
+                    已读取 {{ datasetName }}
+                  </p>
+                </div>
+                <div>
+                  <label for="scenario">Scenario · 受控输出脚本</label>
+                  <input
+                    id="scenario"
+                    type="file"
+                    accept=".json,application/json"
+                    @change="choose($event, 'scenario')"
+                  />
+                  <p v-if="scenarioName" class="evaluation-note">
+                    已读取 {{ scenarioName }}
+                  </p>
+                </div>
+              </div>
               <p>脚本分别定义策略、回答与评分输出；人工标准只进入评分侧。</p>
               <p v-if="fileError" class="error" role="alert">{{ fileError }}</p>
               <details>
@@ -577,11 +583,16 @@ h5 {
 }
 .evaluation-content {
   min-width: 0;
-  max-width: 960px;
 }
 p {
   line-height: 1.65;
-  max-width: 72ch;
+  max-width: 78ch;
+}
+.evaluation-files-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 10px;
 }
 .evaluation-note,
 small {
@@ -624,14 +635,16 @@ form {
   margin-top: 20px;
 }
 fieldset {
-  border: 0;
-  border-top: 1px solid var(--border);
-  padding: 18px 0;
-  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-subtle);
+  padding: 18px 20px;
+  margin: 0 0 16px;
   min-width: 0;
 }
 legend {
-  padding: 0 10px 0 0;
+  padding: 0 8px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink);
 }
@@ -754,6 +767,7 @@ td {
 th {
   color: var(--ink-muted);
   font-weight: 600;
+  background: var(--bg-subtle);
 }
 details {
   margin: 14px 0;
@@ -783,7 +797,8 @@ li {
     max-height: 180px;
     margin: 12px 0;
   }
-  .evaluation-budgets {
+  .evaluation-budgets,
+  .evaluation-files-grid {
     grid-template-columns: 1fr;
   }
   .evaluation-table {

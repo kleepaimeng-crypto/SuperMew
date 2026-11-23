@@ -87,7 +87,11 @@ async function retry() {
 </script>
 
 <template>
-  <div v-if="isAuthenticatedWorkspace" class="app-workspace-shell">
+  <div
+    v-if="isAuthenticatedWorkspace"
+    class="app-workspace-shell"
+    :class="{ 'is-sidebar-collapsed': workspace.sidebarCollapsed }"
+  >
     <header class="ws-mobile-topbar">
       <button
         type="button"
@@ -119,6 +123,27 @@ async function retry() {
     />
 
     <WorkspaceSidebar />
+
+    <button
+      v-if="workspace.sidebarCollapsed"
+      type="button"
+      class="ws-expand-btn"
+      aria-label="展开侧边栏"
+      title="展开侧边栏"
+      @click="workspace.toggleSidebar()"
+    >
+      <svg
+        viewBox="0 0 20 20"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        aria-hidden="true"
+      >
+        <path d="M3.5 4.5h13v11h-13zM8 4.5v11M11 8l2 2-2 2" />
+      </svg>
+    </button>
 
     <main class="ws-main">
       <RouterView />

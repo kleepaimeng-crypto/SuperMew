@@ -185,41 +185,62 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .embedding-settings {
-  border-block-end: 1px solid var(--border);
-  padding-block-end: 14px;
-  margin-block-end: 16px;
   overflow-wrap: anywhere;
 }
 .embedding-settings h2 {
-  font-size: 15px;
-  margin: 0;
+  font-size: 17px;
+  margin: 0 0 8px;
 }
 .embedding-settings p {
   margin: 6px 0;
-  font-size: 13px;
+  font-size: 14px;
+}
+.embedding-settings a {
+  color: var(--accent);
+  font-weight: 500;
+}
+.embedding-settings a:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .embedding-settings details {
-  margin-top: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 .embedding-settings summary {
   cursor: pointer;
   width: fit-content;
   color: var(--accent-text);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 550;
 }
 .embedding-settings form {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  justify-items: start;
-  margin-top: 10px;
+  margin-top: 12px;
+}
+.embedding-settings form label {
+  margin: 6px 0 0;
 }
 .embedding-settings select,
 .embedding-settings input {
-  width: min(100%, 24rem);
+  width: min(100%, 26rem);
+}
+.embedding-settings form button {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+.rebuild-status {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
 }
 .rebuild-status progress {
-  max-width: 100%;
+  width: 100%;
   accent-color: var(--accent);
 }
 </style>

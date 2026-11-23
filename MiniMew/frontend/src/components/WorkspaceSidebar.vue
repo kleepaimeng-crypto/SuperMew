@@ -52,7 +52,14 @@ onMounted(() => {
   }
 });
 
-function formatTime(iso: string) {
+function formatShortDate(iso: string) {
+  return new Date(iso).toLocaleDateString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function formatFullTime(iso: string) {
   return new Date(iso).toLocaleString("zh-CN", {
     month: "2-digit",
     day: "2-digit",
@@ -98,14 +105,35 @@ async function logout() {
       >
         MiniMew<span class="brand-dot">.</span>
       </RouterLink>
-      <button
-        type="button"
-        class="quiet-button ws-mobile-close"
-        aria-label="关闭导航栏"
-        @click="workspace.closeMobileNav()"
-      >
-        关闭
-      </button>
+      <div class="ws-header-controls">
+        <button
+          type="button"
+          class="quiet-button ws-collapse-btn"
+          aria-label="收起侧边栏"
+          title="收起侧边栏"
+          @click="workspace.toggleSidebar()"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            aria-hidden="true"
+          >
+            <path d="M3.5 4.5h13v11h-13zM8 4.5v11M13 8l-2 2 2 2" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="quiet-button ws-mobile-close"
+          aria-label="关闭导航栏"
+          @click="workspace.closeMobileNav()"
+        >
+          关闭
+        </button>
+      </div>
     </div>
 
     <div class="ws-primary-action">
@@ -178,10 +206,21 @@ async function logout() {
         }"
         @click="navigateAndClose"
       >
-        <span class="ws-nav-item-main"
-          ><span class="ws-nav-icon" aria-hidden="true">▤</span
-          ><span>已归档聊天</span></span
-        >
+        <span class="ws-nav-item-main">
+          <svg
+            class="ws-nav-icon"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"
+          >
+            <path
+              d="M3.5 5.5h13v3h-13zM4.5 8.5v7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-7M8 11.5h4"
+            />
+          </svg>
+          <span>已归档聊天</span>
+        </span>
         <span class="ws-scope-pill">{{ activeScopeLabel }}</span>
       </RouterLink>
     </nav>
@@ -239,6 +278,7 @@ async function logout() {
               <RouterLink
                 class="ws-thread-link"
                 :to="`/threads/${thread.id}`"
+                :title="`${thread.title || '未命名对话'} · ${formatFullTime(thread.created_at)}`"
                 :aria-current="
                   currentThreadId === thread.id.toLowerCase() &&
                   !route.query.project
@@ -254,7 +294,7 @@ async function logout() {
                   thread.title || "未命名对话"
                 }}</span>
                 <time :datetime="thread.created_at">{{
-                  formatTime(thread.created_at)
+                  formatShortDate(thread.created_at)
                 }}</time>
               </RouterLink>
             </li>
@@ -431,6 +471,7 @@ async function logout() {
                       path: `/threads/${thread.id}`,
                       query: { project: project.id },
                     }"
+                    :title="`${thread.title || '未命名对话'} · ${formatFullTime(thread.created_at)}`"
                     :aria-current="
                       currentThreadId === thread.id.toLowerCase() &&
                       route.query.project === project.id
@@ -446,7 +487,7 @@ async function logout() {
                       thread.title || "未命名对话"
                     }}</span>
                     <time :datetime="thread.created_at">{{
-                      formatTime(thread.created_at)
+                      formatShortDate(thread.created_at)
                     }}</time>
                   </RouterLink>
                 </li>

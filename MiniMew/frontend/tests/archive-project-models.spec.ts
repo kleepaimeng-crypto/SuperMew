@@ -99,11 +99,13 @@ for (const width of [1280, 390]) {
       });
     });
     await page.goto("/projects");
-    await page.getByLabel("新项目名称").fill("项目甲");
-    await page
+    await page.getByRole("button", { name: "＋ 新建项目" }).click();
+    const dialog = page.getByRole("dialog", { name: "新建项目" });
+    await dialog.getByLabel("新项目名称").fill("项目甲");
+    await dialog
       .getByLabel("Embedding 模型", { exact: true })
       .selectOption(templateId);
-    await page.getByRole("button", { name: "新建项目", exact: true }).click();
+    await dialog.getByRole("button", { name: "新建项目", exact: true }).click();
     const panel = page.getByRole("region", {
       name: "项目模型配置",
       exact: true,
@@ -214,6 +216,7 @@ test("账户保存检索配置并修改复用模板，不回显Key", async ({ pa
     });
   });
   await page.goto("/account");
+  await page.getByRole("tab", { name: "检索模型模板" }).click();
   const panel = page.getByRole("region", { name: "可复用检索模型配置" });
   await panel.getByLabel("配置名称").fill("百炼配置");
   await panel.getByLabel("API Key", { exact: true }).fill("fixture-cloud-key");
