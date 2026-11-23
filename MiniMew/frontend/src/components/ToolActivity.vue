@@ -119,37 +119,28 @@ function toggled(event: Event) {
   display: block;
   max-width: 100%;
   overflow-wrap: anywhere;
+  padding: 0;
 }
-.step-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-.process-tasks ul {
-  padding-left: 16px;
-}
-.process-tasks ul li {
-  display: block;
-  border: 0;
-  padding: 4px 0;
+.process-tasks > li:last-child :deep(> .task-row::before) {
+  display: none;
 }
 .tool-activity {
-  margin: 8px 0 14px;
-  padding: 8px 12px;
+  margin: 8px 0 16px;
+  padding: 10px 14px;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.6;
   color: var(--ink-secondary);
 }
 summary {
   cursor: pointer;
   width: fit-content;
   padding: 2px 0;
-  font-weight: 500;
-  color: var(--ink-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
 }
 summary:hover {
   color: var(--accent);
@@ -157,7 +148,7 @@ summary:hover {
 ol {
   list-style: none;
   padding: 0;
-  margin: 6px 0 0;
+  margin: 8px 0 0;
 }
 li {
   display: flex;

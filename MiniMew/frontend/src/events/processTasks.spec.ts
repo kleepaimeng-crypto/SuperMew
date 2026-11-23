@@ -7,6 +7,8 @@ import {
   processTasks,
   taskTitle,
   taskState,
+  taskElapsed,
+  decisionSummary,
   elapsed,
   materialCount,
 } from "./processTasks";
@@ -82,4 +84,30 @@ it("truthful phase/purpose labels, pending children and legacy algorithm records
   expect(materialCount(model)).toBe("");
   expect(elapsed(12)).toBe("<0.1秒");
   expect(taskTitle(processTasks([model], [])[0]!)).toBe("模型请求");
+});
+it("decisionSummary shows structured summary and falls back cleanly for legacy runs", () => {
+  const modern = {
+    ...step("a", "model", "", ""),
+    summary: "决定调用：知识库检索（“启动前准备”）",
+    outcome: "tool_calls",
+    elapsed_ms: 1400,
+  };
+  const legacy = {
+    ...step("b", "model", "", ""),
+    summary: "模型请求结束",
+    outcome: "tool_calls",
+    elapsed_ms: 0,
+  };
+  const rewrite = {
+    ...step("c", "rewrite", "", "search"),
+    summary: "改写查询：网络备份与校验命令",
+  };
+  const tasks = processTasks([modern, legacy, rewrite], []);
+  expect(decisionSummary(tasks[0]!)).toBe(
+    "决定调用：知识库检索（“启动前准备”）",
+  );
+  expect(taskElapsed(tasks[0]!)).toBe("1.4秒");
+  expect(decisionSummary(tasks[1]!)).toBe("决定调用工具获取补充资料");
+  expect(taskElapsed(tasks[1]!)).toBe("");
+  expect(decisionSummary(tasks[2]!)).toBe("改写查询：网络备份与校验命令");
 });

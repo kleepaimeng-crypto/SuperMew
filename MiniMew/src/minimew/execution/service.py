@@ -1,6 +1,7 @@
 """领取 → 共用绝对截止时间的有界尝试 → 原子结果提交。"""
 
 import asyncio
+import json
 import logging
 import sys
 from collections.abc import AsyncGenerator
@@ -50,6 +51,40 @@ ExecutionOutcome = Literal[
     "succeeded", "failed", "cancelled", "not_claimed", "ownership_lost", "waiting_input"
 ]
 logger = logging.getLogger(__name__)
+
+
+_TOOL_LABELS = {
+    "knowledge_search": "知识库检索",
+    "read_skill_resource": "读取任务参考资料",
+}
+
+
+def _model_turn_summary(turn: ModelTurn, purpose: str) -> str:
+    if purpose == "answer_repair":
+        return "已完成回答格式校验与修正"
+    if turn.kind != "tool_calls" or not turn.tool_calls:
+        return "已整理上下文，开始输出最终回答"
+    if len(turn.tool_calls) == 1:
+        call = turn.tool_calls[0]
+        label = _TOOL_LABELS.get(call.name, call.name)
+        preview = ""
+        try:
+            args = json.loads(call.arguments_json)
+        except ValueError:
+            args = {}
+        if isinstance(args, dict):
+            if call.name == "knowledge_search" and isinstance(args.get("query"), str):
+                text = " ".join(args["query"].split())
+                if text:
+                    preview = f"“{text[:120]}{'…' if len(text) > 120 else ''}”"
+            elif call.name == "read_skill_resource" and isinstance(args.get("resource_id"), str):
+                text = args["resource_id"].strip()
+                if text:
+                    preview = text[:80]
+        return f"决定调用：{label}（{preview}）" if preview else f"决定调用：{label}"
+    labels = [_TOOL_LABELS.get(call.name, call.name) for call in turn.tool_calls[:4]]
+    suffix = "等" if len(turn.tool_calls) > 4 else ""
+    return f"决定调用 {len(turn.tool_calls)} 项工具：{'、'.join(labels)}{suffix}"
 
 
 @dataclass
@@ -542,8 +577,8 @@ class RunExecutor:
                     turn = await self._consume(claim, request, deadline, progress)
                     if step:
                         step.finish(
-                            summary="模型请求结束",
-                            count=1,
+                            summary=_model_turn_summary(turn, purpose),
+                            count=len(turn.tool_calls) if turn.kind == "tool_calls" else 1,
                             outcome=turn.kind,
                             purpose="answer_repair"
                             if purpose == "answer_repair"

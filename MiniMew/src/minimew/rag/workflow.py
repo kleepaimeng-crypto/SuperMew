@@ -269,7 +269,9 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
             if not query or "\x00" in query or any(a.lower() not in query.lower() for a in anchors):
                 raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
             if stage:
-                stage.finish(summary="已生成改写检索式")
+                preview = " ".join(query.split())
+                summary = f"改写查询：{preview[:240]}{'…' if len(preview) > 240 else ''}"
+                stage.finish(summary=summary)
         result = await retrieve(query, process=context.process, step_key="rewrite-search")
         combined, representatives = combine(
             state["result"], [result], (state["supported"], frozenset())

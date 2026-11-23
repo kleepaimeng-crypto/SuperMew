@@ -144,3 +144,27 @@ export function materialCount(s: ProcessStepData): string {
 export function elapsed(ms: number): string {
   return ms < 100 ? "<0.1秒" : `${(ms / 1000).toFixed(1)}秒`;
 }
+export function decisionSummary(task: ProcessTask): string {
+  const { step: s, detail: d } = task;
+  if (s.kind === "model") {
+    if (s.status === "running") {
+      if (d?.purpose === "answer") return "正在整合资料并组织最终回答…";
+      if (d?.purpose === "answer_repair") return "正在校验并修正回答格式…";
+      return "正在分析问题并决定下一步行动…";
+    }
+    if (s.summary && s.summary !== "模型请求结束") return s.summary;
+    if (d?.purpose === "answer_repair") return "已完成回答格式校验与修正";
+    if (s.outcome === "tool_calls") return "决定调用工具获取补充资料";
+    if (s.outcome === "text") return "已整理上下文，开始输出最终回答";
+    return "";
+  }
+  if (s.kind === "rewrite") {
+    if (s.status === "running") return "正在根据缺口调整检索表达…";
+    if (s.summary && s.summary !== "已生成改写检索式") return s.summary;
+  }
+  return "";
+}
+export function taskElapsed(task: ProcessTask): string {
+  if (task.step.status === "running" || task.step.elapsed_ms <= 0) return "";
+  return elapsed(task.step.elapsed_ms);
+}

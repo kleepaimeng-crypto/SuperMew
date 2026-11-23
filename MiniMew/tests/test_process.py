@@ -91,6 +91,9 @@ def test_formal_workflow_observation_preserves_original_routes(monkeypatch, mode
     results = [d for d in details if d["stage"] == "result"]
     if mode != "sufficient":
         assert any(d["phase"] == "initial" and d["missing"] == ["住宿"] for d in results)
+    if mode == "rewrite":
+        rewrites = [e for e in events if e["kind"] == "rewrite" and e["status"] == "completed"]
+        assert rewrites and rewrites[-1]["summary"].startswith("改写查询：")
     if mode in {"plan", "partial", "failure"}:
         children = {e["step_id"] for e in events if e["kind"] == "subquestion"}
         assert len(children) == 4
@@ -212,3 +215,55 @@ def test_executor_reports_actual_attempt_and_response_purpose_without_extra_mode
         ]
 
     asyncio.run(scenario())
+
+
+def test_model_turn_summary_exposes_bounded_public_tool_decisions_only():
+    import json
+
+    from minimew.execution.messages import ModelTurn, ToolCall
+    from minimew.execution.service import _model_turn_summary
+
+    search = ModelTurn(
+        "tool_calls",
+        "",
+        tool_calls=(
+            ToolCall(
+                "c1",
+                "knowledge_search",
+                json.dumps({"query": "链路仿真启动前准备", "secret_hint": "do-not-leak"}),
+            ),
+        ),
+    )
+    summary = _model_turn_summary(search, "model_decision")
+    assert summary == "决定调用：知识库检索（“链路仿真启动前准备”）"
+    assert "do-not-leak" not in summary
+
+    long_query = "甲" * 160
+    bounded = _model_turn_summary(
+        ModelTurn(
+            "tool_calls",
+            "",
+            tool_calls=(ToolCall("c2", "knowledge_search", json.dumps({"query": long_query})),),
+        ),
+        "model_decision",
+    )
+    assert bounded.endswith("…”）")
+    assert len(bounded) < 200
+
+    multi = ModelTurn(
+        "tool_calls",
+        "",
+        tool_calls=(
+            ToolCall("c3", "knowledge_search", json.dumps({"query": "q"})),
+            ToolCall("c4", "read_skill_resource", json.dumps({"resource_id": "guide.md"})),
+        ),
+    )
+    assert _model_turn_summary(multi, "model_decision") == (
+        "决定调用 2 项工具：知识库检索、读取任务参考资料"
+    )
+    assert _model_turn_summary(ModelTurn("text", "ok"), "model_decision") == (
+        "已整理上下文，开始输出最终回答"
+    )
+    assert _model_turn_summary(ModelTurn("text", "ok"), "answer_repair") == (
+        "已完成回答格式校验与修正"
+    )

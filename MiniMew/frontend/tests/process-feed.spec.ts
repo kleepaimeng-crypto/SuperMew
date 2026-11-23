@@ -165,7 +165,10 @@ test("逐行保留过程、成功后收起、历史重开与刷新", async ({ pa
     rows = page.locator(".process-tasks > li");
   await expect(details).toHaveAttribute("open", "");
   await expect(rows).toHaveCount(1);
-  await expect(details.getByText(query, { exact: false })).not.toBeVisible();
+  await expect(details.getByText(query, { exact: false })).toBeVisible();
+  await expect(
+    details.getByText("向量召回", { exact: true }),
+  ).not.toBeVisible();
   await details.getByText("检索详情", { exact: true }).click();
   await expect(details).toContainText(query);
   await expect(details).toContainText("向量召回");
