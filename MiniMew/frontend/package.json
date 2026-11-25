@@ -16,6 +16,9 @@
     "contracts": "openapi-typescript openapi.json -o src/generated/api.d.ts && prettier --write openapi.json src/generated/api.d.ts"
   },
   "dependencies": {
+    "dompurify": "^3.5.0",
+    "highlight.js": "^11.12.0",
+    "marked": "^18.3.0",
     "pinia": "^3.0.4",
     "vue": "^3.5.44",
     "vue-router": "^4.6.4"
@@ -24,6 +27,7 @@
     "@playwright/test": "^1.64.1",
     "@types/node": "^24.19.2",
     "@vitejs/plugin-vue": "^6.0.10",
+    "jsdom": "^31.0.1",
     "openapi-typescript": "^7.13.0",
     "prettier": "^3.9.10",
     "typescript": "~5.9.3",
