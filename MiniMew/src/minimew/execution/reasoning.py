@@ -12,7 +12,13 @@ from minimew.execution.diagnostics import Diagnostic, capture, emit, validation_
 from minimew.execution.messages import InputMessage, json_object, validate_turn
 from minimew.execution.provider import ProviderCompleted, ProviderDelta, ProviderFailure
 from minimew.execution.tools import ToolFailure
-from minimew.rag.reasoning import FinalizationReserved, validate_grade
+from minimew.rag.reasoning import (
+    FinalizationReserved,
+    missing_anchors,
+    validate_grade,
+    validate_plan,
+    validate_rewrite,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +62,8 @@ class ModelCaller:
                 "不生成答案，不重复问题。"
             ),
             "rewrite": (
-                "Step-back式改写检索式，保留关键实体、金额、编号、日期、地点及限制。"
+                "Step-back式改写检索式，保留关键实体、金额、编号、日期、地点及限制，"
+                "并保留原问题中的英文术语、缩写与编号（展开全称时请同时保留原词）。"
                 "只改查询，不生成答案。"
             ),
         }[purpose]
@@ -108,6 +115,7 @@ class ModelCaller:
                         )
                     raise
                 phase = "response_protocol"
+                parsed = None
                 try:
                     turn = None
                     stream = self.provider.stream(request)
@@ -163,8 +171,13 @@ class ModelCaller:
                     parsed = json_object(turn.content, 24000)
                     phase = "schema_validation"
                     result = schema.model_validate_json(json.dumps(parsed))
-                    if request.json_output and purpose == "grade":
-                        validate_grade(result, {m["citation_id"] for m in data["materials"]})
+                    if request.json_output:
+                        if purpose == "grade":
+                            validate_grade(result, {m["citation_id"] for m in data["materials"]})
+                        elif purpose == "rewrite":
+                            validate_rewrite(result, data.get("question", ""))
+                        elif purpose == "plan":
+                            validate_plan(result)
                     return result
                 except (ValidationError, ValueError) as failure:
                     error = ProviderFailure(
@@ -190,6 +203,15 @@ class ModelCaller:
                         "reason": error.diagnostic.reason,
                         "issues": error.diagnostic.issues,
                     }
+                    if (
+                        purpose == "rewrite"
+                        and error.diagnostic.reason == "missing_anchor"
+                        and isinstance(parsed, dict)
+                        and isinstance(parsed.get("query"), str)
+                    ):
+                        dropped = missing_anchors(data.get("question", ""), parsed["query"])
+                        if dropped:
+                            feedback["missing_anchors"] = dropped[:8]
                     try:
                         request = replace(
                             initial_request,

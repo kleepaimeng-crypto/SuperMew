@@ -158,7 +158,9 @@ function result(code: string) {
       <p v-if="step.status === 'failed'" class="task-error">
         {{
           step.outcome.startsWith("PROVIDER_")
-            ? errorPresentation(step.outcome, step.kind).reason
+            ? runStatus === "failed"
+              ? errorPresentation(step.outcome, step.kind).reason
+              : "本阶段未完成，已保留已有检索材料。"
             : "本阶段未完成"
         }}
         <code>{{ step.outcome }}</code>

@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import operator
-import re
 from typing import Annotated, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -14,7 +13,15 @@ from minimew.execution.diagnostics import capture, emit
 from minimew.execution.process import report_step
 from minimew.execution.provider import ProviderFailure
 from minimew.rag.protocol import MaterialGroup, RetrievalResult
-from minimew.rag.reasoning import Grade, Plan, Rewrite, grade_materials
+from minimew.rag.reasoning import (
+    FinalizationReserved,
+    Grade,
+    Plan,
+    Rewrite,
+    grade_materials,
+    validate_plan,
+    validate_rewrite,
+)
 from minimew.vector_store.manifest import VectorError
 
 logger = logging.getLogger(__name__)
@@ -112,11 +119,7 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
             result = await context.model_caller(
                 "plan", {"question": question, "missing": state["grade"].missing}, Plan
             )
-            queries = tuple(q.strip() for q in result.questions)
-            if any(not q or len(q) > 1024 or "\x00" in q for q in queries) or len(
-                set(queries)
-            ) != len(queries):
-                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            queries = validate_plan(result)
             if stage:
                 stage.finish(summary="已拆解检索子问题", count=len(queries), questions=queries)
         return {"questions": queries}
@@ -261,13 +264,37 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
     async def rewrite(state):
         budget.rewrite_used = True
         async with report_step(context.process, "rewrite", "rewrite", phase="rewritten") as stage:
-            revised = await context.model_caller(
-                "rewrite", {"question": question, "missing": state["grade"].missing}, Rewrite
-            )
-            query = revised.query.strip()
-            anchors = re.findall(r"[A-Za-z0-9]+(?:[-./][A-Za-z0-9]+)*", question)
-            if not query or "\x00" in query or any(a.lower() not in query.lower() for a in anchors):
-                raise ProviderFailure("PROVIDER_INVALID_RESPONSE")
+            try:
+                revised = await context.model_caller(
+                    "rewrite", {"question": question, "missing": state["grade"].missing}, Rewrite
+                )
+                query = validate_rewrite(revised, question)
+            except FinalizationReserved:
+                if stage:
+                    stage.finish(summary="模型预算已为最终回答预留，跳过补充改写")
+                return {"phase": "rewrite_degraded"}
+            except ProviderFailure as exc:
+                if not state.get("supported"):
+                    raise
+                emit(
+                    logger,
+                    "rag_rewrite_degraded",
+                    context.run_id,
+                    exc.code,
+                    getattr(exc, "diagnostic", None) or capture("rewrite", "rewrite_failed", exc),
+                    thread_id=context.thread_id,
+                    identity=getattr(context, "execution_identity", None),
+                )
+                if stage:
+                    stage.fail(exc.code)
+                note = f"补充改写检索未完成：{exc.code}"
+                missing = (*state["grade"].missing, note)
+                if len(missing) > 8:
+                    missing = (*missing[:7], note)
+                return {
+                    "grade": state["grade"].model_copy(update={"missing": missing}),
+                    "phase": "rewrite_degraded",
+                }
             if stage:
                 preview = " ".join(query.split())
                 summary = f"改写查询：{preview[:240]}{'…' if len(preview) > 240 else ''}"
@@ -326,7 +353,11 @@ async def run_workflow(context, question, initial, retrieve, prepare, *, initial
     graph.add_conditional_edges("plan", dispatch, ["child"])
     graph.add_edge("child", "aggregate")
     graph.add_edge("aggregate", "assess")
-    graph.add_edge("rewrite", "assess")
+    graph.add_conditional_edges(
+        "rewrite",
+        lambda state: "finish" if state.get("phase") == "rewrite_degraded" else "assess",
+        {"assess": "assess", "finish": END},
+    )
     graph.add_edge("clarify", "clarified_search")
     graph.add_edge("clarified_search", "assess")
     from langsmith import tracing_context

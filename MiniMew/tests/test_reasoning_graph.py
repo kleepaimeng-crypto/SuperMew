@@ -204,3 +204,79 @@ def test_deduplication_also_filters_group_seeds_before_budget_fallback(monkeypat
     result = json.loads(asyncio.run(invoke(registry, context)))
     assert [m["chunk_id"] for m in result["matches"]] == [h["chunk_id"] for h in hits[:2]]
     assert [m["citation_id"] for m in result["matches"]] == ["E1", "E2"]
+
+
+@pytest.mark.parametrize(
+    "question,rewritten",
+    [
+        ("springboot是什么", "Spring Boot 核心定义与框架特点"),
+        ("UTF-8编码规则", "utf8 字符编码规范"),
+        ("Node.js事件循环", "NodeJS 异步事件循环机制"),
+    ],
+)
+def test_rewrite_accepts_spacing_and_separator_normalization(monkeypatch, question, rewritten):
+    _, registry, context, _, _, _, _ = setup_service(monkeypatch)
+    grades = 0
+
+    async def model(purpose, data, schema):
+        nonlocal grades
+        if schema is Rewrite:
+            return Rewrite(query=rewritten)
+        grades += 1
+        return Grade(
+            status="insufficient" if grades == 1 else "sufficient",
+            supported=(data["materials"][0]["citation_id"],),
+            missing=("官方定义",) if grades == 1 else (),
+        )
+
+    context = replace(
+        context,
+        question=question,
+        reasoning=ReasoningPolicy(),
+        run_budget=RunBudget(reasoning=True),
+        model_caller=model,
+    )
+    result = json.loads(asyncio.run(invoke(registry, context, query=question)))
+    assert result["assessment"]["status"] == "sufficient"
+    assert grades == 2 and context.evidence.items
+
+
+def test_rewrite_failure_preserves_supported_materials_without_extra_grade(monkeypatch, caplog):
+    import logging
+
+    from minimew.execution.process import ProcessReporter
+
+    caplog.set_level(logging.WARNING)
+    _, registry, context, _, _, _, _ = setup_service(monkeypatch)
+    events = []
+    calls = []
+
+    async def sink(step):
+        events.append(step)
+
+    async def model(purpose, data, schema):
+        calls.append(purpose)
+        if schema is Rewrite:
+            return Rewrite(query="报销标准")
+        return Grade(
+            status="insufficient",
+            supported=(data["materials"][0]["citation_id"],),
+            missing=("官方定义",),
+        )
+
+    context = replace(
+        context,
+        question="E1024 报销",
+        reasoning=ReasoningPolicy(),
+        run_budget=RunBudget(reasoning=True),
+        model_caller=model,
+        process=ProcessReporter(context.run_id, sink),
+    )
+    result = json.loads(asyncio.run(invoke(registry, context, query="E1024 报销")))
+    assert calls == ["grade", "rewrite"]
+    assert result["assessment"]["status"] == "insufficient"
+    assert "补充改写检索未完成：PROVIDER_INVALID_RESPONSE" in result["assessment"]["missing"]
+    assert context.evidence.items
+    rewrites = [e for e in events if e["kind"] == "rewrite" and e["status"] == "failed"]
+    assert rewrites and rewrites[-1]["outcome"] == "PROVIDER_INVALID_RESPONSE"
+    assert "rag_rewrite_degraded" in caplog.text

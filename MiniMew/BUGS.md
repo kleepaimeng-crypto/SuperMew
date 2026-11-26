@@ -4,6 +4,14 @@
 
 新增记录包含：发现日期/环境、现象与影响、复现条件、错误码及关联任务、根因、修复方法、历史数据处理、验证结果、提交和剩余限制。其他已知问题仅在有具体证据时追加，不把功能规划当Bug。
 
+## BUG-013：检索改写因连写/空格差异误判丢锚点并中断已有证据的回答
+
+- 发现：2026-11-26，云上环境。关联任务：`447bf4c3-4396-45ea-bee1-c2c16d754267`。状态：**代码已修复、定向测试通过，待部署验收**。
+- 现象与影响：提问 `springboot是什么` 时，首次检索已从 `Spring面试题.md` 命中 6 个片段，评判判定存在定义性缺口后进入「调整检索问题（`rewrite`）」，因模型将 `springboot` 规范化写为 `Spring Boot`，报 `PROVIDER_INVALID_RESPONSE` 并直接终止整个 Run，未生成正文。
+- 根因：① [workflow.py](src/minimew/rag/workflow.py) 的锚点校验按原字符串子串比对，未对空白与 `-._/` 连接符做归一化；② `rewrite` 与 `plan` 的语义校验放在 `ModelCaller` 外部，未能接入已有的 `json-repair-v1` 单次反馈重生成；③ 首次检索已有受支撑证据（`supported` 非空）时，可选的补充改写失败仍直接抛出异常丢弃全部已有材料。
+- 修复：① 在 [rag/reasoning.py](src/minimew/rag/reasoning.py) 新增 `validate_rewrite`（对锚点与改写式忽略大小写、空白及 `-._/` 连接符做归一化比对）与 `validate_plan`，并在 [execution/reasoning.py](src/minimew/execution/reasoning.py) 补充改写提示词及接入 `json-repair-v1` 单次带反馈自愈（诊断日志仅记受控字段规则，不记录用户输入文本）；② 在 [workflow.py](src/minimew/rag/workflow.py) 中，当 `rewrite` 最终仍失败且 `supported` 非空时，记录 `rag_rewrite_degraded` 诊断与失败步骤说明后保留已有材料与缺口直接收尾；当 `supported` 为空时仍如实抛 `PROVIDER_INVALID_RESPONSE`，不把模型故障伪装成无知识；③ [ProcessTask.vue](frontend/src/components/ProcessTask.vue) 在局部步骤失败但整个 Run 未失败时显示保留已有材料的提示，不再误报“本次回答未完成”。
+- 验证：`uv run --no-sync pytest -q tests/test_reasoning_graph.py tests/test_role_response_repair.py tests/test_reasoning.py tests/test_process.py` 51 项通过（新增 5 项、既有 46 项，0 跳过），覆盖 `springboot`/`UTF-8`/`Node.js` 归一化、`rewrite`/`plan` 单次反馈修复及日志脱敏、有支撑材料降级保留与无支撑材料保持报错。受影响 Python 文件通过 Ruff 检查与格式检查。本机缺少 `frontend/node_modules/.bin`，前端构建与单测待部署环境执行。历史失败 Run 保持原事实不改写，无需数据库迁移。
+
 ## BUG-012：云上 HTTP 部署后点击「上传并构建」无反应且服务端无请求日志
 
 - 发现：2026-11-26，云上公网 IP HTTP 部署（`http://47.116.122.1`）。状态：**代码已修复，待前端验证与云上重新构建部署**。

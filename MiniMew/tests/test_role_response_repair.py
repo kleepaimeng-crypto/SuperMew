@@ -17,7 +17,7 @@ from minimew.execution.messages import ModelTurn
 from minimew.execution.provider import ProviderCompleted, ProviderFailure
 from minimew.execution.reasoning import RunModelCaller
 from minimew.execution.service import RunBudget
-from minimew.rag.reasoning import Grade, ReasoningPolicy, grade_materials
+from minimew.rag.reasoning import Grade, Plan, ReasoningPolicy, Rewrite, grade_materials
 
 VALID = '{"status":"sufficient","supported":["E1"],"missing":[]}'
 DATA = {"question": "餐费多少", "materials": [{"citation_id": "E1", "text": "餐费150元"}]}
@@ -287,3 +287,51 @@ def test_diagnostics_survive_reopen_and_exclude_uncontrolled_logs(tmp_path):
     assert len(records) == 2 and all(r["run_id"] == str(run) for r in records)
     assert records[0]["issues"][0]["field"] == "missing"
     assert "private-content" not in files[0].read_text(encoding="utf-8")
+
+
+def test_rewrite_and_plan_semantic_validation_trigger_one_bounded_repair(
+    model_configuration, caplog
+):
+    secret_anchor = "E9081SecretToken"
+
+    async def scenario():
+        rewrite_calls = []
+
+        async def rewrite_answer(req):
+            rewrite_calls.append(req)
+            if len(rewrite_calls) == 1:
+                yield ProviderCompleted(ModelTurn("text", '{"query":"报销适用标准"}'))
+            else:
+                payload = json.loads(req.messages[0].content)
+                feedback = payload["validation_feedback"]
+                assert feedback["reason"] == "missing_anchor"
+                assert feedback["missing_anchors"] == [secret_anchor]
+                yield ProviderCompleted(
+                    ModelTurn("text", json.dumps({"query": f"{secret_anchor} 报销适用标准"}))
+                )
+
+        caller, _, budget = await caller_for(model_configuration, rewrite_answer)
+        rewritten = await caller(
+            "rewrite", {"question": f"{secret_anchor} 报销", "missing": ["标准"]}, Rewrite
+        )
+        assert secret_anchor in rewritten.query and budget.internal_requests == 2
+
+        plan_calls = []
+
+        async def plan_answer(req):
+            plan_calls.append(req)
+            if len(plan_calls) == 1:
+                yield ProviderCompleted(ModelTurn("text", '{"questions":["差旅标准","差旅标准"]}'))
+            else:
+                payload = json.loads(req.messages[0].content)
+                assert payload["validation_feedback"]["reason"] == "duplicate_subquestion"
+                yield ProviderCompleted(ModelTurn("text", '{"questions":["住宿标准","餐费标准"]}'))
+
+        plan_caller, _, plan_budget = await caller_for(model_configuration, plan_answer)
+        planned = await plan_caller(
+            "plan", {"question": "差旅规定", "missing": ["住宿", "餐费"]}, Plan
+        )
+        assert planned.questions == ("住宿标准", "餐费标准") and plan_budget.internal_requests == 2
+
+    asyncio.run(scenario())
+    assert secret_anchor not in caplog.text

@@ -1,5 +1,6 @@
 """B包冻结配置与严格评判契约；无网络或运行时状态。"""
 
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -94,3 +95,75 @@ def validate_grade(result: Grade, ids: set[str]):
     )
     if reason:
         raise ProviderFailure("PROVIDER_INVALID_RESPONSE", diagnostic=Diagnostic("grade", reason))
+
+
+_COMPACT_RE = re.compile(r"[\s\-._/]+")
+_ANCHOR_RE = re.compile(r"[A-Za-z0-9]+(?:[-._/][A-Za-z0-9]+)*")
+
+
+def _compact(text: str) -> str:
+    return _COMPACT_RE.sub("", text).lower()
+
+
+def missing_anchors(question: str, query: str) -> tuple[str, ...]:
+    folded_query = _compact(query)
+    seen: set[str] = set()
+    missing: list[str] = []
+    for raw in _ANCHOR_RE.findall(question):
+        token = _compact(raw)
+        if token and token not in seen and token not in folded_query:
+            seen.add(token)
+            missing.append(raw)
+    return tuple(missing)
+
+
+def validate_rewrite(result: Rewrite, question: str) -> str:
+    from minimew.execution.diagnostics import Diagnostic
+    from minimew.execution.provider import ProviderFailure
+
+    query = result.query.strip()
+    if not query or "\x00" in query:
+        raise ProviderFailure(
+            "PROVIDER_INVALID_RESPONSE",
+            diagnostic=Diagnostic(
+                "rewrite",
+                "invalid_rewrite_query",
+                issues=({"field": "query", "rule": "non_empty"},),
+            ),
+        )
+    if missing_anchors(question, query):
+        raise ProviderFailure(
+            "PROVIDER_INVALID_RESPONSE",
+            diagnostic=Diagnostic(
+                "rewrite",
+                "missing_anchor",
+                issues=({"field": "query", "rule": "missing_anchor"},),
+            ),
+        )
+    return query
+
+
+def validate_plan(result: Plan) -> tuple[str, ...]:
+    from minimew.execution.diagnostics import Diagnostic
+    from minimew.execution.provider import ProviderFailure
+
+    queries = tuple(q.strip() for q in result.questions)
+    if any(not q or len(q) > 1024 or "\x00" in q for q in queries):
+        raise ProviderFailure(
+            "PROVIDER_INVALID_RESPONSE",
+            diagnostic=Diagnostic(
+                "plan",
+                "invalid_subquestion",
+                issues=({"field": "questions", "rule": "non_empty"},),
+            ),
+        )
+    if len(set(queries)) != len(queries):
+        raise ProviderFailure(
+            "PROVIDER_INVALID_RESPONSE",
+            diagnostic=Diagnostic(
+                "plan",
+                "duplicate_subquestion",
+                issues=({"field": "questions", "rule": "unique"},),
+            ),
+        )
+    return queries
