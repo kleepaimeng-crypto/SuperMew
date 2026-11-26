@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
 import { request, ApiError } from "../api";
+import { randomUuid } from "../uuid";
 import { useAuthStore } from "./auth";
 import { isId } from "../documents";
 import {
@@ -228,7 +229,7 @@ export const useEvaluationsStore = defineStore("evaluations", () => {
     if (busy.value) return null;
     busy.value = true;
     error.value = "";
-    pending.value ??= { key: crypto.randomUUID(), body };
+    pending.value ??= { key: randomUuid(), body };
     try {
       const raw = await call(
         ctx,

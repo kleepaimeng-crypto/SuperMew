@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, shallowRef, watch } from "vue";
 import { ApiError, request } from "../api";
+import { randomUuid } from "../uuid";
 import {
   activeJob,
   isId,
@@ -401,7 +402,7 @@ export const useDocumentsStore = defineStore("documents", () => {
       pendingUpload.value?.file !== file ||
       pendingUpload.value.target !== target
     )
-      pendingUpload.value = { file, target, key: crypto.randomUUID() };
+      pendingUpload.value = { file, target, key: randomUuid() };
     return submit();
   }
   function activate() {

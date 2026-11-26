@@ -1,6 +1,7 @@
 import { computed, reactive, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import { ApiError, request } from "../api";
+import { randomUuid } from "../uuid";
 import { parseAnswer, type AnswerView } from "../answers";
 import {
   parseMessagePage,
@@ -411,7 +412,7 @@ export const useChatStore = defineStore("chat", () => {
         return false;
       }
       pending.value = {
-        key: crypto.randomUUID(),
+        key: randomUuid(),
         content: draft.value,
         ...(chosen
           ? {
@@ -553,7 +554,7 @@ export const useChatStore = defineStore("chat", () => {
         intent = {
           checkpoint_id: waiting.checkpointId,
           token: credential.token,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: randomUuid(),
           answer: view.resumeDraft,
         };
         resumeIntents.set(id, intent);

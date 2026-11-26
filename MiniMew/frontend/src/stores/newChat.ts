@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
 import { ApiError, request } from "../api";
+import { randomUuid } from "../uuid";
 import { parseRun } from "../chat";
 import { isRecord } from "../events/runEventContract";
 import {
@@ -263,7 +264,7 @@ export const useNewChatStore = defineStore("newChat", () => {
         return null;
       }
       pending.value = {
-        key: crypto.randomUUID(),
+        key: randomUuid(),
         content: draft.value,
         ...(chosen
           ? {

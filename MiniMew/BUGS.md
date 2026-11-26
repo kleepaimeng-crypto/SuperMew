@@ -4,6 +4,14 @@
 
 新增记录包含：发现日期/环境、现象与影响、复现条件、错误码及关联任务、根因、修复方法、历史数据处理、验证结果、提交和剩余限制。其他已知问题仅在有具体证据时追加，不把功能规划当Bug。
 
+## BUG-012：云上 HTTP 部署后点击「上传并构建」无反应且服务端无请求日志
+
+- 发现：2026-11-26，云上公网 IP HTTP 部署（`http://47.116.122.1`）。状态：**代码已修复，待前端验证与云上重新构建部署**。
+- 现象与影响：在文档页选择 `.md` 文件后点击「上传并构建」，界面没有任何反应，`uploading` 与错误提示均未变化，服务端 `minimew-api` 无任何请求日志。同因还会影响所有在非安全上下文生成客户端幂等键的写操作（发消息、恢复 HITL、新建会话、创建评测）。
+- 根因：浏览器仅在安全上下文（`https://`、`localhost` 或 `127.0.0.1`）暴露 `crypto.randomUUID()`。在公网 IP 的 `http://` 页面中 `crypto.randomUUID` 为 `undefined`，[文档上传](frontend/src/stores/documents.ts)、[聊天发送与恢复](frontend/src/stores/chat.ts)、[新建会话](frontend/src/stores/newChat.ts)与[评测创建](frontend/src/stores/evaluations.ts)直接调用 `crypto.randomUUID()` 抛出 `TypeError`，导致请求根本未发出。
+- 修复：新增 [uuid.ts](frontend/src/uuid.ts) 的 `randomUuid()`，优先调用 `crypto.randomUUID()`，不可用时回退到 `crypto.getRandomValues()` 生成 RFC 4122 UUID v4，并替换上述 4 个 Store 中的直接调用；新增单元测试 [uuid.spec.ts](frontend/src/uuid.spec.ts)。
+- 历史数据与部署：无需数据库迁移或历史数据处理；云上需拉取修复并重新执行前端构建（`npm run build`）后刷新页面生效。
+
 ## BUG-009：百炼编码的上传回执无法在网页解析
 
 - 发现：2026-11-20，Windows 本机，数据库 `0025`。项目库切换到百炼 `text-embedding-v4` 后上传 Markdown，网页显示「上传结果尚未确认」，数据库已有文档、版本、提交记录和 Index Job。
