@@ -176,3 +176,60 @@ def test_legacy_snapshot_digest_has_no_new_policy_fields(model_configuration, ve
     ).hexdigest()
     snapshot = ModelSnapshot.model_validate_json(json.dumps(raw))
     assert snapshot.repairs is None and snapshot.catalog_hash() == expected
+
+
+def test_repair_payload_identifies_paragraphs_missing_citation(model_configuration):
+    from uuid import uuid4
+
+    data = data_with_policy(model_configuration, 4)
+    repo = Repository(data)
+    captured = []
+    calls = 0
+
+    async def handler(context, args):
+        text = "餐费上限150元。"
+        source = EvidenceSource(
+            knowledge_base_id=uuid4(),
+            document_id=uuid4(),
+            version_id=uuid4(),
+            chunk_id=uuid4(),
+            section_id=uuid4(),
+            title_path=("制度",),
+            start=0,
+            end=len(text),
+            start_line=1,
+            end_line=1,
+            content_sha256=hashlib.sha256(text.encode()).hexdigest(),
+            text=text,
+        )
+        context.evidence.queried = True
+        context.evidence.commit((context.evidence.propose(source, ()),))
+        return Result(text="餐费上限150元。[E1]")
+
+    async def answer(req):
+        nonlocal calls
+        calls += 1
+        if req.purpose == "repair":
+            captured.append(json.loads(req.messages[0].content))
+            yield ProviderCompleted(
+                ModelTurn("text", "## 文档依据\n根据资料，说明如下：餐费上限150元。[E1]")
+            )
+        elif calls == 1:
+            yield completed(call())
+        else:
+            yield ProviderCompleted(
+                ModelTurn("text", "## 文档依据\n根据资料，说明如下：\n\n餐费上限150元。[E1]")
+            )
+
+    executor = RunExecutor(
+        repo,
+        FakeProvider(answer),
+        registry=ToolRegistry((spec(handler),)),
+        capabilities=frozenset({"documents.read"}),
+    )
+    outcome = asyncio.run(executor.execute(uuid4(), data.thread_id, data.run_id))
+    assert outcome == "succeeded"
+    assert len(captured) == 1
+    assert captured[0]["missing_citation_paragraphs"] == [
+        {"paragraph_index": 1, "preview": "根据资料，说明如下："}
+    ]
