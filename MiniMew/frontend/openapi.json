@@ -4348,6 +4348,11 @@
                 "type": "null"
               }
             ]
+          },
+          "local_models_enabled": {
+            "type": "boolean",
+            "title": "Local Models Enabled",
+            "default": true
           }
         },
         "type": "object",
@@ -6841,6 +6846,11 @@
           "bailian_key_configured": {
             "type": "boolean",
             "title": "Bailian Key Configured"
+          },
+          "local_models_enabled": {
+            "type": "boolean",
+            "title": "Local Models Enabled",
+            "default": true
           }
         },
         "type": "object",

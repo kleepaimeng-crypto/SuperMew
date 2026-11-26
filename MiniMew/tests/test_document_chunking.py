@@ -324,26 +324,25 @@ def test_preview_is_read_only_and_cannot_claim_registered_version(tmp_path):
 def test_tokenizer_loads_only_local_fixed_snapshot_and_uses_raw_offsets(tmp_path, monkeypatch):
     settings = EmbeddingRuntimeSettings(cache_dir=tmp_path)
     path = write_snapshot(settings)
-    backend = Mock(is_fast=True)
-    backend.return_value = {"input_ids": [101, 1, 2, 102], "offset_mapping": [(0, 1), (2, 3)]}
+    backend = Mock()
+    backend.encode.side_effect = [
+        SimpleNamespace(ids=[101, 1, 2, 102]),
+        SimpleNamespace(offsets=[(0, 1), (2, 3)]),
+    ]
     factory = Mock(return_value=backend)
     monkeypatch.setitem(
         sys.modules,
-        "transformers",
-        SimpleNamespace(AutoTokenizer=SimpleNamespace(from_pretrained=factory)),
+        "tokenizers",
+        SimpleNamespace(Tokenizer=SimpleNamespace(from_file=factory)),
     )
     tokenizer = LocalTokenizer.load(preset("bge-small-zh-v1.5").embedding, settings)
     assert tokenizer.count("甲 乙") == 4
     assert tokenizer.offsets("甲 乙") == [(0, 1), (2, 3)]
-    factory.assert_called_once_with(
-        str(path), use_fast=True, local_files_only=True, trust_remote_code=False, token=False
-    )
-    assert backend.call_args.kwargs == {
-        "add_special_tokens": False,
-        "truncation": False,
-        "return_offsets_mapping": True,
-        "verbose": False,
-    }
+    factory.assert_called_once_with(str(path / "tokenizer.json"))
+    backend.no_truncation.assert_called_once_with()
+    backend.no_padding.assert_called_once_with()
+    assert backend.encode.call_args_list[0].kwargs == {"add_special_tokens": True}
+    assert backend.encode.call_args_list[1].kwargs == {"add_special_tokens": False}
 
 
 def test_slow_tokenizer_is_not_used_for_source_alignment():

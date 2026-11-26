@@ -158,6 +158,8 @@ async def bind_project(session, owner, project_id, data, settings):
     for purpose in ("embedding", "rerank"):
         identity = getattr(data, f"{purpose}_configuration_id")
         if identity is None:
+            if not settings.local_models_enabled:
+                raise HTTPException(409, detail={"code": "LOCAL_MODELS_DISABLED"})
             selections[purpose], credentials[purpose] = local_selection(purpose), None
             continue
         template = await owned_template(session, owner, identity, lock=True)

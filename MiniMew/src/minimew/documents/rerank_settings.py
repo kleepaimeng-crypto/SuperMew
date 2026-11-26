@@ -24,22 +24,23 @@ async def _base(session, owner, project):
     )
 
 
-def _view(kb):
+def _view(kb, settings=None):
     remote = kb is not None and kb.rerank_use_bailian
     return RerankSettingsView(
         source="bailian" if remote else "local",
         model=BAILIAN_RERANKER if remote else LOCAL_RERANKER,
         bailian_key_configured=kb is not None and kb.rerank_credential_id is not None,
+        local_models_enabled=True if settings is None else settings.local_models_enabled,
     )
 
 
-async def read_settings(session, owner, project):
+async def read_settings(session, owner, project, settings=None):
     async with session.begin():
         if project is not None:
             from minimew.projects import owned_project
 
             await owned_project(session, owner, project)
-        return _view(await _base(session, owner, project))
+        return _view(await _base(session, owner, project), settings)
 
 
 async def save_settings(session, owner, project, data, settings):
@@ -51,6 +52,10 @@ async def save_settings(session, owner, project, data, settings):
 
             await owned_project(session, owner, project)
             raise HTTPException(409, detail={"code": "PROJECT_MODELS_IMMUTABLE"})
+        if not settings.local_models_enabled and data.source == "local":
+            from fastapi import HTTPException
+
+            raise HTTPException(409, detail={"code": "LOCAL_MODELS_DISABLED"})
         kb = await ensure_base(
             session, owner, project, settings.embedding_profile, settings.document_index_layout
         )
@@ -71,7 +76,7 @@ async def save_settings(session, owner, project, data, settings):
         if data.source == "bailian" and kb.rerank_credential_id is None:
             raise RerankKeyRequired
         kb.rerank_use_bailian = data.source == "bailian"
-        return _view(kb)
+        return _view(kb, settings)
 
 
 async def freeze_rerank(session, owner, project, snapshot):

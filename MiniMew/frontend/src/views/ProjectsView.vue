@@ -18,7 +18,8 @@ const templates = ref<Template[]>([]),
   templateError = ref(""),
   templateLoading = ref(true);
 const embeddingChoice = ref(""),
-  rerankChoice = ref("");
+  rerankChoice = ref(""),
+  localModelsEnabled = ref(true);
 const createOpen = ref(false);
 let open = true;
 
@@ -26,10 +27,37 @@ async function loadTemplates() {
   templateLoading.value = true;
   templateError.value = "";
   try {
-    const rows = parseTemplates(
-      await projects.modelRequest("/v1/retrieval-models"),
-    );
-    if (open) templates.value = rows;
+    const [rawTemplates, rawEmbedding] = await Promise.all([
+      projects.modelRequest("/v1/retrieval-models"),
+      projects
+        .modelRequest("/v1/embedding-profiles/selection")
+        .catch(() => null),
+    ]);
+    const rows = parseTemplates(rawTemplates);
+    if (open) {
+      templates.value = rows;
+      if (
+        rawEmbedding &&
+        typeof rawEmbedding === "object" &&
+        "local_models_enabled" in rawEmbedding &&
+        typeof (rawEmbedding as Record<string, unknown>)
+          .local_models_enabled === "boolean"
+      ) {
+        localModelsEnabled.value = Boolean(
+          (rawEmbedding as Record<string, unknown>).local_models_enabled,
+        );
+      }
+      if (!localModelsEnabled.value) {
+        if (!embeddingChoice.value) {
+          embeddingChoice.value =
+            rows.find((t) => t.purpose === "embedding")?.id ?? "";
+        }
+        if (!rerankChoice.value) {
+          rerankChoice.value =
+            rows.find((t) => t.purpose === "rerank")?.id ?? "";
+        }
+      }
+    }
   } catch {
     if (open) templateError.value = "无法加载模型配置，请重试。";
   } finally {
@@ -437,7 +465,12 @@ function formatDate(iso?: string) {
               v-model="embeddingChoice"
               :disabled="projects.busy || templateLoading"
             >
-              <option value="">本地 BAAI/bge-small-zh-v1.5</option>
+              <option v-if="localModelsEnabled" value="">
+                本地 BAAI/bge-small-zh-v1.5
+              </option>
+              <option v-else value="" disabled>
+                请选择云端 Embedding 配置
+              </option>
               <option
                 v-for="item in templates.filter(
                   (t) => t.purpose === 'embedding',
@@ -455,7 +488,10 @@ function formatDate(iso?: string) {
               v-model="rerankChoice"
               :disabled="projects.busy || templateLoading"
             >
-              <option value="">本地 BAAI/bge-reranker-base</option>
+              <option v-if="localModelsEnabled" value="">
+                本地 BAAI/bge-reranker-base
+              </option>
+              <option v-else value="" disabled>请选择云端 Rerank 配置</option>
               <option
                 v-for="item in templates.filter((t) => t.purpose === 'rerank')"
                 :key="item.id"
@@ -465,6 +501,14 @@ function formatDate(iso?: string) {
               </option>
             </select>
 
+            <p v-if="!localModelsEnabled" class="project-note drawer-note">
+              当前服务端已关闭本地模型，请先在<RouterLink
+                class="text-link"
+                to="/account"
+                @click="closeCreateDrawer"
+                >账户设置</RouterLink
+              >中保存云端 Embedding 与 Rerank 配置模板。
+            </p>
             <p class="project-note drawer-note">
               创建后模型与部署模式不可更换。云端配置可在<RouterLink
                 class="text-link"
@@ -498,7 +542,8 @@ function formatDate(iso?: string) {
                 projects.busy ||
                 !name.trim() ||
                 templateLoading ||
-                !!templateError
+                !!templateError ||
+                (!localModelsEnabled && (!embeddingChoice || !rerankChoice))
               "
             >
               {{ projects.busy ? "正在创建…" : "新建项目" }}

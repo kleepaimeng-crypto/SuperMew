@@ -1384,6 +1384,11 @@ export interface components {
       /** Bailian Key Configured */
       bailian_key_configured: boolean;
       rebuild: components["schemas"]["EmbeddingRebuildView"] | null;
+      /**
+       * Local Models Enabled
+       * @default true
+       */
+      local_models_enabled: boolean;
     };
     /** EvaluationArtifact */
     EvaluationArtifact: {
@@ -2653,6 +2658,11 @@ export interface components {
       model: string;
       /** Bailian Key Configured */
       bailian_key_configured: boolean;
+      /**
+       * Local Models Enabled
+       * @default true
+       */
+      local_models_enabled: boolean;
     };
     /** ResumeCredential */
     ResumeCredential: {

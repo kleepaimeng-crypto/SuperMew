@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from minimew.documents.artifacts import retire_artifacts
-from minimew.documents.profiles import CURRENT_CHUNKER, BuildConfiguration, preset, read_build
+from minimew.documents.profiles import (
+    BAILIAN_ID,
+    CURRENT_CHUNKER,
+    BuildConfiguration,
+    preset,
+    read_build,
+)
 from minimew.documents.schemas import (
     DocumentPage,
     DocumentResponse,
@@ -42,6 +48,10 @@ class BuildUnavailable(Exception):
 
 
 class EmbeddingRebuildInProgress(Exception):
+    pass
+
+
+class LocalModelsDisabled(Exception):
     pass
 
 
@@ -189,6 +199,7 @@ async def reserve_document(
     index_layout: str = "dense-cosine-v1",
     expected_current_version: UUID | None = None,
     project_id: UUID | None = None,
+    local_models_enabled: bool = True,
 ) -> tuple[UploadReceipt, bool]:
     request_hash = hashlib.sha256(
         json.dumps(
@@ -214,6 +225,8 @@ async def reserve_document(
         await require_no_embedding_rebuild(session, kb.id)
         # 仅推进之后创建的 Version；已有 Version/Job 的冻结构建配置不变。
         current_build = read_build(kb.build_configuration, kb.build_fingerprint)
+        if not local_models_enabled and current_build.embedding.id != BAILIAN_ID:
+            raise LocalModelsDisabled
         if current_build.chunker != CURRENT_CHUNKER:
             current_build = current_build.model_copy(update={"chunker": CURRENT_CHUNKER})
             kb.build_configuration = current_build.model_dump(mode="json")

@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 class KnowledgeRuntime:
-    def __init__(self, embedding_settings=None, vector_settings=None):
+    def __init__(self, embedding_settings=None, vector_settings=None, *, local_models_enabled=True):
         self.embedding_settings = embedding_settings or EmbeddingRuntimeSettings()
         self.vector_settings = vector_settings or VectorSettings()
+        self.local_models_enabled = local_models_enabled
         self.encoder = self.backend = self.index = None
         self.reranker = None
         self.rerank_error = None
@@ -36,10 +37,14 @@ class KnowledgeRuntime:
         self._closed = False
 
     def _load(self):
-        self.encoder = LocalEmbeddingAdapter.load_cpu(PROFILE, self.embedding_settings)
+        if self.local_models_enabled:
+            self.encoder = LocalEmbeddingAdapter.load_cpu(PROFILE, self.embedding_settings)
         self.backend = MilvusBackend.connect(self.vector_settings)
         self.backend.probe()
         self.index = CandidateIndex(self.backend, self.vector_settings.batch_size)
+        if not self.local_models_enabled:
+            self.rerank_error = "LOCAL_MODELS_DISABLED"
+            return
         try:
             self.reranker = LocalReranker.load(self.embedding_settings)
         except RerankError as exc:
@@ -109,7 +114,7 @@ async def knowledge_lifespan(sessions, settings):
     if not settings.knowledge_enabled:
         yield None
         return
-    runtime = KnowledgeRuntime()
+    runtime = KnowledgeRuntime(local_models_enabled=settings.local_models_enabled)
     runtime.bailian = BailianEmbedding(sessions, settings)
     runtime.bailian_reranker = BailianReranker(sessions, settings)
     try:

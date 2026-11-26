@@ -180,7 +180,16 @@ export const useProjectsStore = defineStore("projects", () => {
       await load();
       return valid(ctx) && order === selection ? item.id : null;
     } catch (cause) {
-      if (valid(ctx)) error.value = message(cause);
+      const code =
+        cause instanceof ApiError && cause.status === 409
+          ? await cause.errorCode()
+          : undefined;
+      if (valid(ctx)) {
+        error.value =
+          code === "LOCAL_MODELS_DISABLED"
+            ? "当前服务端已关闭本地模型，创建项目时必须选择云端 Embedding 和 Rerank 配置。"
+            : message(cause);
+      }
       return null;
     } finally {
       if (valid(ctx)) busy.value = false;

@@ -15,6 +15,7 @@ for (const width of [1280, 390]) {
       dimensions: 512,
       bailian_key_configured: false,
       rebuild: null,
+      local_models_enabled: true,
     };
     let project = baseline;
     await page.route("**/auth/**", (route) =>

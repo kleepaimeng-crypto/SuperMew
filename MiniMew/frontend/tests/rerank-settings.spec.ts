@@ -10,6 +10,7 @@ for (const width of [1280, 390]) {
       source: "local",
       model: "BAAI/bge-reranker-base",
       bailian_key_configured: false,
+      local_models_enabled: true,
     };
     let project = local;
     await page.route("**/auth/**", (route) =>
@@ -62,6 +63,7 @@ for (const width of [1280, 390]) {
         source: "bailian",
         model: "qwen3-rerank",
         bailian_key_configured: true,
+        local_models_enabled: true,
       };
       return route.fulfill({ json: project });
     });

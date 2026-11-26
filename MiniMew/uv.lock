@@ -758,6 +758,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "redis" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tokenizers" },
     { name = "uvicorn" },
 ]
 
@@ -802,6 +803,7 @@ requires-dist = [
     { name = "redis", specifier = "==8.1.0" },
     { name = "sentence-transformers", marker = "extra == 'embedding'", specifier = ">=6.2,<7" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<2.1" },
+    { name = "tokenizers", specifier = ">=0.20,<1" },
     { name = "torch", marker = "extra == 'embedding'", specifier = ">=2.2,<3", index = "https://download.pytorch.org/whl/cpu" },
     { name = "uvicorn", specifier = "<1" },
 ]

@@ -45,7 +45,9 @@ export function parseRerankSettings(value: unknown): RerankSettings {
     !record(value) ||
     (value.source !== "local" && value.source !== "bailian") ||
     typeof value.model !== "string" ||
-    typeof value.bailian_key_configured !== "boolean"
+    typeof value.bailian_key_configured !== "boolean" ||
+    (value.local_models_enabled !== undefined &&
+      typeof value.local_models_enabled !== "boolean")
   )
     return invalid();
   return value as RerankSettings;
@@ -58,7 +60,9 @@ export function parseEmbeddingSettings(value: unknown): EmbeddingSettings {
     typeof value.current_model !== "string" ||
     !integer(value.dimensions) ||
     value.dimensions === 0 ||
-    typeof value.bailian_key_configured !== "boolean"
+    typeof value.bailian_key_configured !== "boolean" ||
+    (value.local_models_enabled !== undefined &&
+      typeof value.local_models_enabled !== "boolean")
   )
     return invalid();
   const rebuild = value.rebuild;

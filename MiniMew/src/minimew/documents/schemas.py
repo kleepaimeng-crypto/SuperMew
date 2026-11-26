@@ -102,6 +102,7 @@ class RerankSettingsView(BaseModel):
     source: Literal["local", "bailian"]
     model: str
     bailian_key_configured: bool
+    local_models_enabled: bool = True
 
 
 class EmbeddingRebuildView(BaseModel):
@@ -119,3 +120,4 @@ class EmbeddingSettingsView(BaseModel):
     dimensions: int
     bailian_key_configured: bool
     rebuild: EmbeddingRebuildView | None
+    local_models_enabled: bool = True

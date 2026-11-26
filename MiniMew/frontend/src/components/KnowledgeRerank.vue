@@ -17,6 +17,9 @@ let mounted = true;
 const requiredKey = computed(
   () => source.value === "bailian" && !settings.value?.bailian_key_configured,
 );
+const localModelsEnabled = computed(
+  () => settings.value?.local_models_enabled !== false,
+);
 const canSave = computed(
   () =>
     settings.value &&
@@ -34,7 +37,8 @@ async function read() {
     const value = await documents.rerankSettings(props.project);
     if (!mounted) return;
     settings.value = value;
-    source.value = value.source;
+    source.value =
+      value.local_models_enabled === false ? "bailian" : value.source;
   } catch {
     if (mounted) error.value = "暂时无法读取重排设置。";
   } finally {
@@ -56,7 +60,8 @@ async function save() {
     });
     if (!mounted) return;
     settings.value = value;
-    source.value = value.source;
+    source.value =
+      value.local_models_enabled === false ? "bailian" : value.source;
     saved.value = true;
   } catch (cause) {
     const code =
@@ -65,9 +70,11 @@ async function save() {
     error.value =
       code === "RERANK_KEY_REQUIRED"
         ? "请填写此知识库的百炼重排 API Key。"
-        : code === "RERANK_KEY_STORAGE_UNAVAILABLE"
-          ? "暂时无法加密保存 API Key，请检查服务端加密配置。"
-          : "保存结果待确认，请刷新设置后重试。";
+        : code === "LOCAL_MODELS_DISABLED"
+          ? "当前服务端已关闭本地模型，请配置百炼重排 API Key。"
+          : code === "RERANK_KEY_STORAGE_UNAVAILABLE"
+            ? "暂时无法加密保存 API Key，请检查服务端加密配置。"
+            : "保存结果待确认，请刷新设置后重试。";
   } finally {
     if (mounted) busy.value = false;
   }
@@ -94,7 +101,16 @@ onBeforeUnmount(() => {
           >查看模型配置或更新 Key</RouterLink
         >
       </p>
-      <details v-if="!project">
+      <p
+        v-if="!project && !localModelsEnabled && settings.source === 'local'"
+        role="status"
+      >
+        当前服务端仅启用云端 API，请先配置百炼重排 API Key。
+      </p>
+      <details
+        v-if="!project"
+        :open="!localModelsEnabled && settings.source === 'local'"
+      >
         <summary>更换重排模型</summary>
         <form @submit.prevent="save">
           <label for="rerank-source">重排来源</label>
@@ -107,7 +123,9 @@ onBeforeUnmount(() => {
               saved = false;
             "
           >
-            <option value="local">本地 BGE Reranker Base</option>
+            <option v-if="localModelsEnabled" value="local">
+              本地 BGE Reranker Base
+            </option>
             <option value="bailian">百炼 qwen3-rerank</option>
           </select>
           <template v-if="source === 'bailian'">

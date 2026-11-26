@@ -376,9 +376,11 @@ export const useDocumentsStore = defineStore("documents", () => {
             ? "文件未被接受。请使用不超过5 MiB的非空UTF-8 Markdown或TXT文件。"
             : conflict === "EMBEDDING_REBUILD_IN_PROGRESS"
               ? "此知识库正在切换编码模型。请等重建完成后重试上传。"
-              : cause instanceof ApiError && [403, 404].includes(cause.status)
-                ? "这份文档不可访问，请刷新目录后重试。"
-                : "上传结果尚未确认。可刷新目录查看，或重试本次上传；重试沿用原提交标识。";
+              : conflict === "LOCAL_MODELS_DISABLED"
+                ? "当前服务端已关闭本地模型，请先在文档模型设置中配置百炼 Embedding Key 后再上传。"
+                : cause instanceof ApiError && [403, 404].includes(cause.status)
+                  ? "这份文档不可访问，请刷新目录后重试。"
+                  : "上传结果尚未确认。可刷新目录查看，或重试本次上传；重试沿用原提交标识。";
       }
       return null;
     } finally {

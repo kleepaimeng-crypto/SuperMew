@@ -45,6 +45,25 @@ def local_snapshot(profile: EmbeddingProfile, settings: EmbeddingRuntimeSettings
     return path
 
 
+def local_tokenizer_file(profile: EmbeddingProfile, settings: EmbeddingRuntimeSettings) -> Path:
+    require_supported_profile(profile)
+    cached = (
+        settings.resolved_cache_dir
+        / ("models--" + profile.model_id.replace("/", "--"))
+        / "snapshots"
+        / profile.revision
+        / "tokenizer.json"
+    )
+    bundled = Path(__file__).resolve().parent / "assets" / profile.id / "tokenizer.json"
+    for candidate in (cached, bundled):
+        try:
+            if candidate.is_file() and candidate.stat().st_size:
+                return candidate
+        except OSError as exc:
+            raise EmbeddingError("EMBEDDING_CACHE_UNAVAILABLE") from exc
+    raise EmbeddingError("EMBEDDING_NOT_PREPARED")
+
+
 def prepare_model(profile: EmbeddingProfile, settings: EmbeddingRuntimeSettings) -> Path:
     require_supported_profile(profile)
     try:

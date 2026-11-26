@@ -14,18 +14,19 @@ Index Worker 与 API 共享原文目录和模型缓存。Evaluation Worker 可�
 ```
 
 1. **确认服务器与访问方式。** 确认 Ubuntu 版本、CPU 架构、内存、磁盘、域名或私网入口，以及空库启动还是迁移现有数据。单机小规模试用的起点估计为 4–8 vCPU、16 GiB RAM 和 SSD。先跑实际导入和并发聊天后再决定容量。同机并行索引和评测时重点看内存峰值和 Milvus 容量。此为起点估计，仓库 Milvus 容器当前限制为 3 GiB。试用先按 VPN 或 IP 白名单限制入口，现有 API 有注册路由。[Milvus Standalone 硬件说明](https://milvus.io/docs/prerequisite-docker.md)
-2. **准备运行时和配置。** 安装 Docker Engine、Compose v2、Python 3.12、uv、Node 和 Nginx。有域名时先设置 DNS 和 HTTPS。用普通部署用户检出指定提交，服务器端从 `.env.example` 创建自己的 `.env`，权限设为仅部署账户可读。设置数据库和 Redis 密码、JWT 密钥、凭据加密主密钥、模型默认配置与所需 Key。置 `MINIMEW_ENVIRONMENT=production`、`MINIMEW_REFRESH_COOKIE_SECURE=true`，启用知识检索时置 `MINIMEW_KNOWLEDGE_ENABLED=true`。空库可初始化新主密钥。迁移旧加密配置时携带原主密钥和备份。[Docker Ubuntu 安装](https://docs.docker.com/engine/install/ubuntu/)
+2. **准备运行时和配置。** 安装 Docker Engine、Compose v2、Python 3.12、uv、Node 和 Nginx。有域名时先设置 DNS 和 HTTPS。用普通部署用户检出指定提交，服务器端从 `.env.example` 创建自己的 `.env`，权限设为仅部署账户可读。设置数据库和 Redis 密码、JWT 密钥、凭据加密主密钥、模型默认配置与所需 Key。置 `MINIMEW_ENVIRONMENT=production`、`MINIMEW_REFRESH_COOKIE_SECURE=true`，启用知识检索时置 `MINIMEW_KNOWLEDGE_ENABLED=true`；**纯 API 云端部署置 `MINIMEW_LOCAL_MODELS_ENABLED=false`**（不加载本地模型、不装 PyTorch，新建项目和个人库在页面配置百炼 Key 后即可上传检索）。空库可初始化新主密钥。迁移旧加密配置时携带原主密钥和备份。[Docker Ubuntu 安装](https://docs.docker.com/engine/install/ubuntu/)
 3. **启动基础设施并显式迁移。** 下方命令在 MiniMew 目录执行。首次上线建议空库，迁移既有数据则先确认备份和恢复方案、结束旧版本活动任务及项目 Embedding 重建，使用原 `.env` 的构建配置应用迁移。若恢复旧历史，备份 PostgreSQL、原文目录、Milvus 数据和主密钥，并核对恢复后原文和向量能按旧版本定位。
 
 ```bash
-uv sync --locked --no-dev --extra embedding --extra vector
+# 纯 API 部署（MINIMEW_LOCAL_MODELS_ENABLED=false）：只需 vector 依赖，无需安装 torch 或下载本地模型
+uv sync --locked --no-dev --extra vector
 docker compose --profile vector up -d --wait
 uv run --env-file .env --no-sync alembic upgrade head
 uv run --env-file .env --no-sync alembic current
-uv run --env-file .env --no-sync python -m minimew.embeddings.cli prepare
-uv run --env-file .env --no-sync python -m minimew.rag.reranker prepare
 (cd frontend && npm ci && npm run build)
 ```
+
+> 若服务器仍需本地 BGE 模型或评测基线（`MINIMEW_LOCAL_MODELS_ENABLED=true`），改用 `uv sync --locked --no-dev --extra embedding --extra vector` 并运行 `python -m minimew.embeddings.cli prepare` 与 `python -m minimew.rag.reranker prepare`。
 
 4. **接入应用和同源代理。** Nginx 托管 `frontend/dist`，Vue 路由刷新使用 `try_files $uri $uri/ /index.html`。将 `/auth`、`/v1`、`/health` 原路径代理给 `127.0.0.1:8001`，保留请求 Host 和 HTTPS scheme。SSE 路径关闭响应缓冲，读超时覆盖流的空闲间隔。上传限制与 API 对齐，当前默认 5 MiB，代理需额外留 multipart 开销。公网使用 HTTPS，SSH 限来源，数据库、Redis、Milvus 和 Uvicorn 端口留在回环。以 systemd 分别托管以下进程，并配置重启、日志和持久目录。[Nginx 代理配置](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_buffering)
 

@@ -53,6 +53,8 @@ def public_errors():
         raise HTTPException(409, "Idempotency key belongs to another submission") from None
     except catalog.EmbeddingRebuildInProgress:
         raise HTTPException(409, detail={"code": "EMBEDDING_REBUILD_IN_PROGRESS"}) from None
+    except catalog.LocalModelsDisabled:
+        raise HTTPException(409, detail={"code": "LOCAL_MODELS_DISABLED"}) from None
     except SourceTooLarge:
         raise HTTPException(413, "Upload too large") from None
     except InvalidSource:
@@ -85,10 +87,13 @@ DocumentUser = Annotated[User, Depends(document_user)]
 
 @router.get("/rerank-settings", response_model=RerankSettingsView)
 async def read_rerank_settings(
-    user: DocumentUser, session: SessionDependency, project_id: UUID | None = None
+    user: DocumentUser,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    project_id: UUID | None = None,
 ):
     with public_errors():
-        return await rerank_settings.read_settings(session, user.id, project_id)
+        return await rerank_settings.read_settings(session, user.id, project_id, settings)
 
 
 @router.put("/rerank-settings", response_model=RerankSettingsView)
@@ -212,6 +217,7 @@ async def accept_upload(
             document_id,
             index_layout=settings.document_index_layout,
             project_id=project_id,
+            local_models_enabled=settings.local_models_enabled,
         )
 
 

@@ -101,6 +101,7 @@ async def _view(session, kb, settings):
             (kb and kb.embedding_credential_id) or await saved_credential(session, kb)
         ),
         rebuild=rebuild,
+        local_models_enabled=settings.local_models_enabled,
     )
 
 
@@ -111,6 +112,10 @@ async def start_rebuild(session, user_id, project_id, change, settings):
             from fastapi import HTTPException
 
             raise HTTPException(409, detail={"code": "PROJECT_MODELS_IMMUTABLE"})
+        if not settings.local_models_enabled and change.source == "local":
+            from fastapi import HTTPException
+
+            raise HTTPException(409, detail={"code": "LOCAL_MODELS_DISABLED"})
         kb = await ensure_base(
             session, user_id, project_id, settings.embedding_profile, settings.document_index_layout
         )
@@ -155,17 +160,16 @@ async def start_rebuild(session, user_id, project_id, change, settings):
         target = (hybrid_preset if current.index_layout in HYBRID_LAYOUTS else preset)(
             target_id
         ).model_copy(update={"parser": current.parser, "chunker": CURRENT_CHUNKER})
-        session.add(
-            EmbeddingRebuild(
-                id=identity,
-                knowledge_base_id=kb.id,
-                user_id=user_id,
-                credential_id=credential_id,
-                configuration=target.model_dump(mode="json"),
-                fingerprint=target.fingerprint(),
-                created_at=func.clock_timestamp(),
-            )
+        rebuild = EmbeddingRebuild(
+            id=identity,
+            knowledge_base_id=kb.id,
+            user_id=user_id,
+            credential_id=credential_id,
+            configuration=target.model_dump(mode="json"),
+            fingerprint=target.fingerprint(),
+            created_at=func.clock_timestamp(),
         )
+        session.add(rebuild)
         await session.flush()
         sources = {
             row.id: row
@@ -210,7 +214,15 @@ async def start_rebuild(session, user_id, project_id, change, settings):
                 )
             )
         await session.flush()
-        session.add_all(jobs)
+        if jobs:
+            session.add_all(jobs)
+        else:
+            kb.build_configuration, kb.build_fingerprint = (
+                rebuild.configuration,
+                rebuild.fingerprint,
+            )
+            kb.embedding_credential_id = rebuild.credential_id
+            rebuild.status = "succeeded"
         await session.flush()
         return await _view(session, kb, settings)
 

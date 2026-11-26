@@ -128,7 +128,8 @@ class IndexWorker:
             for fmt in ("markdown", "text")
             for factory in (preset, hybrid_preset)
             for profile in (PROFILE, BAILIAN_PROFILE)
-            if bailian is not None or profile == PROFILE
+            if (profile == PROFILE and encoder is not None)
+            or (profile == BAILIAN_PROFILE and bailian is not None)
             for parser in ("markdown-txt-v1", "markdown-txt-v2")
             for chunker in ("structure-v1", "structure-v2", CURRENT_CHUNKER)
         }
@@ -233,6 +234,8 @@ class IndexWorker:
                     except TimeoutError:
                         raise EmbeddingError("EMBEDDING_PROVIDER_TIMEOUT") from None
                 else:
+                    if self.encoder is None:
+                        raise EmbeddingError("LOCAL_MODELS_DISABLED")
                     values = await self.sync(self.encoder.encode_documents, texts)
                 vectors.extend(values)
                 await guard()
@@ -379,7 +382,11 @@ async def main(args):
             return
         runtime = EmbeddingRuntimeSettings()
         tokenizer = await asyncio.to_thread(LocalTokenizer.load, PROFILE, runtime)
-        encoder = await asyncio.to_thread(LocalEmbeddingAdapter.load_cpu, PROFILE, runtime)
+        encoder = (
+            await asyncio.to_thread(LocalEmbeddingAdapter.load_cpu, PROFILE, runtime)
+            if settings.local_models_enabled
+            else None
+        )
         vector_settings = VectorSettings()
         backend = await asyncio.to_thread(MilvusBackend.connect, vector_settings)
         await asyncio.to_thread(backend.ensure_collection)

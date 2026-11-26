@@ -14,6 +14,9 @@ const loading = ref(true);
 const saving = ref(false);
 const error = ref("");
 const rebuild = computed(() => settings.value?.rebuild);
+const localModelsEnabled = computed(
+  () => settings.value?.local_models_enabled !== false,
+);
 let timer: ReturnType<typeof setTimeout> | undefined;
 let open = true;
 
@@ -37,7 +40,10 @@ function apply(value: EmbeddingSettings, resetSource: boolean) {
     value.rebuild?.status !== "building";
   settings.value = value;
   emit("rebuildState", value.rebuild?.status === "building");
-  if (resetSource) source.value = value.current_source;
+  if (resetSource) {
+    source.value =
+      value.local_models_enabled === false ? "bailian" : value.current_source;
+  }
   if (finished) void documents.refresh();
   if (value.rebuild?.status === "building")
     timer = setTimeout(() => void refresh(false), 2000);
@@ -78,9 +84,11 @@ async function start() {
         ? "此知识库有文档正在构建，请等任务结束后再切换。"
         : code === "EMBEDDING_KEY_REQUIRED"
           ? "请填写百炼 API Key。"
-          : code === "EMBEDDING_KEY_STORAGE_UNAVAILABLE"
-            ? "服务端暂时无法保存 API Key，请检查加密主密钥是否已配置。"
-            : "提交结果待确认，请刷新设置后再试。";
+          : code === "LOCAL_MODELS_DISABLED"
+            ? "当前服务端已关闭本地模型，请配置百炼 API Key。"
+            : code === "EMBEDDING_KEY_STORAGE_UNAVAILABLE"
+              ? "服务端暂时无法保存 API Key，请检查加密主密钥是否已配置。"
+              : "提交结果待确认，请刷新设置后再试。";
   } finally {
     if (open) saving.value = false;
   }
@@ -135,7 +143,18 @@ onBeforeUnmount(() => {
           >查看模型配置或更新 Key</RouterLink
         >
       </p>
-      <details v-if="!project && rebuild?.status !== 'building'">
+      <p
+        v-if="
+          !project && !localModelsEnabled && settings.current_source === 'local'
+        "
+        role="status"
+      >
+        当前服务端仅启用云端 API，请先配置百炼 Embedding Key 后再上传文档。
+      </p>
+      <details
+        v-if="!project && rebuild?.status !== 'building'"
+        :open="!localModelsEnabled && settings.current_source === 'local'"
+      >
         <summary>更换编码模型</summary>
         <form @submit.prevent="start">
           <label for="embedding-source">目标模型</label>
@@ -145,7 +164,9 @@ onBeforeUnmount(() => {
             :disabled="saving"
             @change="key = ''"
           >
-            <option value="local">本地 BGE Small</option>
+            <option v-if="localModelsEnabled" value="local">
+              本地 BGE Small
+            </option>
             <option value="bailian">百炼 text-embedding-v4</option>
           </select>
           <template v-if="source === 'bailian'">

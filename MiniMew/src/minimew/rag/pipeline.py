@@ -108,6 +108,8 @@ class RagPipeline:
             except TimeoutError:
                 raise EmbeddingError("EMBEDDING_PROVIDER_TIMEOUT") from None
         else:
+            if runtime.encoder is None:
+                raise EmbeddingError("LOCAL_MODELS_DISABLED")
             vector = await runtime.sync(runtime.encoder.encode_query, query)
         hybrid = policy.strategy == "hybrid" and all(
             "bm25" in runtime.index.capabilities(m) for m in scope.targets
