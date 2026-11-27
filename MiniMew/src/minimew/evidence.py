@@ -17,7 +17,7 @@ SUPPLEMENT_HEADING = "## 模型补充（未由本次资料验证）"
 ANSWER_INSTRUCTIONS = (
     "你正在进行混合知识问答。文档知识作为主要来源"
     "最终回答遵循以下文本协议：有文档依据时，先独占一行输出'## 文档依据'，"
-    "随后每个非空段落必须用工具提供的[E1]等编号引用该段实际依据。"
+    "随后每个非空段落必须用工具提供的[E1]等编号引用该段实际依据（列表项不要用空行隔开）。"
     "只能使用本次工具结果的citation_id，不能自行编造编号、来源或链接。"
     "模型常识、推断、建议必须另起独占一行的'## 模型补充（未由本次资料验证）'，"
     "该分区不得包含证据引用，不得把补充描述为文档规定。两个分区各最多一次，"
@@ -141,6 +141,113 @@ class AnswerResult:
     materials: AnswerMaterials | None = None
 
 
+_SUBHEADING_LINE = re.compile(r"^#{3,6}[ \t]+\S.*$")
+_THEMATIC_BREAK = re.compile(r"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$")
+_FENCE_START = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
+
+
+def _document_blocks(body: str) -> list[str]:
+    blocks: list[str] = []
+    current: list[str] = []
+    fence: tuple[str, int] | None = None
+    for line in body.strip().splitlines():
+        if fence is None:
+            match = _FENCE_START.match(line)
+            if match:
+                marker = match.group(1)
+                if marker[0] != "`" or "`" not in match.group(2):
+                    fence = (marker[0], len(marker))
+                    current.append(line)
+                    continue
+            if not line.strip():
+                if current:
+                    blocks.append("\n".join(current))
+                    current = []
+                continue
+            current.append(line)
+        else:
+            current.append(line)
+            stripped = line.strip()
+            if (
+                len(stripped) >= fence[1]
+                and stripped.startswith(fence[0] * fence[1])
+                and set(stripped) == {fence[0]}
+            ):
+                fence = None
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def _is_subheading_block(block: str) -> bool:
+    lines = [line for line in block.splitlines() if line.strip()]
+    return bool(lines) and all(_SUBHEADING_LINE.match(line) for line in lines)
+
+
+def _is_fenced_code_block(block: str) -> bool:
+    lines = block.splitlines()
+    if len(lines) < 2:
+        return False
+    match = _FENCE_START.match(lines[0])
+    if not match:
+        return False
+    marker = match.group(1)
+    if marker[0] == "`" and "`" in match.group(2):
+        return False
+    closing = lines[-1].strip()
+    return (
+        len(closing) >= len(marker)
+        and closing.startswith(marker[0] * len(marker))
+        and set(closing) == {marker[0]}
+    )
+
+
+def uncited_document_paragraphs(content: str) -> list[dict[str, object]]:
+    """返回文档依据分区中缺少引用的实质段落；用于校验与格式修复定位。"""
+    headings = list(
+        re.finditer(
+            rf"(?m)^({re.escape(DOCUMENT_HEADING)}|{re.escape(SUPPLEMENT_HEADING)})\r?$",
+            content,
+        )
+    )
+    for index, heading in enumerate(headings):
+        if heading.group(1) != DOCUMENT_HEADING:
+            continue
+        start = heading.end()
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(content)
+        return _uncited_blocks(content[start:end])
+    return []
+
+
+def _uncited_blocks(body: str) -> list[dict[str, object]]:
+    blocks = _document_blocks(body)
+    if not blocks:
+        return []
+    cited = [bool(REFERENCE.search(block)) for block in blocks]
+    subheading = [_is_subheading_block(block) for block in blocks]
+    fenced = [_is_fenced_code_block(block) for block in blocks]
+    rule = [bool(_THEMATIC_BREAK.match(block)) for block in blocks]
+    has_cited_prose = any(
+        cited[i] and not subheading[i] and not fenced[i] and not rule[i] for i in range(len(blocks))
+    )
+    uncited: list[dict[str, object]] = []
+    for i, block in enumerate(blocks):
+        if cited[i]:
+            continue
+        if subheading[i]:
+            # 子标题必须后续接有带引用的实质段落，不能悬空。
+            has_following_cited = any(
+                cited[j] and not subheading[j] and not fenced[j] and not rule[j]
+                for j in range(i + 1, len(blocks))
+            )
+            if has_following_cited:
+                continue
+        elif (fenced[i] or rule[i]) and has_cited_prose:
+            continue
+        uncited.append({"paragraph_index": i + 1, "preview": block.strip()[:120]})
+    return uncited
+
+
 def parse_answer(content: str, evidence: tuple[Evidence, ...]) -> AnswerResult:
     """位置为正文Unicode字符偏移[start,end)；仅验证协议/来源，不冒充语义评判。"""
     if not valid_text(content, MAX_OUTPUT_CHARS, nonblank=True):
@@ -169,9 +276,7 @@ def parse_answer(content: str, evidence: tuple[Evidence, ...]) -> AnswerResult:
         if "[E" in REFERENCE.sub("", body) or (kind == "supplement" and references):
             raise ValueError("Invalid citation syntax or supplement citation")
         if kind == "document":
-            if any(
-                not REFERENCE.search(p) for p in re.split(r"\n\s*\n", body.strip()) if p.strip()
-            ):
+            if _uncited_blocks(body):
                 raise ValueError("Document paragraph lacks citation")
             for ref in references:
                 key = ref.group()[1:-1]

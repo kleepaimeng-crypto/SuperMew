@@ -6,11 +6,10 @@ import re
 from dataclasses import replace
 
 from minimew.evidence import (
-    DOCUMENT_HEADING,
     REFERENCE,
-    SUPPLEMENT_HEADING,
     AnswerResult,
     parse_answer,
+    uncited_document_paragraphs,
 )
 from minimew.execution.answer_repair import body_characters
 from minimew.execution.diagnostics import capture, emit
@@ -32,29 +31,6 @@ def direct_answer(content: str) -> AnswerResult:
             diagnostic=capture("answer_validation", "citation_without_retrieval"),
         )
     return AnswerResult(content)
-
-
-def _missing_citation_paragraphs(content: str) -> list[dict[str, object]]:
-    headings = list(
-        re.finditer(
-            rf"(?m)^({re.escape(DOCUMENT_HEADING)}|{re.escape(SUPPLEMENT_HEADING)})\r?$",
-            content,
-        )
-    )
-    for index, heading in enumerate(headings):
-        if heading.group(1) != DOCUMENT_HEADING:
-            continue
-        start = heading.end()
-        end = headings[index + 1].start() if index + 1 < len(headings) else len(content)
-        paragraphs = [
-            p.strip() for p in re.split(r"\n\s*\n", content[start:end].strip()) if p.strip()
-        ]
-        return [
-            {"paragraph_index": idx + 1, "preview": p[:120]}
-            for idx, p in enumerate(paragraphs)
-            if not REFERENCE.search(p)
-        ]
-    return []
 
 
 async def grounded_answer(request, turn, context, budget, check, model_turn):
@@ -110,7 +86,7 @@ async def grounded_answer(request, turn, context, budget, check, model_turn):
                 "evidence": [item.model_dump(mode="json") for item in context.evidence.items],
             }
             if detail.reason == "document_paragraph_missing_citation":
-                missing_paragraphs = _missing_citation_paragraphs(turn.content)
+                missing_paragraphs = uncited_document_paragraphs(turn.content)
                 if missing_paragraphs:
                     payload["missing_citation_paragraphs"] = missing_paragraphs
             try:

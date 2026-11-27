@@ -90,12 +90,35 @@ def test_unicode_offsets_and_exact_material_roundtrip():
         f"{SUPPLEMENT_HEADING}\n补充\n{DOCUMENT_HEADING}\n有据[E1]",
         f"{DOCUMENT_HEADING}\n有据[E1]\n{DOCUMENT_HEADING}\n重复[E1]",
         f"{DOCUMENT_HEADING}\n有据[E1]\n\n另一段无引用",
+        f"{DOCUMENT_HEADING}\n### 仅小标题无正文",
+        f"{DOCUMENT_HEADING}\n有据[E1]\n\n### 结尾悬空标题",
+        f"{DOCUMENT_HEADING}\n### 小标题\n\n没有引用的正文",
+        f"{DOCUMENT_HEADING}\n### 小标题\n\n没有引用的正文\n\n有据[E1]",
+        f"{DOCUMENT_HEADING}\n```sql\nSELECT 1;\n```",
+        f"{DOCUMENT_HEADING}\n```sql\nSELECT 1;\n```\n\n无引用说明",
         f"{SUPPLEMENT_HEADING}\n",
     ],
 )
 def test_invalid_answer_is_not_silently_repaired(content):
     with pytest.raises(ValueError):
         parse_answer(content, (evidence(),))
+
+
+def test_document_subheadings_and_fenced_code_blocks_preserve_per_paragraph_citations():
+    first, second = evidence(), evidence("住宿500元。", "E2")
+    content = (
+        f"{DOCUMENT_HEADING}\n"
+        "### 一、费用规则\n\n"
+        "餐费150元[E1]。\n\n"
+        "```\nCREATE TABLE a (id INT);\n\nCREATE TABLE b (id INT);\n```\n\n"
+        "---\n\n"
+        "#### 二、住宿标准\n\n"
+        "住宿500元[E2]。\n\n"
+        f"{SUPPLEMENT_HEADING}\n一般建议。"
+    )
+    answer = parse_answer(content, (first, second))
+    assert [c.citation_id for c in answer.materials.citations] == ["E1", "E2"]
+    assert answer.materials.evidence == (first, second)
 
 
 def test_supplement_only_and_omitted_unreferenced_evidence():
