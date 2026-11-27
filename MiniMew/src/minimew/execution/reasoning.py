@@ -55,7 +55,8 @@ class ModelCaller:
         instructions = {
             "grade": (
                 "评判原问题是否被实际材料完整支持；supported只填输入材料引用ID，"
-                "missing列出缺口。只有多方面缺口才设decompose。"
+                "missing列出缺口（最多8项且每项简明扼要，缺口较多时合并归纳为不超过8条）。"
+                "只有多方面缺口才设decompose。"
             ),
             "plan": (
                 "将原问题拆为2至4个独立检索问题。保留实体、地点、时间和限制。"
